@@ -1,0 +1,19 @@
+{
+  "schema": "theater.plugin.registry/v1alpha1",
+  "plugins": {
+    "hello-world": {
+      "manifest": "../../../plugins/hello-world/manifest.json",
+      "exec": {
+        "command": [
+          "go",
+          "run",
+          "./plugins/hello-world/main.go"
+        ]
+      },
+      "allow_capabilities": [
+        "inventory.hello_world.message",
+        "action.hello_world.echo"
+      ]
+    }
+  }
+}

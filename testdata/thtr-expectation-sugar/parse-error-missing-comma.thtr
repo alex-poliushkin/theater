@@ -1,0 +1,8 @@
+stage smoke
+scenario ping
+  act get-health
+    do action.http(method: "GET", url: "/health")
+    expect bad: field(body) all items where (
+      path("/receiverAddress") == "demo@example.test"
+      path("/subject") contains "Verification Code"
+    )

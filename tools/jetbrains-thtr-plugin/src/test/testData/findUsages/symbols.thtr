@@ -1,0 +1,10 @@
+stage checkout
+scenario smoke
+  act start
+    prop token = generate.email()
+    export id = field(body)
+    on pass -> verify
+  act verify
+    expect has-id: $id == "42"
+    expect has-token: $token matches r".+"
+call run = smoke()

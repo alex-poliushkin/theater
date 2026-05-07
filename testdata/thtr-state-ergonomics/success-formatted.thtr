@@ -1,0 +1,54 @@
+stage smoke
+
+state
+  backend local = state.backend.file(root: "/tmp/theater-state")
+  record shared_meta = state.record
+    backend: local
+    record: "env/shared-meta"
+    min_guarantee: local-atomic
+  pool otp_identities = state.pool
+    backend: local
+    pool: "otp-identities"
+    min_guarantee: local-atomic
+
+scenario verify-state
+  act read-meta
+    do state.read(record: shared_meta)
+    export meta_version = field(version)
+
+  act update-meta
+    do state.update
+      record: shared_meta
+      if_version: $meta_version
+      value: object { owner: "tutorial-run" }
+
+  act claim-primary
+    do state.claim
+      pool: otp_identities
+      id: "fixture-1"
+      fields:
+        purpose: "registration"
+        provider: "mailhog"
+      lease:
+        ttl: 5m
+        on_expiry: reclaim
+    export otp_claim = field(claim)
+    export otp_item = field(item)
+
+  act renew-primary
+    do state.renew(claim: $otp_claim, ttl: 10m)
+
+  act release-primary
+    do state.release(claim: $otp_claim)
+
+  act claim-secondary
+    do state.claim
+      pool: otp_identities
+      selector: object {
+        fields: object { purpose: "registration" }
+      }
+      lease: object { ttl: 5m }
+    export otp_claim_2 = field(claim)
+
+  act consume-secondary
+    do state.consume(claim: $otp_claim_2, tombstone: object { reason: "registration-complete" })

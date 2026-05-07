@@ -1,0 +1,8 @@
+stage main
+scenario login
+  act submit
+    do action.http(method: "GET", url: "/health")
+    expect bad: field(body) | decode(json) | path("/items") has item where (
+      path("/id") == "one"
+      path("/name") contains "demo"
+    )

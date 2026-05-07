@@ -1,0 +1,232 @@
+id: smoke
+state:
+    backends:
+        local:
+            use: state.backend.file
+            with:
+                root: /tmp/theater-state
+scenarios:
+    - id: verify-state
+      acts:
+        - id: read-meta
+          properties:
+            thtr:hidden:state:record:shared_meta:
+                inventory:
+                    use: inventory.state.record
+                    with:
+                        backend:
+                            kind: literal
+                            value: local
+                        min_guarantee:
+                            kind: literal
+                            value: local-atomic
+                        record:
+                            kind: literal
+                            value: env/shared-meta
+          action:
+            use: action.state.read
+            with:
+                record:
+                    kind: ref
+                    ref:
+                        name: thtr:hidden:state:record:shared_meta
+                        decode: ""
+                        path: ""
+                        through: []
+          exports:
+            - as: meta_version
+              ref: null
+              field: version
+              decode: ""
+              path: ""
+              through: []
+        - id: update-meta
+          properties:
+            thtr:hidden:state:record:shared_meta:
+                inventory:
+                    use: inventory.state.record
+                    with:
+                        backend:
+                            kind: literal
+                            value: local
+                        min_guarantee:
+                            kind: literal
+                            value: local-atomic
+                        record:
+                            kind: literal
+                            value: env/shared-meta
+          action:
+            use: action.state.update
+            with:
+                expected_version:
+                    kind: ref
+                    ref:
+                        name: meta_version
+                        decode: ""
+                        path: ""
+                        through: []
+                record:
+                    kind: ref
+                    ref:
+                        name: thtr:hidden:state:record:shared_meta
+                        decode: ""
+                        path: ""
+                        through: []
+                value:
+                    kind: object
+                    object:
+                        owner:
+                            kind: literal
+                            value: tutorial-run
+        - id: claim-primary
+          properties:
+            thtr:hidden:state:pool:otp_identities:
+                inventory:
+                    use: inventory.state.pool
+                    with:
+                        backend:
+                            kind: literal
+                            value: local
+                        min_guarantee:
+                            kind: literal
+                            value: local-atomic
+                        pool:
+                            kind: literal
+                            value: otp-identities
+          action:
+            use: action.state.claim
+            with:
+                lease:
+                    kind: object
+                    object:
+                        on_expiry:
+                            kind: literal
+                            value: reclaim
+                        ttl:
+                            kind: literal
+                            value: 5m
+                pool:
+                    kind: ref
+                    ref:
+                        name: thtr:hidden:state:pool:otp_identities
+                        decode: ""
+                        path: ""
+                        through: []
+                selector:
+                    kind: object
+                    object:
+                        fields:
+                            kind: object
+                            object:
+                                provider:
+                                    kind: literal
+                                    value: mailhog
+                                purpose:
+                                    kind: literal
+                                    value: registration
+                        id:
+                            kind: literal
+                            value: fixture-1
+          exports:
+            - as: otp_claim
+              ref: null
+              field: claim
+              decode: ""
+              path: ""
+              through: []
+            - as: otp_item
+              ref: null
+              field: item
+              decode: ""
+              path: ""
+              through: []
+        - id: renew-primary
+          action:
+            use: action.state.renew
+            with:
+                claim:
+                    kind: ref
+                    ref:
+                        name: otp_claim
+                        decode: ""
+                        path: ""
+                        through: []
+                ttl:
+                    kind: literal
+                    value: 10m
+        - id: release-primary
+          action:
+            use: action.state.release
+            with:
+                claim:
+                    kind: ref
+                    ref:
+                        name: otp_claim
+                        decode: ""
+                        path: ""
+                        through: []
+        - id: claim-secondary
+          properties:
+            thtr:hidden:state:pool:otp_identities:
+                inventory:
+                    use: inventory.state.pool
+                    with:
+                        backend:
+                            kind: literal
+                            value: local
+                        min_guarantee:
+                            kind: literal
+                            value: local-atomic
+                        pool:
+                            kind: literal
+                            value: otp-identities
+          action:
+            use: action.state.claim
+            with:
+                lease:
+                    kind: object
+                    object:
+                        ttl:
+                            kind: literal
+                            value: 5m
+                pool:
+                    kind: ref
+                    ref:
+                        name: thtr:hidden:state:pool:otp_identities
+                        decode: ""
+                        path: ""
+                        through: []
+                selector:
+                    kind: object
+                    object:
+                        fields:
+                            kind: object
+                            object:
+                                purpose:
+                                    kind: literal
+                                    value: registration
+          exports:
+            - as: otp_claim_2
+              ref: null
+              field: claim
+              decode: ""
+              path: ""
+              through: []
+        - id: consume-secondary
+          action:
+            use: action.state.consume
+            with:
+                claim:
+                    kind: ref
+                    ref:
+                        name: otp_claim_2
+                        decode: ""
+                        path: ""
+                        through: []
+                tombstone:
+                    kind: object
+                    object:
+                        reason:
+                            kind: literal
+                            value: registration-complete
+scenario_calls: []

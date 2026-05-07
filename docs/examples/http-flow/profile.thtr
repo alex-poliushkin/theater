@@ -1,0 +1,19 @@
+stage http-profile
+
+http
+  session browser = http.session.browser()
+
+scenario http/profile
+  act login
+    prop login_url = inventory.env(name: "THEATER_DOC_LOGIN_URL")
+    do action.http(method: "GET", url: $login_url, session: "browser")
+    expect login-ok: field(status_code) == 200
+    on pass -> fetch-profile
+
+  act fetch-profile
+    prop profile_url = inventory.env(name: "THEATER_DOC_PROFILE_URL")
+    do action.http(method: "GET", url: $profile_url, session: "browser")
+    expect status-ok: field(status_code) == 200
+    expect profile-id: field(body) | decode(json) | path("/data/id") == "user-123"
+
+call run = http/profile()

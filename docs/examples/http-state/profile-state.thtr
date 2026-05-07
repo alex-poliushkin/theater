@@ -1,0 +1,47 @@
+stage http-state-profile
+
+http
+  session browser = http.session.browser()
+
+state
+  backend local = state.backend.file(root: "/tmp/theater-doc-state")
+  record profile_cache = state.record
+    backend: local
+    record: "profile-cache"
+    min_guarantee: local-atomic
+
+scenario http/profile-state
+  act login
+    prop login_url = inventory.env(name: "THEATER_DOC_LOGIN_URL")
+    do action.http(method: "GET", url: $login_url, session: "browser")
+    expect login-ok: field(status_code) == 200
+    on pass -> fetch-profile
+
+  act fetch-profile
+    prop profile_url = inventory.env(name: "THEATER_DOC_PROFILE_URL")
+    do action.http(method: "GET", url: $profile_url, session: "browser")
+    expect status-ok: field(status_code) == 200
+    expect active: field(body) | decode(json) | path("/data/status") == "active"
+    export profile_id = field(body) | decode(json) | path("/data/id")
+    on pass -> read-cache
+
+  act read-cache
+    do state.read(record: profile_cache)
+    export cache_version = field(version)
+    on pass -> cache-profile
+
+  act cache-profile
+    do state.update
+      record: profile_cache
+      if_version: $cache_version
+      value: object { profile_id: $profile_id, status: "cached" }
+    expect cache-version: field(version) matches r"^[0-9]+$"
+    on pass -> wait-ready
+
+  act wait-ready
+    eventually 3s every 100ms
+    prop status_url = inventory.env(name: "THEATER_DOC_STATUS_URL")
+    do repeatable action.http(method: "GET", url: $status_url, session: "none")
+    expect ready: field(body) | decode(json) | path("/ready") == true
+
+call run = http/profile-state()

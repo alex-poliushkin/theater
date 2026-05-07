@@ -1,0 +1,31 @@
+stage check-values
+
+scenario check-profile
+  act read-profile
+    do action.command
+      executable: "printf"
+      args: list [
+        "%s",
+        """
+        {"data":{"id":"user-123","status":"active","email":"demo@example.test"}}
+        """
+      ]
+      timeout: "5s"
+    log profile = object {
+      id: field(stdout) | decode(json) | path("/data/id"),
+      status: field(stdout) | decode(json) | path("/data/status"),
+      email: field(stdout) | decode(json) | path("/data/email")
+    }
+    expect command-ok: field(exit_code) == 0
+    expect profile-id: field(stdout) | decode(json) | path("/data/id") == "user-123"
+    expect profile-status: field(stdout) | decode(json) | path("/data/status") == "active"
+    export profile_id = field(stdout) | decode(json) | path("/data/id")
+    on pass -> reuse-profile-id
+
+  act reuse-profile-id
+    do action.generate
+      outputs:
+        seen_id: $profile_id
+    expect same-id: field(values) | path("/seen_id") == "user-123"
+
+call run = check-profile()

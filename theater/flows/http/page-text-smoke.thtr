@@ -1,0 +1,6 @@
+stage page-text-smoke
+
+call check-example-domain = web/check-page-text(
+  url: "https://example.com",
+  expected_text: "Example Domain"
+)

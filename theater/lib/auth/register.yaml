@@ -1,0 +1,46 @@
+id: auth-library-register
+scenarios:
+  - id: auth/register
+    inputs:
+      method:
+        type: string
+        required: true
+      expected_status_code:
+        type: number
+        required: true
+    acts:
+      - id: request
+        properties:
+          url:
+            inventory:
+              use: inventory.env
+              with:
+                name:
+                  kind: literal
+                  value: THEATER_REGISTER_URL
+        action:
+          use: action.http
+          with:
+            method:
+              kind: ref
+              ref: method
+            url:
+              kind: ref
+              ref: url
+        expectations:
+          - id: ok
+            subject: status_code
+            assert:
+              between:
+                min: 200
+                max: 299
+          - id: created
+            subject: status_code
+            assert:
+              eq:
+                kind: ref
+                ref: expected_status_code
+        exports:
+          - field: body
+            as: registration_body
+scenario_calls: []

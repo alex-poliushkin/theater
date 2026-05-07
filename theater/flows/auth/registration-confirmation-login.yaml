@@ -1,0 +1,39 @@
+id: auth-demo
+scenario_calls:
+  - id: register-user
+    scenario_id: auth/register
+    bindings:
+      method:
+        kind: literal
+        value: POST
+      expected_status_code:
+        kind: literal
+        value: 201
+
+  - id: confirm-user
+    scenario_id: auth/confirm
+    dependencies:
+      - call_id: register-user
+    bindings:
+      method:
+        kind: literal
+        value: POST
+      expected_status_code:
+        kind: literal
+        value: 204
+
+  - id: login-user
+    scenario_id: auth/login
+    dependencies:
+      - call_id: confirm-user
+    bindings:
+      method:
+        kind: literal
+        value: POST
+      url_env_name:
+        kind: literal
+        value: THEATER_LOGIN_URL
+      expected_status_code:
+        kind: literal
+        value: 200
+scenarios: []

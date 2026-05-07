@@ -1,0 +1,7 @@
+stage web-library
+
+scenario web/check-page-text(url: string!, expected_text: string!)
+  act fetch
+    do action.http(method: "GET", url: $url, session: "none")
+    expect status-ok: field(status_code) == 200
+    expect expected-text: field(body) contains $expected_text

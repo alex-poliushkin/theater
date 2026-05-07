@@ -1,0 +1,16 @@
+stage main
+state
+  backend local = state.backend.file(root: "/tmp/theater-state")
+  pool otp_identities = state.pool(
+    backend: local,
+    pool: "otp-identities",
+    min_guarantee: local-atomic
+  )
+scenario verify-state
+  act lifecycle
+    eventually 5s every 1s
+    do state.claim
+      pool: otp_identities
+      id: "fixture-1"
+      lease:
+        ttl: 5m

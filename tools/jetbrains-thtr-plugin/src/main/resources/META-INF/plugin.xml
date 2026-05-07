@@ -1,0 +1,105 @@
+<idea-plugin>
+  <id>com.github.alexpoliushkin.theater.thtrij</id>
+  <name>Theater THTR Support</name>
+  <vendor url="https://github.com/alex-poliushkin/theater">alex-poliushkin</vendor>
+
+  <depends>com.intellij.modules.platform</depends>
+  <depends>com.intellij.modules.lang</depends>
+
+  <resource-bundle>messages.TheaterBundle</resource-bundle>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <fileType
+        name="THTR"
+        implementationClass="com.github.alexpoliushkin.theater.thtrij.ThtrFileType"
+        fieldName="INSTANCE"
+        language="thtr"
+        extensions="thtr"/>
+
+    <lang.parserDefinition
+        language="thtr"
+        implementationClass="com.github.alexpoliushkin.theater.thtrij.ThtrParserDefinition"/>
+
+    <lang.syntaxHighlighterFactory
+        language="thtr"
+        implementationClass="com.github.alexpoliushkin.theater.thtrij.ThtrSyntaxHighlighterFactory"/>
+
+    <annotator
+        language="thtr"
+        implementationClass="com.github.alexpoliushkin.theater.thtrij.ThtrSemanticAnnotator"/>
+
+    <colorSettingsPage
+        implementation="com.github.alexpoliushkin.theater.thtrij.ThtrColorSettingsPage"/>
+
+    <lang.formatter
+        language="thtr"
+        implementationClass="com.github.alexpoliushkin.theater.thtrij.ThtrFormattingModelBuilder"/>
+
+    <lang.commenter
+        language="thtr"
+        implementationClass="com.github.alexpoliushkin.theater.thtrij.ThtrCommenter"/>
+
+    <lang.psiStructureViewFactory
+        language="thtr"
+        implementationClass="com.github.alexpoliushkin.theater.thtrij.ThtrStructureViewFactory"/>
+
+    <lang.foldingBuilder
+        language="thtr"
+        implementationClass="com.github.alexpoliushkin.theater.thtrij.ThtrFoldingBuilder"/>
+
+    <langCodeStyleSettingsProvider
+        implementation="com.github.alexpoliushkin.theater.thtrij.ThtrLanguageCodeStyleSettingsProvider"/>
+
+    <fileTypeIndentOptionsProvider
+        implementation="com.github.alexpoliushkin.theater.thtrij.ThtrFileIndentOptionsProvider"/>
+
+    <postFormatProcessor
+        implementation="com.github.alexpoliushkin.theater.thtrij.ThtrPostFormatProcessor"/>
+
+    <psi.referenceContributor
+        language="thtr"
+        implementation="com.github.alexpoliushkin.theater.thtrij.ThtrReferenceContributor"/>
+
+    <gotoDeclarationHandler
+        implementation="com.github.alexpoliushkin.theater.thtrij.ThtrGotoDeclarationHandler"/>
+
+    <lang.findUsagesProvider
+        language="thtr"
+        implementationClass="com.github.alexpoliushkin.theater.thtrij.ThtrFindUsagesProvider"/>
+
+    <lang.namesValidator
+        language="thtr"
+        implementationClass="com.github.alexpoliushkin.theater.thtrij.ThtrNamesValidator"/>
+
+    <referencesSearch
+        implementation="com.github.alexpoliushkin.theater.thtrij.ThtrReferencesSearchExecutor"/>
+
+    <vetoRenameCondition
+        implementation="com.github.alexpoliushkin.theater.thtrij.ThtrRenameVetoCondition"/>
+
+    <completion.contributor
+        language="thtr"
+        implementationClass="com.github.alexpoliushkin.theater.thtrij.ThtrCompletionContributor"/>
+
+    <platform.backend.documentation.psiTargetProvider
+        implementation="com.github.alexpoliushkin.theater.thtrij.ThtrDocumentationTargetProvider"/>
+
+    <localInspection
+        language="thtr"
+        displayName="Removed state syntax"
+        groupName="Theater"
+        enabledByDefault="true"
+        level="ERROR"
+        implementationClass="com.github.alexpoliushkin.theater.thtrij.ThtrRemovedStateSyntaxInspection"/>
+
+    <projectService
+        serviceImplementation="com.github.alexpoliushkin.theater.thtrij.ThtrProjectSettings"/>
+
+    <projectConfigurable
+        parentId="tools"
+        instance="com.github.alexpoliushkin.theater.thtrij.ThtrProjectSettingsConfigurable"
+        id="com.github.alexpoliushkin.theater.thtrij.project.settings"
+        displayName="Theater"
+        nonDefaultProject="true"/>
+  </extensions>
+</idea-plugin>

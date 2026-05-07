@@ -1,0 +1,589 @@
+id: irs-individual-registration-tests
+scenarios:
+    - id: irs/individual/registration/email-v1
+      inputs:
+        email:
+            type: string
+            kinds: {}
+            required: true
+        passcode:
+            type: string
+            kinds: {}
+            required: true
+        phone:
+            type: string
+            kinds: {}
+            required: true
+      acts:
+        - id: create-registration-flow
+          action:
+            use: action.http
+            with:
+                method:
+                    kind: literal
+                    value: GET
+                url:
+                    kind: literal
+                    value: https://vlm-dev-api.velmie-wallet.de/irs/self-service/v1/flows/individual/registration/email-v1
+          expectations:
+            - id: status-code
+              subject:
+                field: status_code
+              assert:
+                ref: expectation.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: 200
+            - id: active-step
+              subject:
+                field: body
+                decode: json
+                path: /data/activeStep
+              assert:
+                ref: expectation.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: 1-provide-email-address
+            - id: class-id
+              subject:
+                field: body
+                decode: json
+                path: /data/classId
+              assert:
+                ref: expectation.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: email-v1
+          exports:
+            - as: registration_flow_id
+              ref: null
+              field: body
+              decode: json
+              path: /data/id
+              through: []
+          transitions:
+            - "on": on_pass
+              to: submit-email
+        - id: submit-email
+          action:
+            use: action.http
+            with:
+                json:
+                    kind: object
+                    object:
+                        email:
+                            kind: ref
+                            ref:
+                                name: email
+                                decode: ""
+                                path: ""
+                                through: []
+                method:
+                    kind: literal
+                    value: PATCH
+                url:
+                    kind: string
+                    parts:
+                        - kind: literal
+                          value: https://vlm-dev-api.velmie-wallet.de/irs/self-service/v1/flows/
+                        - kind: ref
+                          ref:
+                            name: registration_flow_id
+                            decode: ""
+                            path: ""
+                            through: []
+                        - kind: literal
+                          value: /registrations
+          expectations:
+            - id: status-code
+              subject:
+                field: status_code
+              assert:
+                ref: expectation.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: 200
+            - id: verification-id-present
+              subject:
+                field: body
+                decode: json
+                path: /data/verification/id
+              assert:
+                ref: expectation.matches
+                args:
+                    pattern:
+                        kind: literal
+                        value: ^[0-9a-f-]{36}$
+            - id: verification-type
+              subject:
+                field: body
+                decode: json
+                path: /data/verification/identifierType
+              assert:
+                ref: expectation.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: email
+          exports:
+            - as: email_verification_flow_id
+              ref: null
+              field: body
+              decode: json
+              path: /data/verification/id
+              through: []
+          transitions:
+            - "on": on_pass
+              to: wait-email-notification
+        - id: wait-email-notification
+          eventually:
+            timeout: 30s
+            interval: 1s
+          action:
+            use: action.http
+            with:
+                method:
+                    kind: literal
+                    value: GET
+                url:
+                    kind: literal
+                    value: https://vlm-dev-api.velmie-wallet.de/irs/__debug/notifications?format=json
+            repeatable: true
+          expectations:
+            - id: status-code
+              subject:
+                field: status_code
+              assert:
+                ref: expectation.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: 200
+            - id: email-address-present
+              subject:
+                field: body
+              assert:
+                ref: expectation.contains
+                args:
+                    expected:
+                        kind: ref
+                        ref:
+                            name: email
+                            decode: ""
+                            path: ""
+                            through: []
+            - id: verification-subject-present
+              subject:
+                field: body
+              assert:
+                ref: expectation.contains
+                args:
+                    expected:
+                        kind: literal
+                        value: Verification Code
+            - id: email_otp
+              subject:
+                field: body
+                decode: json
+                path: /data
+                through:
+                    - pick:
+                        at: /receiverAddress
+                        equals:
+                            kind: ref
+                            ref:
+                                name: email
+                                decode: ""
+                                path: ""
+                                through: []
+                    - path: /body
+                    - regexp:
+                        pattern: '(?i)verification code(?: to verify your [^:]+)?:\s*(?:<strong>)?([A-Z0-9]+)'
+                        group: 1
+              assert:
+                ref: expectation.matches
+                args:
+                    pattern:
+                        kind: literal
+                        value: ^[A-Z0-9]{6}$
+          exports:
+            - as: email_otp
+              ref: null
+              field: body
+              decode: json
+              path: /data
+              through:
+                - pick:
+                    at: /receiverAddress
+                    equals:
+                        kind: ref
+                        ref:
+                            name: email
+                            decode: ""
+                            path: ""
+                            through: []
+                - path: /body
+                - regexp:
+                    pattern: '(?i)verification code(?: to verify your [^:]+)?:\s*(?:<strong>)?([A-Z0-9]+)'
+                    group: 1
+          transitions:
+            - "on": on_pass
+              to: confirm-email
+        - id: confirm-email
+          action:
+            use: action.http
+            with:
+                json:
+                    kind: object
+                    object:
+                        code:
+                            kind: ref
+                            ref:
+                                name: email_otp
+                                decode: ""
+                                path: ""
+                                through: []
+                method:
+                    kind: literal
+                    value: PATCH
+                url:
+                    kind: string
+                    parts:
+                        - kind: literal
+                          value: https://vlm-dev-api.velmie-wallet.de/irs/self-service/v1/flows/
+                        - kind: ref
+                          ref:
+                            name: email_verification_flow_id
+                            decode: ""
+                            path: ""
+                            through: []
+                        - kind: literal
+                          value: /verifications
+          expectations:
+            - id: status-code
+              subject:
+                field: status_code
+              assert:
+                ref: expectation.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: 204
+          transitions:
+            - "on": on_pass
+              to: submit-phone
+        - id: submit-phone
+          action:
+            use: action.http
+            with:
+                json:
+                    kind: object
+                    object:
+                        phoneNumber:
+                            kind: ref
+                            ref:
+                                name: phone
+                                decode: ""
+                                path: ""
+                                through: []
+                method:
+                    kind: literal
+                    value: PATCH
+                url:
+                    kind: string
+                    parts:
+                        - kind: literal
+                          value: https://vlm-dev-api.velmie-wallet.de/irs/self-service/v1/flows/
+                        - kind: ref
+                          ref:
+                            name: registration_flow_id
+                            decode: ""
+                            path: ""
+                            through: []
+                        - kind: literal
+                          value: /registrations
+          expectations:
+            - id: status-code
+              subject:
+                field: status_code
+              assert:
+                ref: expectation.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: 200
+            - id: verification-id-present
+              subject:
+                field: body
+                decode: json
+                path: /data/verification/id
+              assert:
+                ref: expectation.matches
+                args:
+                    pattern:
+                        kind: literal
+                        value: ^[0-9a-f-]{36}$
+            - id: verification-type
+              subject:
+                field: body
+                decode: json
+                path: /data/verification/identifierType
+              assert:
+                ref: expectation.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: phone
+          exports:
+            - as: phone_verification_flow_id
+              ref: null
+              field: body
+              decode: json
+              path: /data/verification/id
+              through: []
+          transitions:
+            - "on": on_pass
+              to: wait-phone-notification
+        - id: wait-phone-notification
+          eventually:
+            timeout: 6s
+            interval: 2s
+          action:
+            use: action.http
+            with:
+                method:
+                    kind: literal
+                    value: GET
+                url:
+                    kind: literal
+                    value: https://vlm-dev-api.velmie-wallet.de/irs/__debug/notifications?format=json
+            repeatable: true
+          expectations:
+            - id: status-code
+              subject:
+                field: status_code
+              assert:
+                ref: expectation.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: 200
+            - id: phone-address-present
+              subject:
+                field: body
+              assert:
+                ref: expectation.contains
+                args:
+                    expected:
+                        kind: ref
+                        ref:
+                            name: phone
+                            decode: ""
+                            path: ""
+                            through: []
+            - id: verification-subject-present
+              subject:
+                field: body
+              assert:
+                ref: expectation.contains
+                args:
+                    expected:
+                        kind: literal
+                        value: Verification Code
+            - id: phone_otp
+              subject:
+                field: body
+                decode: json
+                path: /data
+                through:
+                    - pick:
+                        at: /receiverAddress
+                        equals:
+                            kind: ref
+                            ref:
+                                name: phone
+                                decode: ""
+                                path: ""
+                                through: []
+                    - path: /body
+                    - regexp:
+                        pattern: '(?i)verification code(?: to verify your [^:]+)?:\s*(?:<strong>)?([A-Z0-9]+)'
+                        group: 1
+              assert:
+                ref: expectation.matches
+                args:
+                    pattern:
+                        kind: literal
+                        value: ^[A-Z0-9]{6}$
+          exports:
+            - as: phone_otp
+              ref: null
+              field: body
+              decode: json
+              path: /data
+              through:
+                - pick:
+                    at: /receiverAddress
+                    equals:
+                        kind: ref
+                        ref:
+                            name: phone
+                            decode: ""
+                            path: ""
+                            through: []
+                - path: /body
+                - regexp:
+                    pattern: '(?i)verification code(?: to verify your [^:]+)?:\s*(?:<strong>)?([A-Z0-9]+)'
+                    group: 1
+          transitions:
+            - "on": on_pass
+              to: confirm-phone
+        - id: confirm-phone
+          action:
+            use: action.http
+            with:
+                json:
+                    kind: object
+                    object:
+                        code:
+                            kind: ref
+                            ref:
+                                name: phone_otp
+                                decode: ""
+                                path: ""
+                                through: []
+                method:
+                    kind: literal
+                    value: PATCH
+                url:
+                    kind: string
+                    parts:
+                        - kind: literal
+                          value: https://vlm-dev-api.velmie-wallet.de/irs/self-service/v1/flows/
+                        - kind: ref
+                          ref:
+                            name: phone_verification_flow_id
+                            decode: ""
+                            path: ""
+                            through: []
+                        - kind: literal
+                          value: /verifications
+          expectations:
+            - id: status-code
+              subject:
+                field: status_code
+              assert:
+                ref: expectation.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: 204
+          transitions:
+            - "on": on_pass
+              to: submit-passcode
+        - id: submit-passcode
+          action:
+            use: action.http
+            with:
+                json:
+                    kind: object
+                    object:
+                        lang:
+                            kind: literal
+                            value: en
+                        passcode:
+                            kind: ref
+                            ref:
+                                name: passcode
+                                decode: ""
+                                path: ""
+                                through: []
+                method:
+                    kind: literal
+                    value: PATCH
+                url:
+                    kind: string
+                    parts:
+                        - kind: literal
+                          value: https://vlm-dev-api.velmie-wallet.de/irs/self-service/v1/flows/
+                        - kind: ref
+                          ref:
+                            name: registration_flow_id
+                            decode: ""
+                            path: ""
+                            through: []
+                        - kind: literal
+                          value: /registrations
+          expectations:
+            - id: status-code
+              subject:
+                field: status_code
+              assert:
+                ref: expectation.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: 200
+            - id: session-token
+              subject:
+                field: body
+                decode: json
+                path: /data/session/token
+              assert:
+                ref: expectation.matches
+                args:
+                    pattern:
+                        kind: literal
+                        value: ^irs_
+            - id: session-expiry
+              subject:
+                field: body
+                decode: json
+                path: /data/session/expiresAt
+              assert:
+                ref: expectation.matches
+                args:
+                    pattern:
+                        kind: literal
+                        value: ^20[0-9]{2}-
+          exports:
+            - as: session_token
+              ref: null
+              field: body
+              decode: json
+              path: /data/session/token
+              through: []
+scenario_calls:
+    - id: register-individual-user
+      scenario_id: irs/individual/registration/email-v1
+      bindings:
+        email:
+            kind: generate
+            generator: email
+            args:
+                domain:
+                    kind: literal
+                    value: example.com
+                prefix:
+                    kind: literal
+                    value: irs-individual-reg
+        passcode:
+            kind: literal
+            value: "123456"
+        phone:
+            kind: generate
+            generator: phone
+            args:
+                digits:
+                    kind: literal
+                    value: 4
+                prefix:
+                    kind: literal
+                    value: "+1415556"
+                random:
+                    kind: literal
+                    value: true

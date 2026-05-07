@@ -1,0 +1,79 @@
+{
+  "schema": "theater.plugin.manifest/v1alpha1",
+  "plugin": {
+    "id": "hello-world",
+    "version": "0.1.0"
+  },
+  "protocol": {
+    "name": "theater-jsonrpc",
+    "major": 1,
+    "minor": 0
+  },
+  "capabilities": [
+    {
+      "kind": "inventory",
+      "name": "inventory.hello_world.message",
+      "summary": "Build a greeting string from a greeting and a name",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "greeting": {
+            "type": "string"
+          }
+        }
+      },
+      "result_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "string"
+      },
+      "annotations": {
+        "read_only": true,
+        "idempotent": true,
+        "supports_validate": true
+      }
+    },
+    {
+      "kind": "action",
+      "name": "action.hello_world.echo",
+      "summary": "Return the provided message as an action output",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "result_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "annotations": {
+        "supports_validate": true
+      }
+    }
+  ],
+  "descriptor_digest": "sha256:907126eee145fe5db1f8d502dea03f941979b9bfe60dc0a6a0c13435fb3a1155"
+}

@@ -1,0 +1,10 @@
+stage missing-null-matrix
+
+scenario api/check-null-boundaries
+  act fetch
+    do action.fixture.profile()
+    expect deleted-null: field(body) | decode(json) | path("/deleted_at") is null
+    expect error-absent: field(body) | decode(json) lacks key("error")
+    expect missing-terminal: field(body) | decode(json) | path("/missing") is present
+
+call check = api/check-null-boundaries()

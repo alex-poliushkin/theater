@@ -1,0 +1,109 @@
+# Fixture: full state lifecycle on the sqlite plugin-backed backend.
+# The sqlite plugin test suite owns executable coverage for this backend.
+stage sqlite-backend-state-demo
+
+state
+  backend sqlite_local = state_backend.sqlite(profile: "exp")
+  record shared_meta = state.record
+    backend: sqlite_local
+    record: "env/shared-meta"
+    min_guarantee: local-atomic
+  pool otp_identities = state.pool
+    backend: sqlite_local
+    pool: "otp-identities"
+    min_guarantee: local-atomic
+
+scenario exp/sqlite-backend-lifecycle
+  # Recreate deterministic record and pool data for the tutorial run.
+  act reset-sqlite-state
+    do action.sqlite.seed.reset(profile: "exp", fixture: "state_seed")
+    expect seed-reset-touched-sqlite-state: field(rows_affected) >= 1
+    on pass -> read-shared-record
+
+  # Read the shared durable record through the stage-scoped alias.
+  act read-shared-record
+    do state.read(record: shared_meta)
+    expect record-version-is-present: field(version) matches r"^[0-9]+$"
+    export shared_record_version = field(version)
+    on pass -> update-shared-record
+
+  # Perform a compare-and-set update using the exported version token.
+  act update-shared-record
+    do state.update
+      record: shared_meta
+      if_version: $shared_record_version
+      value: object { owner: "tutorial-run", status: "reserved" }
+    export updated_record_version = field(version)
+    on pass -> read-updated-record
+
+  # Read the record again to prove that the durable update stuck.
+  act read-updated-record
+    do state.read(record: shared_meta)
+    expect durable-version-matches-update: field(version) == $updated_record_version
+    on pass -> claim-reusable-item
+
+  # Claim one pool item that will later be renewed and released.
+  act claim-reusable-item
+    do state.claim
+      pool: otp_identities
+      fields:
+        purpose: "release-demo"
+        provider: "mailhog"
+      lease:
+        ttl: 5m
+        on_expiry: reclaim
+    expect release-claim-item-matches-seed: field(item) == object { id: "mailbox-release", purpose: "release-demo", provider: "mailhog", email: "reusable@example.test" }
+    export release_claim = field(claim)
+    on pass -> renew-reusable-claim
+
+  # Extend the lease before returning the item to the pool.
+  act renew-reusable-claim
+    do state.renew(claim: $release_claim, ttl: 10m)
+    export renewed_release_claim = field(claim)
+    on pass -> release-reusable-claim
+
+  # Release returns the item to normal pool availability.
+  act release-reusable-claim
+    do state.release(claim: $renewed_release_claim)
+    on pass -> claim-released-item-again
+
+  # Re-claim the same item to prove that release really returned it.
+  act claim-released-item-again
+    do state.claim
+      pool: otp_identities
+      fields:
+        purpose: "release-demo"
+        provider: "mailhog"
+      lease:
+        ttl: 5m
+        on_expiry: reclaim
+    expect released-claim-item-matches-seed: field(item) == object { id: "mailbox-release", purpose: "release-demo", provider: "mailhog", email: "reusable@example.test" }
+    export post_release_claim = field(claim)
+    on pass -> release-second-claim
+
+  # Clean up the reusable item so only the consume case remains mutated.
+  act release-second-claim
+    do state.release(claim: $post_release_claim)
+    on pass -> claim-disposable-item
+
+  # Claim a second pool item that will be consumed permanently.
+  act claim-disposable-item
+    do state.claim
+      pool: otp_identities
+      fields:
+        purpose: "consume-demo"
+        provider: "mailhog"
+      lease:
+        ttl: 5m
+        on_expiry: stale
+    expect consume-claim-item-matches-seed: field(item) == object { id: "mailbox-consume", purpose: "consume-demo", provider: "mailhog", email: "disposable@example.test" }
+    export consume_claim = field(claim)
+    on pass -> consume-disposable-claim
+
+  # Consume writes a tombstone and removes the item from normal reuse.
+  act consume-disposable-claim
+    do state.consume
+      claim: $consume_claim
+      tombstone: object { reason: "tutorial-finished", backend: "sqlite" }
+
+call run-sqlite-backend-lifecycle = exp/sqlite-backend-lifecycle()

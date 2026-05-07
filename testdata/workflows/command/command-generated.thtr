@@ -1,0 +1,20 @@
+stage command-generated-workflow
+
+scenario command/generated(helper: string!)
+  act make-data
+    do action.generate
+      outputs:
+        email: generate.email(prefix: "workflow", domain: "example.test")
+    expect email-shape: field(values) | path("/email") matches r"^workflow-[a-z0-9]+-[0-9]+@example\.test$"
+    export email = field(values) | path("/email")
+    on pass -> echo-data
+
+  act echo-data
+    do action.command
+      executable: $helper
+      args: list ["emit", "--stdout", $email]
+      timeout: "5s"
+    expect exit-code: field(exit_code) == 0
+    expect stdout-matches-generated: field(stdout) == $email
+
+call run-command-generated = command/generated(helper: "__THEATER_COMMAND_HELPER__")

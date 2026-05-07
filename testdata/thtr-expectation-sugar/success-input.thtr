@@ -1,0 +1,15 @@
+stage smoke
+scenario ping
+  act get-health
+    do action.http(method:"GET",url:"/health")
+    expect page-text: field(body)contains"Example Domain"
+    expect latency-high-enough: field(duration_ms)>100
+    expect retries-not-over-limit: field(retry_count)<=10
+    expect retries-in-range: field(retry_count)between 1 and 5
+    expect has-session-token: field(body)|decode(json) has key("session_token")
+    expect not-server-error: field(status_code)not>=500
+    expect has-demo-notification: field(body)|decode(json)|path("/notifications") has item where path("/receiverAddress")=="demo@example.test"
+    expect all-recipients-present: field(body)|decode(json)|path("/notifications") all items where (
+      path("/receiverAddress")contains"@example.test",
+      path("/subject")not assert plugin.custom(expected:"Verification Code")
+    )

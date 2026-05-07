@@ -1,0 +1,238 @@
+{
+  "schema": "theater.plugin.manifest/v1alpha1",
+  "plugin": {
+    "id": "smoke-plugin",
+    "version": "0.2.0"
+  },
+  "protocol": {
+    "name": "theater-jsonrpc",
+    "major": 1,
+    "minor": 0
+  },
+  "capabilities": [
+    {
+      "kind": "inventory",
+      "name": "inventory.smoke.echo",
+      "summary": "Return the provided value",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "result_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "string"
+      },
+      "annotations": {
+        "read_only": true,
+        "idempotent": true,
+        "supports_validate": true
+      }
+    },
+    {
+      "kind": "action",
+      "name": "action.smoke.echo",
+      "summary": "Emit a simple echo output",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "value"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "result_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "echo"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "echo": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "kind": "action",
+      "name": "action.smoke.secret_fail",
+      "summary": "Fail while carrying sensitive input and output data",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "secret"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "type": "string"
+          }
+        }
+      },
+      "result_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "secret_echo"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "secret_echo": {
+            "type": "string"
+          }
+        }
+      },
+      "annotations": {
+        "sensitive_input_paths": [
+          "/secret"
+        ],
+        "sensitive_output_paths": [
+          "/secret_echo"
+        ]
+      }
+    },
+    {
+      "kind": "action",
+      "name": "action.smoke.sleep",
+      "summary": "Sleep long enough to exercise host-side timeout and cancellation",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "ms"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "ms": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    {
+      "kind": "report_exporter",
+      "name": "report_exporter.smoke.write",
+      "summary": "Write the final run document to a JSON file",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "annotations": {
+        "read_only": true,
+        "idempotent": true
+      }
+    },
+    {
+      "kind": "state_backend",
+      "name": "state_backend.smoke.file",
+      "summary": "Use a JSON file as a simple plugin-backed persistent-state store",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "annotations": {
+        "state": {
+          "guarantee": "local-atomic",
+          "supports_cas": true,
+          "supports_claim": true,
+          "supports_renew": true,
+          "supports_release": true,
+          "supports_consume": true
+        }
+      }
+    },
+    {
+      "kind": "transform",
+      "name": "transform.smoke.wrap",
+      "summary": "Wrap a string value with a prefix and suffix",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "prefix",
+          "suffix"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "prefix": {
+            "type": "string"
+          },
+          "suffix": {
+            "type": "string"
+          }
+        }
+      },
+      "annotations": {
+        "transform": {
+          "accepts": {
+            "type": "string"
+          },
+          "produces": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "kind": "matcher",
+      "name": "matcher.smoke.equal",
+      "summary": "Assert that the actual string equals the expected string",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "expected"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "expected": {
+            "type": "string"
+          }
+        }
+      },
+      "annotations": {
+        "matcher": {
+          "actual": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "descriptor_digest": "sha256:2cdcafd9890305367fbeef88ce917062503ec9ca0f0d8cc50e8b42c0fc1aa64d"
+}

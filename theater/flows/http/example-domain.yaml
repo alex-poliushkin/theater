@@ -1,0 +1,25 @@
+id: example-domain
+
+scenarios:
+  - id: http/check-example-domain
+    acts:
+      - id: fetch-homepage
+        action:
+          use: action.http
+          with:
+            method: GET
+            url: https://example.com
+            session: none
+        expectations:
+          - id: status-ok
+            subject: status_code
+            assert:
+              eq: 200
+          - id: page-title
+            subject: body
+            assert:
+              contains: Example Domain
+
+scenario_calls:
+  - id: fetch-example-domain
+    scenario_id: http/check-example-domain

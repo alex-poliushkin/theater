@@ -1,0 +1,45 @@
+id: sqlite-plugin
+
+scenarios:
+  - id: plugins/sqlite/check-users
+    acts:
+      - id: reset-users
+        action:
+          use: action.sqlite.seed.reset
+          with:
+            profile: app
+            fixture: users
+        expectations:
+          - id: reset-affected-rows
+            subject: rows_affected
+            assert:
+              gte: 1
+      - id: query-user
+        properties:
+          first_user:
+            inventory:
+              use: inventory.sqlite.query
+              with:
+                profile: app
+                sql: select email from users where id = 1
+        action:
+          use: action.command
+          with:
+            executable: echo
+            args:
+              kind: list
+              list:
+                - kind: literal
+                  value: sqlite query checked
+        expectations:
+          - id: first-user-email
+            subject:
+              from: property
+              ref: first_user
+              path: /email
+            assert:
+              eq: alice@example.com
+
+scenario_calls:
+  - id: run-sqlite-plugin
+    scenario_id: plugins/sqlite/check-users

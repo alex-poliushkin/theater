@@ -1,0 +1,18 @@
+# highlighter fixture
+http
+  session browser = http.session.browser()
+state
+  backend local = state.backend.file(root: "/tmp")
+scenario auth/register(email: string!)
+  act submit
+    eventually 30s every 1s
+    do repeatable action.http
+      method: "GET"
+      ttl: 5m
+    log response = object { status: field(status_code) | path("/status"), id: $id }
+    expect status-ok: field(status_code) == 200
+    expect ok: field(body) | decode(json) | path("/id") == $id
+    export id = generate.email()
+    on pass -> done
+call run = auth/register(email: "demo@example.test")
+@

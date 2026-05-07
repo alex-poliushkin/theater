@@ -1,0 +1,72 @@
+id: reference-generators
+scenarios:
+  - id: inspect
+    acts:
+      - id: generate-values
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                sequence_value:
+                  kind: generate
+                  generator: sequence
+                  start: 1000
+                  step: 1
+                uuid_value:
+                  kind: generate
+                  generator: uuid
+                  version: v7
+                uuid_default:
+                  kind: generate
+                  generator: uuid
+                timestamp_value:
+                  kind: generate
+                  generator: timestamp
+                  format: rfc3339
+                  offset: 5m
+                timestamp_default:
+                  kind: generate
+                  generator: timestamp
+                string_value:
+                  kind: generate
+                  generator: string
+                  length: 12
+                  alphabet: abcdef0123456789
+                digits_value:
+                  kind: generate
+                  generator: digits
+                  length: 6
+                email_value:
+                  kind: generate
+                  generator: email
+                  prefix: demo
+                  domain: example.test
+                email_stem:
+                  kind: generate
+                  generator: email
+                  stem: customer
+                  domain: example.test
+                phone_value:
+                  kind: generate
+                  generator: phone
+                  prefix: "+1555"
+                  digits: 4
+                  random: true
+                slug_value:
+                  kind: generate
+                  generator: slug
+                  prefix: profile
+                  max_length: 24
+        expectations:
+          - id: generated
+            subject:
+              field: values
+            assert:
+              ref: expectation.has_key
+              args:
+                key: email_value
+scenario_calls:
+  - id: run
+    scenario_id: inspect

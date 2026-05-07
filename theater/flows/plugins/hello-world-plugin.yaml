@@ -1,0 +1,28 @@
+id: hello-world-plugin
+
+scenarios:
+  - id: plugins/hello-world
+    acts:
+      - id: greet
+        properties:
+          greeting:
+            inventory:
+              use: inventory.hello_world.message
+              with:
+                greeting: Hello
+                name: Theater
+        action:
+          use: action.hello_world.echo
+          with:
+            message:
+              kind: ref
+              ref: greeting
+        expectations:
+          - id: echoed-message
+            subject: message
+            assert:
+              eq: Hello, Theater!
+
+scenario_calls:
+  - id: run-plugin-hello
+    scenario_id: plugins/hello-world

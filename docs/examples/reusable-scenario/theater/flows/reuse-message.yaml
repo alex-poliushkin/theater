@@ -1,0 +1,54 @@
+id: reusable-message-flow
+scenarios:
+  - id: verify-message
+    inputs:
+      expected:
+        type: string
+        required: true
+      actual:
+        type: string
+        required: true
+    acts:
+      - id: check
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                actual:
+                  kind: ref
+                  ref:
+                    name: actual
+        expectations:
+          - id: message
+            subject:
+              field: values
+              path: /actual
+            assert:
+              ref: expectation.equal
+              args:
+                expected:
+                  kind: ref
+                  ref:
+                    name: expected
+scenario_calls:
+  - id: make-message
+    scenario_id: messages/make
+    bindings:
+      text: hello from Theater
+    exports:
+      - ref:
+          name: message
+        as: shared_message
+  - id: check-message
+    scenario_id: verify-message
+    bindings:
+      expected: hello from Theater
+      actual:
+        kind: ref
+        ref:
+          name: shared_message
+    dependencies:
+      - call_id: make-message
+        when: success

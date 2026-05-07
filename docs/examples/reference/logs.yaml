@@ -1,0 +1,42 @@
+id: reference-logs
+scenarios:
+  - id: inspect
+    inputs:
+      request_id:
+        type: string
+        required: true
+    acts:
+      - id: read
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                status_code: 200
+                correlation_id: req-123
+        logs:
+          - id: response
+            value:
+              object:
+                status:
+                  field: values
+                  path: /status_code
+                correlation_id:
+                  field: values
+                  path: /correlation_id
+            capture: summary
+            sensitivity: internal
+          - id: audit
+            message: response received
+            fields:
+              request_id:
+                ref: request_id
+              status:
+                field: values
+                path: /status_code
+scenario_calls:
+  - id: run
+    scenario_id: inspect
+    bindings:
+      request_id: req-123

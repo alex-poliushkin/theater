@@ -1,0 +1,8 @@
+stage checkout
+scenario smoke
+  act start
+    export id = field(body)
+    on pass -> verify
+  act verify
+    expect has-id: $id == "42"
+call run = smoke()

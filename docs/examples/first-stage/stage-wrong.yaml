@@ -1,0 +1,24 @@
+id: docs-first
+scenarios:
+  - id: hello
+    acts:
+      - id: say-hello
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                message: hello
+        expectations:
+          - id: message
+            subject:
+              field: values
+              path: /message
+            assert:
+              ref: expectation.equal
+              args:
+                expected: goodbye
+scenario_calls:
+  - id: run
+    scenario_id: hello

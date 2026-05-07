@@ -1,0 +1,169 @@
+id: http-state-profile
+http:
+  sessions:
+    browser: {}
+state:
+  backends:
+    local:
+      use: state.backend.file
+      with:
+        root: /tmp/theater-doc-state
+scenarios:
+  - id: http/profile-state
+    acts:
+      - id: login
+        properties:
+          login_url:
+            inventory:
+              use: inventory.env
+              with:
+                name: THEATER_DOC_LOGIN_URL
+        action:
+          use: action.http
+          with:
+            method: GET
+            url:
+              kind: ref
+              ref: login_url
+            session: browser
+        expectations:
+          - id: login-ok
+            subject:
+              field: status_code
+            assert:
+              ref: expectation.equal
+              args:
+                expected: 200
+        transitions:
+          - on: on_pass
+            to: fetch-profile
+      - id: fetch-profile
+        properties:
+          profile_url:
+            inventory:
+              use: inventory.env
+              with:
+                name: THEATER_DOC_PROFILE_URL
+        action:
+          use: action.http
+          with:
+            method: GET
+            url:
+              kind: ref
+              ref: profile_url
+            session: browser
+        expectations:
+          - id: status-ok
+            subject:
+              field: status_code
+            assert:
+              ref: expectation.equal
+              args:
+                expected: 200
+          - id: active
+            subject:
+              field: body
+              decode: json
+              path: /data/status
+            assert:
+              ref: expectation.equal
+              args:
+                expected: active
+        exports:
+          - as: profile_id
+            field: body
+            decode: json
+            path: /data/id
+        transitions:
+          - on: on_pass
+            to: read-cache
+      - id: read-cache
+        properties:
+          profile_cache:
+            inventory:
+              use: inventory.state.record
+              with:
+                backend: local
+                record: profile-cache
+                min_guarantee: local-atomic
+        action:
+          use: action.state.read
+          with:
+            record:
+              kind: ref
+              ref: profile_cache
+        exports:
+          - as: cache_version
+            field: version
+        transitions:
+          - on: on_pass
+            to: cache-profile
+      - id: cache-profile
+        properties:
+          profile_cache:
+            inventory:
+              use: inventory.state.record
+              with:
+                backend: local
+                record: profile-cache
+                min_guarantee: local-atomic
+        action:
+          use: action.state.update
+          with:
+            record:
+              kind: ref
+              ref: profile_cache
+            expected_version:
+              kind: ref
+              ref: cache_version
+            value:
+              kind: object
+              object:
+                profile_id:
+                  kind: ref
+                  ref:
+                    name: profile_id
+                status: cached
+        expectations:
+          - id: cache-version
+            subject:
+              field: version
+            assert:
+              ref: expectation.matches
+              args:
+                pattern: ^[0-9]+$
+        transitions:
+          - on: on_pass
+            to: wait-ready
+      - id: wait-ready
+        eventually:
+          timeout: 3s
+          interval: 100ms
+        properties:
+          status_url:
+            inventory:
+              use: inventory.env
+              with:
+                name: THEATER_DOC_STATUS_URL
+        action:
+          use: action.http
+          repeatable: true
+          with:
+            method: GET
+            url:
+              kind: ref
+              ref: status_url
+            session: none
+        expectations:
+          - id: ready
+            subject:
+              field: body
+              decode: json
+              path: /ready
+            assert:
+              ref: expectation.equal
+              args:
+                expected: true
+scenario_calls:
+  - id: run
+    scenario_id: http/profile-state

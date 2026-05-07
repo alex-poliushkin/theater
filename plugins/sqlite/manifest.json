@@ -1,0 +1,149 @@
+{
+  "schema": "theater.plugin.manifest/v1alpha1",
+  "plugin": {
+    "id": "sqlite",
+    "version": "0.2.0"
+  },
+  "protocol": {
+    "name": "theater-jsonrpc",
+    "major": 1,
+    "minor": 0
+  },
+  "config_schema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": [
+      "profiles"
+    ],
+    "additionalProperties": false,
+    "properties": {
+      "profiles": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "required": [
+            "dsn"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "dsn": {
+              "type": "string"
+            },
+            "fixtures": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "capabilities": [
+    {
+      "kind": "inventory",
+      "name": "inventory.sqlite.query",
+      "summary": "Execute a read-only SQL query against a configured SQLite profile",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "profile",
+          "sql"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "type": "string"
+          },
+          "sql": {
+            "type": "string"
+          },
+          "params": {
+            "type": "object"
+          },
+          "expect_one": {
+            "type": "boolean"
+          }
+        }
+      },
+      "annotations": {
+        "read_only": true,
+        "idempotent": true,
+        "supports_validate": true
+      }
+    },
+    {
+      "kind": "action",
+      "name": "action.sqlite.seed.reset",
+      "summary": "Execute a named SQLite fixture reset against a configured profile",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "profile",
+          "fixture"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "type": "string"
+          },
+          "fixture": {
+            "type": "string"
+          }
+        }
+      },
+      "result_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "rows_affected"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "rows_affected": {
+            "type": "integer"
+          }
+        }
+      },
+      "annotations": {
+        "supports_validate": true
+      }
+    },
+    {
+      "kind": "state_backend",
+      "name": "state_backend.sqlite",
+      "summary": "Use a configured SQLite profile as a persistent-state backend",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "profile"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "type": "string"
+          }
+        }
+      },
+      "annotations": {
+        "supports_prepare": true,
+        "state": {
+          "guarantee": "local-atomic",
+          "supports_cas": true,
+          "supports_claim": true,
+          "supports_renew": true,
+          "supports_release": true,
+          "supports_consume": true
+        }
+      }
+    }
+  ],
+  "descriptor_digest": "sha256:c60cac4b387e8b1a8ff3d1405cea9c9f1e2ec09105380940e489afd40b919af0"
+}

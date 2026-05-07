@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="main" tests="1" failures="1" time="1.500" timestamp="2026-03-24T10:00:00Z">
+    <testcase classname="auth/login" name="login_user" file="theater/flows/login.yaml" time="0.750">
+      <failure message="[expectation] submit: token mismatch">[expectation] submit: token mismatch&#xA;stage: main&#xA;scenario: auth/login&#xA;scenario_call: login_user&#xA;act: submit&#xA;source: theater/flows/login.yaml&#xA;failure_kind: expectation&#xA;failure_phase: run&#xA;failure_at: stage.main/call.login_user/act.submit/expectation.token&#xA;summary: token mismatch</failure>
+    </testcase>
+  </testsuite>
+</testsuites>

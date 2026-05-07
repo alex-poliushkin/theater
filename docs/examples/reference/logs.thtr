@@ -1,0 +1,18 @@
+stage reference-logs
+
+scenario inspect(request_id: string!)
+  act read
+    do action.generate
+      outputs:
+        status_code: 200
+        correlation_id: "req-123"
+    log response = object {
+      status: field(values) | path("/status_code"),
+      correlation_id: field(values) | path("/correlation_id")
+    }
+    log audit = object {
+      request_id: $request_id,
+      status: field(values) | path("/status_code")
+    }
+
+call run = inspect(request_id: "req-123")

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="main" tests="1" errors="1" time="32.000" timestamp="2026-03-24T10:00:00Z">
+    <testcase classname="orders/check_ready" name="login_user" time="30.000">
+      <error message="[timeout] wait_ready: eventually deadline exceeded">[timeout] wait_ready: eventually deadline exceeded&#xA;stage: main&#xA;scenario: orders/check_ready&#xA;scenario_call: login_user&#xA;act: wait_ready&#xA;failure_kind: timeout&#xA;failure_phase: run&#xA;failure_at: stage.main/call.login_user/act.wait_ready&#xA;summary: eventually deadline exceeded&#xA;eventually: attempts=3 termination=deadline_exceeded final=failed last=expected READY got PENDING</error>
+    </testcase>
+  </testsuite>
+</testsuites>

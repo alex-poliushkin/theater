@@ -1,0 +1,43 @@
+id: reference-advanced
+scenarios:
+  - id: inspect
+    acts:
+      - id: read
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                users:
+                  kind: list
+                  list:
+                    - kind: object
+                      object:
+                        id: user-123
+                        email: demo@example.test
+                code: A123
+        expectations:
+          - id: user
+            subject:
+              field: values
+              path: /users
+            assert:
+              has_item:
+                - subject:
+                    path: /id
+                  assert:
+                    eq: user-123
+          - id: code
+            subject:
+              field: values
+              path: /code
+            assert:
+              matches: '^[A-Z][0-9]{3}$'
+        exports:
+          - as: code
+            field: values
+            path: /code
+scenario_calls:
+  - id: run
+    scenario_id: inspect

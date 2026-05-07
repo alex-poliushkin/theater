@@ -1,0 +1,44 @@
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Go build artifacts
+.bin/
+bin/
+dist/
+build/
+coverage/
+tmp/
+.tmp/
+/thtr-lsp
+*.test
+*.out
+*.coverprofile
+coverage.out
+*.prof
+*.pprof
+*.trace
+*.log
+*.tmp
+
+# Python bytecode from local validation scripts
+__pycache__/
+*.pyc
+
+# Gradle/Kotlin local caches
+.gradle/
+.kotlin/
+.intellijPlatform/
+
+# Environment files
+.env
+.env.*
+!.env.example

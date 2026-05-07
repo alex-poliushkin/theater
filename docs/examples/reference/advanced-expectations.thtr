@@ -1,0 +1,12 @@
+stage reference-advanced
+
+scenario inspect
+  act read
+    do action.generate
+      outputs:
+        users: list [ object { id: "user-123", email: "demo@example.test" } ]
+        code: "A123"
+    expect user: field(values) | path("/users") has item where path("/id") == "user-123"
+    export code = field(values) | path("/code") matches r"^[A-Z][0-9]{3}$"
+
+call run = inspect()

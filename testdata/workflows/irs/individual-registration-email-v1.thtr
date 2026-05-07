@@ -1,0 +1,102 @@
+stage irs-individual-registration-tests
+
+scenario irs/individual/registration/email-v1(email: string!, phone: string!, passcode: string!)
+  act create-registration-flow
+    do action.http
+      method: "GET"
+      url: "https://vlm-dev-api.velmie-wallet.de/irs/self-service/v1/flows/individual/registration/email-v1"
+    expect status-code: field(status_code) == 200
+    expect active-step: field(body) | decode(json) | path("/data/activeStep") == "1-provide-email-address"
+    expect class-id: field(body) | decode(json) | path("/data/classId") == "email-v1"
+    export registration_flow_id = field(body) | decode(json) | path("/data/id")
+    on pass -> submit-email
+
+  act submit-email
+    do action.http
+      method: "PATCH"
+      url: "https://vlm-dev-api.velmie-wallet.de/irs/self-service/v1/flows/${registration_flow_id}/registrations"
+      json: object { email: $email }
+    expect status-code: field(status_code) == 200
+    expect verification-id-present: field(body) | decode(json) | path("/data/verification/id") matches r"^[0-9a-f-]{36}$"
+    expect verification-type: field(body) | decode(json) | path("/data/verification/identifierType") == "email"
+    export email_verification_flow_id = field(body) | decode(json) | path("/data/verification/id")
+    on pass -> wait-email-notification
+
+  act wait-email-notification
+    eventually 30s every 1s
+    do repeatable action.http
+      method: "GET"
+      url: "https://vlm-dev-api.velmie-wallet.de/irs/__debug/notifications?format=json"
+    expect status-code: field(status_code) == 200
+    expect email-address-present: field(body) assert expectation.contains(expected: $email)
+    expect verification-subject-present: field(body) assert expectation.contains(expected: "Verification Code")
+    export email_otp = (
+      field(body)
+      | decode(json)
+      | path("/data")
+      | pick(at: "/receiverAddress", equals: $email)
+      | path("/body")
+      | regexp(pattern: r"(?i)verification code(?: to verify your [^:]+)?:\s*(?:<strong>)?([A-Z0-9]+)", group: 1)
+    ) matches r"^[A-Z0-9]{6}$"
+    on pass -> confirm-email
+
+  act confirm-email
+    do action.http
+      method: "PATCH"
+      url: "https://vlm-dev-api.velmie-wallet.de/irs/self-service/v1/flows/${email_verification_flow_id}/verifications"
+      json: object { code: $email_otp }
+    expect status-code: field(status_code) == 204
+    on pass -> submit-phone
+
+  act submit-phone
+    do action.http
+      method: "PATCH"
+      url: "https://vlm-dev-api.velmie-wallet.de/irs/self-service/v1/flows/${registration_flow_id}/registrations"
+      json: object { phoneNumber: $phone }
+    expect status-code: field(status_code) == 200
+    expect verification-id-present: field(body) | decode(json) | path("/data/verification/id") matches r"^[0-9a-f-]{36}$"
+    expect verification-type: field(body) | decode(json) | path("/data/verification/identifierType") == "phone"
+    export phone_verification_flow_id = field(body) | decode(json) | path("/data/verification/id")
+    on pass -> wait-phone-notification
+
+  act wait-phone-notification
+    eventually 6s every 2s
+    do repeatable action.http
+      method: "GET"
+      url: "https://vlm-dev-api.velmie-wallet.de/irs/__debug/notifications?format=json"
+    expect status-code: field(status_code) == 200
+    expect phone-address-present: field(body) assert expectation.contains(expected: $phone)
+    expect verification-subject-present: field(body) assert expectation.contains(expected: "Verification Code")
+    export phone_otp = (
+      field(body)
+      | decode(json)
+      | path("/data")
+      | pick(at: "/receiverAddress", equals: $phone)
+      | path("/body")
+      | regexp(pattern: r"(?i)verification code(?: to verify your [^:]+)?:\s*(?:<strong>)?([A-Z0-9]+)", group: 1)
+    ) matches r"^[A-Z0-9]{6}$"
+    on pass -> confirm-phone
+
+  act confirm-phone
+    do action.http
+      method: "PATCH"
+      url: "https://vlm-dev-api.velmie-wallet.de/irs/self-service/v1/flows/${phone_verification_flow_id}/verifications"
+      json: object { code: $phone_otp }
+    expect status-code: field(status_code) == 204
+    on pass -> submit-passcode
+
+  act submit-passcode
+    do action.http
+      method: "PATCH"
+      url: "https://vlm-dev-api.velmie-wallet.de/irs/self-service/v1/flows/${registration_flow_id}/registrations"
+      json: object { passcode: $passcode, lang: "en" }
+    expect status-code: field(status_code) == 200
+    expect session-token: field(body) | decode(json) | path("/data/session/token") matches r"^irs_"
+    expect session-expiry: field(body) | decode(json) | path("/data/session/expiresAt") matches r"^20[0-9]{2}-"
+    export session_token = field(body) | decode(json) | path("/data/session/token")
+
+call register-individual-user = irs/individual/registration/email-v1(
+  email: generate.email(prefix: "irs-individual-reg", domain: "example.com"),
+  phone: generate.phone(prefix: "+1415556", digits: 4, random: true),
+  passcode: "123456"
+)

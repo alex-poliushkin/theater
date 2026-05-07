@@ -1,0 +1,31 @@
+stage smoke
+
+state
+  backend local = state.backend.file(root: "/tmp/theater-state")
+  record shared_meta = state.record
+    backend: local
+    record: "env/shared-meta"
+    min_guarantee: local-atomic
+
+scenario plugins/echo-check
+  # comment
+  act echo
+    prop request = object { roles: list ["admin", "support"], enabled: true }
+    prop owner = object { owner: "expressiveness-stress" }
+    do action.smoke.echo(value: "hello")
+    log response = object {
+      echo: field(echo),
+      owner: $owner,
+      attempts: list [
+        field(echo),
+        $owner
+      ]
+    }
+    expect echoed: field(echo) assert matcher.smoke.equal(expected: "hello")
+    export payload = (
+      field(body)
+      | decode(json)
+      | path("/items")
+    )
+
+call plugin_echo = plugins/echo-check()

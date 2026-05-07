@@ -1,0 +1,27 @@
+id: login-smoke-twice
+scenario_calls:
+  - id: smoke-login
+    scenario_id: auth/login
+    bindings:
+      method:
+        kind: literal
+        value: POST
+      url_env_name:
+        kind: literal
+        value: THEATER_LOGIN_URL
+      expected_status_code:
+        kind: literal
+        value: 200
+  - id: smoke-login-repeat
+    scenario_id: auth/login
+    bindings:
+      method:
+        kind: literal
+        value: POST
+      url_env_name:
+        kind: literal
+        value: THEATER_LOGIN_URL
+      expected_status_code:
+        kind: literal
+        value: 200
+scenarios: []

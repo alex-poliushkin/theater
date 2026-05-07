@@ -1,0 +1,125 @@
+stage expressiveness-stress
+
+http
+  session browser = http.session.browser()
+  auth web = http.auth
+    attach: list [
+      object { header_slot: object { name: "X-CSRF-Token", slot: "csrf" } },
+      object { bearer: object { token: "static-token" } }
+    ]
+  identity user = http.identity(session: browser, auth: web)
+
+state
+  backend local = state.backend.file(root: "/tmp/theater-state")
+  record shared_meta = state.record
+    backend: local
+    record: "env/shared-meta"
+    min_guarantee: local-atomic
+  pool otp_identities = state.pool
+    backend: local
+    pool: "otp-identities"
+    min_guarantee: local-atomic
+
+scenario http/tiny-smoke
+  act fetch-homepage
+    do action.http(method: "GET", url: "https://example.com", session: "none")
+    expect status-ok: field(status_code) == 200
+    expect page-text: field(body) contains "Example Domain"
+
+scenario auth/register-confirm-login(email: string!, password: string!)
+  act register
+    do action.http
+      method: "POST"
+      url: "https://api.example.test/register"
+      session: "browser"
+      json: object {
+        email: $email,
+        password: $password,
+        Content-Type: "application/json",
+        "profile.name": "Demo User",
+        "@type": "registration"
+      }
+    expect created: field(status_code) between 200 and 299
+    expect no-error-key: field(body) | decode(json) lacks key("error")
+    export user_id = field(body) | decode(json) | path("/user_id")
+
+  act login
+    do action.http
+      method: "POST"
+      url: "https://api.example.test/login"
+      identity: "user"
+      json: object { email: $email, password: $password, user_id: $user_id }
+    capture_auth web
+      csrf: response_header("X-CSRF-Token")
+    expect login-ok: field(status_code) between 200 and 299
+    expect token-present: field(body) | decode(json) | path("/token") is present
+    export token = field(body) | decode(json) | path("/token")
+
+scenario mail/wait-for-otp(email: string!)
+  act poll-notifications
+    eventually 45s every 2s
+    do repeatable action.http
+      method: "GET"
+      url: "https://mail.example.test/api/messages"
+      session: "none"
+    expect has-otp-message: field(body) | decode(json) | path("/items") has item where (
+      path("/receiverAddress") == $email,
+      path("/subject") contains "Verification Code"
+    )
+    export otp = (
+      field(body)
+      | decode(json)
+      | path("/items")
+      | pick where (
+        path("/receiverAddress") == $email,
+        path("/subject") contains "Verification Code"
+      )
+      | path("/body")
+      | regexp(pattern: r"([0-9]{6})", group: 1)
+    )
+
+scenario state/reserve-identity
+  act read-meta
+    do state.read(record: shared_meta)
+    export meta_version = field(version)
+
+  act update-meta
+    do state.update
+      record: shared_meta
+      if_version: $meta_version
+      value: object { owner: "expressiveness-stress" }
+
+  act claim-identity
+    do state.claim
+      pool: otp_identities
+      fields:
+        purpose: "registration"
+        provider: "mailhog"
+      lease:
+        ttl: 5m
+        on_expiry: reclaim
+    export identity_claim = field(claim)
+
+  act renew-identity
+    do state.renew(claim: $identity_claim, ttl: 10m)
+
+  act release-identity
+    do state.release(claim: $identity_claim)
+
+scenario plugins/echo-check
+  act echo
+    do action.smoke.echo(value: "hello")
+    expect echoed: field(echo) assert matcher.smoke.equal(expected: "hello")
+    expect not-other: field(echo) not assert matcher.smoke.equal(expected: "other")
+
+call tiny-smoke = http/tiny-smoke()
+
+call register-user = auth/register-confirm-login(email: "demo@example.test", password: "secret")
+
+call wait-for-otp = mail/wait-for-otp(email: "demo@example.test")
+  dependency register-user when done
+  export final_otp = $otp
+
+call reserve-identity = state/reserve-identity()
+
+call plugin-echo = plugins/echo-check()

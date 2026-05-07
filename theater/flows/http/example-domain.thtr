@@ -1,0 +1,9 @@
+stage example-domain
+
+scenario http/check-example-domain
+  act fetch-homepage
+    do action.http(method: "GET", url: "https://example.com", session: "none")
+    expect status-ok: field(status_code) == 200
+    expect page-text: field(body) contains "Example Domain"
+
+call fetch-example-domain = http/check-example-domain()

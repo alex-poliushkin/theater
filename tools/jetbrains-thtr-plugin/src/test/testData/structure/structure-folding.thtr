@@ -1,0 +1,24 @@
+stage checkout
+scenario smoke
+  act start
+    do action.http(
+      method: "POST",
+      url: "/users",
+      headers: object {
+        X_Request: "one"
+      },
+      json: object {
+        name: "Alex",
+        roles: list [
+          "admin",
+          "operator"
+        ]
+      }
+    )
+    on pass -> verify
+  act verify
+    expect ok: field(status_code) == 200
+call shared = web/check-page()
+scenario cleanup
+  act remove
+    expect done: field(status_code) == 204

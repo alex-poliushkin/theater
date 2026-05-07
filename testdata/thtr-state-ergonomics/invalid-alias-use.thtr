@@ -1,0 +1,14 @@
+stage main
+state
+  backend local = state.backend.file(root: "/tmp/theater-state")
+  record shared_meta = state.record(
+    backend: local,
+    record: "env/shared-meta",
+    min_guarantee: local-atomic
+  )
+scenario login
+  act claim
+    do state.claim
+      pool: shared_meta
+      lease:
+        ttl: 5m

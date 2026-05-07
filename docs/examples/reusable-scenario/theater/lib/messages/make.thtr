@@ -1,0 +1,9 @@
+stage message-library
+
+scenario messages/make(text: string!)
+  act create
+    do action.generate
+      outputs:
+        message: $text
+    expect message: field(values) | path("/message") == $text
+    export message = field(values) | path("/message")

@@ -1,0 +1,68 @@
+id: http-profile
+http:
+  sessions:
+    browser: {}
+scenarios:
+  - id: http/profile
+    acts:
+      - id: login
+        properties:
+          login_url:
+            inventory:
+              use: inventory.env
+              with:
+                name: THEATER_DOC_LOGIN_URL
+        action:
+          use: action.http
+          with:
+            method: GET
+            url:
+              kind: ref
+              ref: login_url
+            session: browser
+        expectations:
+          - id: login-ok
+            subject:
+              field: status_code
+            assert:
+              ref: expectation.equal
+              args:
+                expected: 200
+        transitions:
+          - on: on_pass
+            to: fetch-profile
+      - id: fetch-profile
+        properties:
+          profile_url:
+            inventory:
+              use: inventory.env
+              with:
+                name: THEATER_DOC_PROFILE_URL
+        action:
+          use: action.http
+          with:
+            method: GET
+            url:
+              kind: ref
+              ref: profile_url
+            session: browser
+        expectations:
+          - id: status-ok
+            subject:
+              field: status_code
+            assert:
+              ref: expectation.equal
+              args:
+                expected: 200
+          - id: profile-id
+            subject:
+              field: body
+              decode: json
+              path: /data/id
+            assert:
+              ref: expectation.equal
+              args:
+                expected: user-123
+scenario_calls:
+  - id: run
+    scenario_id: http/profile

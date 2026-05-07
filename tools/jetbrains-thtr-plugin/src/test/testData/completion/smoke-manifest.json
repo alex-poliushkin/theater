@@ -1,0 +1,74 @@
+{
+  "schema": "theater.plugin.manifest/v1alpha1",
+  "plugin": {
+    "id": "smoke-plugin",
+    "version": "0.2.0"
+  },
+  "protocol": {
+    "name": "theater-jsonrpc",
+    "major": 1,
+    "minor": 0
+  },
+  "capabilities": [
+    {
+      "kind": "action",
+      "name": "action.smoke.echo",
+      "summary": "Emit a simple echo output",
+      "property_schema": {
+        "type": "object",
+        "required": ["value"],
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "kind": "state_backend",
+      "name": "state_backend.smoke.file",
+      "summary": "Store state in a smoke fixture",
+      "property_schema": {
+        "type": "object",
+        "required": ["root"],
+        "properties": {
+          "root": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "kind": "transform",
+      "name": "transform.smoke.wrap",
+      "summary": "Wrap a value for assertions",
+      "property_schema": {
+        "type": "object",
+        "required": ["prefix", "suffix"],
+        "properties": {
+          "prefix": {
+            "type": "string"
+          },
+          "suffix": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "kind": "matcher",
+      "name": "matcher.smoke.equal",
+      "summary": "Assert that the actual string equals the expected string",
+      "property_schema": {
+        "type": "object",
+        "required": ["expected"],
+        "properties": {
+          "expected": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "descriptor_digest": "sha256:test"
+}

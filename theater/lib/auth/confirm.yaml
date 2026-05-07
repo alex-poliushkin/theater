@@ -1,0 +1,62 @@
+id: auth-library-confirm
+scenarios:
+  - id: auth/confirm
+    inputs:
+      method:
+        type: string
+        required: true
+      expected_status_code:
+        type: number
+        required: true
+    acts:
+      - id: request
+        properties:
+          url:
+            inventory:
+              use: inventory.env
+              with:
+                name:
+                  kind: literal
+                  value: THEATER_CONFIRM_URL
+          otp_url:
+            inventory:
+              use: inventory.env
+              with:
+                name:
+                  kind: literal
+                  value: THEATER_OTP_URL
+          headers:
+            inventory:
+              use: inventory.http.get
+              with:
+                url:
+                  kind: ref
+                  ref: otp_url
+            decorators:
+              - use: json.decode
+        action:
+          use: action.http
+          with:
+            method:
+              kind: ref
+              ref: method
+            url:
+              kind: ref
+              ref: url
+            headers:
+              kind: ref
+              ref: headers
+        expectations:
+          - id: ok
+            subject: status_code
+            assert:
+              between:
+                min: 200
+                max: 299
+          - id: no-content
+            subject: status_code
+            assert:
+              eq:
+                kind: ref
+                ref: expected_status_code
+scenario_calls: []

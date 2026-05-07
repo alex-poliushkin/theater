@@ -1,0 +1,21 @@
+stage invalid-state-claim-fields
+
+state
+  backend local = state.backend.file(root: "/tmp/theater-state")
+  pool otp_identities = state.pool(
+    backend: local,
+    pool: "otp-identities",
+    min_guarantee: local-atomic
+  )
+
+scenario state/reserve
+  act claim
+    do state.claim
+      pool: otp_identities
+      fields:
+        profile:
+          purpose: "registration"
+      lease:
+        ttl: 5m
+
+call reserve = state/reserve()

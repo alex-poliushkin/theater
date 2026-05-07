@@ -1,0 +1,25 @@
+{
+  "pool": "otp-identities",
+  "items": [
+    {
+      "id": "mailbox-release",
+      "fields": {
+        "purpose": "release-demo",
+        "provider": "mailhog",
+        "email": "reusable@example.test"
+      },
+      "state": "available",
+      "version": 1
+    },
+    {
+      "id": "mailbox-consume",
+      "fields": {
+        "purpose": "consume-demo",
+        "provider": "mailhog",
+        "email": "disposable@example.test"
+      },
+      "state": "available",
+      "version": 1
+    }
+  ]
+}

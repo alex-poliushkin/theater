@@ -1,0 +1,9 @@
+stage checkout
+scenario auth/register(email: string!)
+  act submit
+    do action.http
+      method: "POST"
+      ttl: 5m
+    expect ok: $id == field(body)
+    export id = generate.email()
+call run = auth/register(email: "demo@example.test")

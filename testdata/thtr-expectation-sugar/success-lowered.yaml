@@ -1,0 +1,174 @@
+id: smoke
+scenarios:
+    - id: ping
+      acts:
+        - id: get-health
+          action:
+            use: action.http
+            with:
+                method:
+                    kind: literal
+                    value: GET
+                url:
+                    kind: literal
+                    value: /health
+          expectations:
+            - id: page-text
+              subject:
+                field: body
+              assert:
+                ref: expectation.contains
+                args:
+                    expected:
+                        kind: literal
+                        value: Example Domain
+            - id: latency-high-enough
+              subject:
+                field: duration_ms
+              assert:
+                ref: expectation.gt
+                args:
+                    expected:
+                        kind: literal
+                        value: 100
+            - id: retries-not-over-limit
+              subject:
+                field: retry_count
+              assert:
+                ref: expectation.lte
+                args:
+                    expected:
+                        kind: literal
+                        value: 10
+            - id: retries-in-range
+              subject:
+                field: retry_count
+              assert:
+                ref: expectation.between
+                args:
+                    max:
+                        kind: literal
+                        value: 5
+                    min:
+                        kind: literal
+                        value: 1
+            - id: has-session-token
+              subject:
+                field: body
+                decode: json
+              assert:
+                ref: expectation.has_key
+                args:
+                    key:
+                        kind: literal
+                        value: session_token
+            - id: not-server-error
+              subject:
+                field: status_code
+              assert:
+                ref: expectation.not
+                args:
+                    assert:
+                        kind: object
+                        object:
+                            args:
+                                kind: object
+                                object:
+                                    expected:
+                                        kind: literal
+                                        value: 500
+                            ref:
+                                kind: literal
+                                value: expectation.gte
+            - id: has-demo-notification
+              subject:
+                field: body
+                decode: json
+                path: /notifications
+              assert:
+                ref: expectation.has_item
+                args:
+                    where:
+                        kind: list
+                        list:
+                            - kind: object
+                              object:
+                                assert:
+                                    kind: object
+                                    object:
+                                        args:
+                                            kind: object
+                                            object:
+                                                expected:
+                                                    kind: literal
+                                                    value: demo@example.test
+                                        ref:
+                                            kind: literal
+                                            value: expectation.equal
+                                subject:
+                                    kind: object
+                                    object:
+                                        path:
+                                            kind: literal
+                                            value: /receiverAddress
+            - id: all-recipients-present
+              subject:
+                field: body
+                decode: json
+                path: /notifications
+              assert:
+                ref: expectation.all_items
+                args:
+                    where:
+                        kind: list
+                        list:
+                            - kind: object
+                              object:
+                                assert:
+                                    kind: object
+                                    object:
+                                        args:
+                                            kind: object
+                                            object:
+                                                expected:
+                                                    kind: literal
+                                                    value: '@example.test'
+                                        ref:
+                                            kind: literal
+                                            value: expectation.contains
+                                subject:
+                                    kind: object
+                                    object:
+                                        path:
+                                            kind: literal
+                                            value: /receiverAddress
+                            - kind: object
+                              object:
+                                assert:
+                                    kind: object
+                                    object:
+                                        args:
+                                            kind: object
+                                            object:
+                                                assert:
+                                                    kind: object
+                                                    object:
+                                                        args:
+                                                            kind: object
+                                                            object:
+                                                                expected:
+                                                                    kind: literal
+                                                                    value: Verification Code
+                                                        ref:
+                                                            kind: literal
+                                                            value: plugin.custom
+                                        ref:
+                                            kind: literal
+                                            value: expectation.not
+                                subject:
+                                    kind: object
+                                    object:
+                                        path:
+                                            kind: literal
+                                            value: /subject
+scenario_calls: []

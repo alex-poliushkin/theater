@@ -1,0 +1,10 @@
+stage docs-first
+
+scenario hello
+  act say-hello
+    do action.generate
+      outputs:
+        message: "hello"
+    expect message: field(values) | path("/message") == "hello"
+
+call run = hello()

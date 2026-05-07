@@ -1,0 +1,35 @@
+id: message-library
+scenarios:
+  - id: messages/make
+    inputs:
+      text:
+        type: string
+        required: true
+    acts:
+      - id: create
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                message:
+                  kind: ref
+                  ref:
+                    name: text
+        expectations:
+          - id: message
+            subject:
+              field: values
+              path: /message
+            assert:
+              ref: expectation.equal
+              args:
+                expected:
+                  kind: ref
+                  ref:
+                    name: text
+        exports:
+          - as: message
+            field: values
+            path: /message

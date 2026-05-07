@@ -1,0 +1,543 @@
+id: expressiveness-stress
+http:
+    sessions:
+        browser: {}
+    auth:
+        web:
+            attach:
+                - header_slot:
+                    name: X-CSRF-Token
+                    slot: csrf
+                - bearer:
+                    token: static-token
+    identities:
+        user:
+            session: browser
+            auth: web
+state:
+    backends:
+        local:
+            use: state.backend.file
+            with:
+                root: /tmp/theater-state
+scenarios:
+    - id: http/tiny-smoke
+      acts:
+        - id: fetch-homepage
+          action:
+            use: action.http
+            with:
+                method:
+                    kind: literal
+                    value: GET
+                session:
+                    kind: literal
+                    value: none
+                url:
+                    kind: literal
+                    value: https://example.com
+          expectations:
+            - id: status-ok
+              subject:
+                field: status_code
+              assert:
+                ref: expectation.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: 200
+            - id: page-text
+              subject:
+                field: body
+              assert:
+                ref: expectation.contains
+                args:
+                    expected:
+                        kind: literal
+                        value: Example Domain
+    - id: auth/register-confirm-login
+      inputs:
+        email:
+            type: string
+            kinds: {}
+            required: true
+        password:
+            type: string
+            kinds: {}
+            required: true
+      acts:
+        - id: register
+          action:
+            use: action.http
+            with:
+                json:
+                    kind: object
+                    object:
+                        '@type':
+                            kind: literal
+                            value: registration
+                        Content-Type:
+                            kind: literal
+                            value: application/json
+                        email:
+                            kind: ref
+                            ref:
+                                name: email
+                                decode: ""
+                                path: ""
+                                through: []
+                        password:
+                            kind: ref
+                            ref:
+                                name: password
+                                decode: ""
+                                path: ""
+                                through: []
+                        profile.name:
+                            kind: literal
+                            value: Demo User
+                method:
+                    kind: literal
+                    value: POST
+                session:
+                    kind: literal
+                    value: browser
+                url:
+                    kind: literal
+                    value: https://api.example.test/register
+          expectations:
+            - id: created
+              subject:
+                field: status_code
+              assert:
+                ref: expectation.between
+                args:
+                    max:
+                        kind: literal
+                        value: 299
+                    min:
+                        kind: literal
+                        value: 200
+            - id: no-error-key
+              subject:
+                field: body
+                decode: json
+              assert:
+                ref: expectation.lacks_key
+                args:
+                    key:
+                        kind: literal
+                        value: error
+          exports:
+            - as: user_id
+              ref: null
+              field: body
+              decode: json
+              path: /user_id
+              through: []
+        - id: login
+          action:
+            use: action.http
+            with:
+                identity:
+                    kind: literal
+                    value: user
+                json:
+                    kind: object
+                    object:
+                        email:
+                            kind: ref
+                            ref:
+                                name: email
+                                decode: ""
+                                path: ""
+                                through: []
+                        password:
+                            kind: ref
+                            ref:
+                                name: password
+                                decode: ""
+                                path: ""
+                                through: []
+                        user_id:
+                            kind: ref
+                            ref:
+                                name: user_id
+                                decode: ""
+                                path: ""
+                                through: []
+                method:
+                    kind: literal
+                    value: POST
+                url:
+                    kind: literal
+                    value: https://api.example.test/login
+          capture_auth:
+            auth: web
+            slots:
+                csrf:
+                    response_header: X-CSRF-Token
+          expectations:
+            - id: login-ok
+              subject:
+                field: status_code
+              assert:
+                ref: expectation.between
+                args:
+                    max:
+                        kind: literal
+                        value: 299
+                    min:
+                        kind: literal
+                        value: 200
+            - id: token-present
+              subject:
+                field: body
+                decode: json
+                path: /token
+              assert:
+                ref: expectation.present
+                args: {}
+          exports:
+            - as: token
+              ref: null
+              field: body
+              decode: json
+              path: /token
+              through: []
+    - id: mail/wait-for-otp
+      inputs:
+        email:
+            type: string
+            kinds: {}
+            required: true
+      acts:
+        - id: poll-notifications
+          eventually:
+            timeout: 45s
+            interval: 2s
+          action:
+            use: action.http
+            with:
+                method:
+                    kind: literal
+                    value: GET
+                session:
+                    kind: literal
+                    value: none
+                url:
+                    kind: literal
+                    value: https://mail.example.test/api/messages
+            repeatable: true
+          expectations:
+            - id: has-otp-message
+              subject:
+                field: body
+                decode: json
+                path: /items
+              assert:
+                ref: expectation.has_item
+                args:
+                    where:
+                        kind: list
+                        list:
+                            - kind: object
+                              object:
+                                assert:
+                                    kind: object
+                                    object:
+                                        args:
+                                            kind: object
+                                            object:
+                                                expected:
+                                                    kind: ref
+                                                    ref:
+                                                        name: email
+                                                        decode: ""
+                                                        path: ""
+                                                        through: []
+                                        ref:
+                                            kind: literal
+                                            value: expectation.equal
+                                subject:
+                                    kind: object
+                                    object:
+                                        path:
+                                            kind: literal
+                                            value: /receiverAddress
+                            - kind: object
+                              object:
+                                assert:
+                                    kind: object
+                                    object:
+                                        args:
+                                            kind: object
+                                            object:
+                                                expected:
+                                                    kind: literal
+                                                    value: Verification Code
+                                        ref:
+                                            kind: literal
+                                            value: expectation.contains
+                                subject:
+                                    kind: object
+                                    object:
+                                        path:
+                                            kind: literal
+                                            value: /subject
+          exports:
+            - as: otp
+              ref: null
+              field: body
+              decode: json
+              path: /items
+              through:
+                - pick:
+                    where:
+                        - subject:
+                            path: /receiverAddress
+                          assert:
+                            ref: expectation.equal
+                            args:
+                                expected:
+                                    kind: ref
+                                    ref:
+                                        name: email
+                                        decode: ""
+                                        path: ""
+                                        through: []
+                        - subject:
+                            path: /subject
+                          assert:
+                            ref: expectation.contains
+                            args:
+                                expected:
+                                    kind: literal
+                                    value: Verification Code
+                - path: /body
+                - regexp:
+                    pattern: ([0-9]{6})
+                    group: 1
+    - id: state/reserve-identity
+      acts:
+        - id: read-meta
+          properties:
+            thtr:hidden:state:record:shared_meta:
+                inventory:
+                    use: inventory.state.record
+                    with:
+                        backend:
+                            kind: literal
+                            value: local
+                        min_guarantee:
+                            kind: literal
+                            value: local-atomic
+                        record:
+                            kind: literal
+                            value: env/shared-meta
+          action:
+            use: action.state.read
+            with:
+                record:
+                    kind: ref
+                    ref:
+                        name: thtr:hidden:state:record:shared_meta
+                        decode: ""
+                        path: ""
+                        through: []
+          exports:
+            - as: meta_version
+              ref: null
+              field: version
+              decode: ""
+              path: ""
+              through: []
+        - id: update-meta
+          properties:
+            thtr:hidden:state:record:shared_meta:
+                inventory:
+                    use: inventory.state.record
+                    with:
+                        backend:
+                            kind: literal
+                            value: local
+                        min_guarantee:
+                            kind: literal
+                            value: local-atomic
+                        record:
+                            kind: literal
+                            value: env/shared-meta
+          action:
+            use: action.state.update
+            with:
+                expected_version:
+                    kind: ref
+                    ref:
+                        name: meta_version
+                        decode: ""
+                        path: ""
+                        through: []
+                record:
+                    kind: ref
+                    ref:
+                        name: thtr:hidden:state:record:shared_meta
+                        decode: ""
+                        path: ""
+                        through: []
+                value:
+                    kind: object
+                    object:
+                        owner:
+                            kind: literal
+                            value: expressiveness-stress
+        - id: claim-identity
+          properties:
+            thtr:hidden:state:pool:otp_identities:
+                inventory:
+                    use: inventory.state.pool
+                    with:
+                        backend:
+                            kind: literal
+                            value: local
+                        min_guarantee:
+                            kind: literal
+                            value: local-atomic
+                        pool:
+                            kind: literal
+                            value: otp-identities
+          action:
+            use: action.state.claim
+            with:
+                lease:
+                    kind: object
+                    object:
+                        on_expiry:
+                            kind: literal
+                            value: reclaim
+                        ttl:
+                            kind: literal
+                            value: 5m
+                pool:
+                    kind: ref
+                    ref:
+                        name: thtr:hidden:state:pool:otp_identities
+                        decode: ""
+                        path: ""
+                        through: []
+                selector:
+                    kind: object
+                    object:
+                        fields:
+                            kind: object
+                            object:
+                                provider:
+                                    kind: literal
+                                    value: mailhog
+                                purpose:
+                                    kind: literal
+                                    value: registration
+          exports:
+            - as: identity_claim
+              ref: null
+              field: claim
+              decode: ""
+              path: ""
+              through: []
+        - id: renew-identity
+          action:
+            use: action.state.renew
+            with:
+                claim:
+                    kind: ref
+                    ref:
+                        name: identity_claim
+                        decode: ""
+                        path: ""
+                        through: []
+                ttl:
+                    kind: literal
+                    value: 10m
+        - id: release-identity
+          action:
+            use: action.state.release
+            with:
+                claim:
+                    kind: ref
+                    ref:
+                        name: identity_claim
+                        decode: ""
+                        path: ""
+                        through: []
+    - id: plugins/echo-check
+      acts:
+        - id: echo
+          action:
+            use: action.smoke.echo
+            with:
+                value:
+                    kind: literal
+                    value: hello
+          expectations:
+            - id: echoed
+              subject:
+                field: echo
+              assert:
+                ref: matcher.smoke.equal
+                args:
+                    expected:
+                        kind: literal
+                        value: hello
+            - id: not-other
+              subject:
+                field: echo
+              assert:
+                ref: expectation.not
+                args:
+                    assert:
+                        kind: object
+                        object:
+                            args:
+                                kind: object
+                                object:
+                                    expected:
+                                        kind: literal
+                                        value: other
+                            ref:
+                                kind: literal
+                                value: matcher.smoke.equal
+scenario_calls:
+    - id: tiny-smoke
+      scenario_id: http/tiny-smoke
+    - id: register-user
+      scenario_id: auth/register-confirm-login
+      bindings:
+        email:
+            kind: literal
+            value: demo@example.test
+        password:
+            kind: literal
+            value: secret
+    - id: wait-for-otp
+      scenario_id: mail/wait-for-otp
+      bindings:
+        email:
+            kind: literal
+            value: demo@example.test
+      exports:
+        - as: final_otp
+          ref:
+            name: otp
+            decode: ""
+            path: ""
+            through: []
+          field: ""
+          decode: ""
+          path: ""
+          through: []
+      dependencies:
+        - call_id: register-user
+          when: done
+    - id: reserve-identity
+      scenario_id: state/reserve-identity
+    - id: plugin-echo
+      scenario_id: plugins/echo-check

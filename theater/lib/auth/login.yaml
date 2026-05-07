@@ -1,0 +1,53 @@
+id: auth-library-login
+scenarios:
+  - id: auth/login
+    inputs:
+      method:
+        type: string
+        required: true
+      url_env_name:
+        type: string
+        required: true
+      expected_status_code:
+        type: number
+        required: true
+    acts:
+      - id: request
+        properties:
+          url:
+            inventory:
+              use: inventory.env
+              with:
+                name:
+                  kind: ref
+                  ref: url_env_name
+        action:
+          use: action.http
+          with:
+            method:
+              kind: ref
+              ref: method
+            url:
+              kind: ref
+              ref: url
+        expectations:
+          - id: ok
+            subject: status_code
+            assert:
+              between:
+                min: 200
+                max: 299
+          - id: exact
+            subject: status_code
+            assert:
+              eq:
+                kind: ref
+                ref: expected_status_code
+          - id: token
+            subject: body
+            assert:
+              contains: issued-token
+        exports:
+          - field: body
+            as: login_body
+scenario_calls: []

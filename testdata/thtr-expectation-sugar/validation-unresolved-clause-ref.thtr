@@ -1,0 +1,5 @@
+stage main
+scenario login
+  act submit
+    do action.http(method: "GET", url: "/health")
+    expect receiver-present: field(body) | decode(json) | path("/notifications") has item where path("/receiverAddress") == $expected_email

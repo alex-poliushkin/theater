@@ -1,0 +1,14 @@
+stage reusable-message-flow
+
+scenario verify-message(expected: string!, actual: string!)
+  act check
+    do action.generate
+      outputs:
+        actual: $actual
+    expect message: field(values) | path("/actual") == $expected
+
+call make-message = messages/make(text: "hello from Theater")
+  export shared_message = $message
+
+call check-message = verify-message(expected: "hello from Theater", actual: $shared_message)
+  dependency make-message

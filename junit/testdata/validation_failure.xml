@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="main" tests="1" errors="1">
+    <testcase classname="theater.validation" name="compile-validate">
+      <error message="[validation] validation failed with 1 diagnostic(s)">[validation] validation failed with 1 diagnostic(s)&#xA;stage: main&#xA;summary: validation failed with 1 diagnostic(s)&#xA;diagnostic: [missing_scenario_id] stage.main/call.login_user: scenario call must reference a scenario</error>
+    </testcase>
+  </testsuite>
+</testsuites>

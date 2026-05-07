@@ -1,0 +1,4 @@
+stage main
+  scenario login
+  act submit
+    do action.http(method: "GET", url: "/health")

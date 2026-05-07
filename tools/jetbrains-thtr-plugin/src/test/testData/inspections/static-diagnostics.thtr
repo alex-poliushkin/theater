@@ -1,0 +1,11 @@
+stage smoke
+scenario api
+  act get
+    do action.missing()
+    do action.http(url: "/health")
+    do action.smoke.echo()
+    expect missing-selector-args: field == 200
+    expect empty-selector: field() == 200
+    prop wrapped = inventory.http.get(url: "/payload") | transform.missing()
+    on pass -> missing-act
+    expect missing-value: $missing == "42"

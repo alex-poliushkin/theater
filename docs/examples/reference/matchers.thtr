@@ -1,0 +1,47 @@
+stage reference-matchers
+
+scenario inspect
+  act check
+    do action.generate
+      outputs:
+        status: "ok"
+        message: "hello example"
+        code: "A123"
+        count: 3
+        retry_count: 2
+        score: 8
+        payload: object {
+          session_token: "token-123",
+          deleted_at: null,
+          profile: object { status: "active" }
+        }
+        users: list [
+          object { id: "user-123", email: "demo@example.test", active: true },
+          object { id: "user-456", email: "other@example.test", active: true }
+        ]
+    expect equal: field(values) | path("/status") == "ok"
+    expect not-equal: field(values) | path("/status") != "error"
+    expect contains: field(values) | path("/message") contains "example"
+    expect matches: field(values) | path("/code") matches r"^[A-Z][0-9]{3}$"
+    expect gt: field(values) | path("/score") > 5
+    expect gte: field(values) | path("/score") >= 8
+    expect lt: field(values) | path("/count") < 10
+    expect lte: field(values) | path("/retry_count") <= 2
+    expect between: field(values) | path("/retry_count") between 1 and 3
+    expect present: field(values) | path("/payload/session_token") is present
+    expect null: field(values) | path("/payload/deleted_at") is null
+    expect not-null: field(values) | path("/payload/session_token") is not null
+    expect has-key: field(values) | path("/payload") has key("session_token")
+    expect lacks-key: field(values) | path("/payload") lacks key("error")
+    expect has-no-key: field(values) | path("/payload") lacks key("error")
+    expect has-entry: field(values) | path("/payload") has entry("session_token") matches r"^token-"
+    expect has-item: field(values) | path("/users") has item where path("/id") == "user-123"
+    expect all-items: field(values) | path("/users") all items where path("/email") contains "@example.test"
+    expect grouped-items: field(values) | path("/users") all items where (
+      path("/email") contains "@example.test",
+      path("/active") == true
+    )
+    expect not-wrapper: field(values) | path("/score") not < 5
+    expect canonical-call: field(values) | path("/status") assert expectation.equal(expected: "ok")
+
+call run = inspect()

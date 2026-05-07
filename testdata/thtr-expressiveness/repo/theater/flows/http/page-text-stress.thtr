@@ -1,0 +1,6 @@
+stage page-text-stress
+
+call check-example = web/check-page-text(
+  url: "https://example.com",
+  expected_text: "Example Domain"
+)

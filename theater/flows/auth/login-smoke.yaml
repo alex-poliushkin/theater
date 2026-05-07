@@ -1,0 +1,9 @@
+id: login-smoke
+scenario_calls:
+  - id: smoke-login
+    scenario_id: auth/login
+    bindings:
+      method: POST
+      url_env_name: THEATER_LOGIN_URL
+      expected_status_code: 200
+scenarios: []

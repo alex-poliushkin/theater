@@ -1,0 +1,31 @@
+stage tooling-smoke
+
+scenario verify-items(email: string!)
+  act fetch
+    # helper data remains formatter-stable
+    prop notifications = inventory.http.get(url: "https://api.example.test/notifications", session: "none") | json.decode()
+    do action.http
+      method: "GET"
+      url: "https://api.example.test/notifications"
+      session: "none"
+      headers: object {
+        Accept: "application/json",
+        "x-trace.id": "tooling"
+      }
+    expect has-notification: field(body) | decode(json) | path("/items") has item where (
+      path("/receiverAddress") == $email,
+      path("/subject") contains "Verification"
+    )
+    export otp = (
+      field(body)
+      | decode(json)
+      | path("/items")
+      | pick where (
+        path("/receiverAddress") == $email,
+        path("/subject") contains "Verification"
+      )
+      | path("/body")
+      | regexp(pattern: r"([0-9]{6})", group: 1)
+    )
+
+call verify = verify-items(email: "demo@example.test")

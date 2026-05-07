@@ -1,0 +1,90 @@
+id: check-values
+scenarios:
+  - id: check-profile
+    acts:
+      - id: read-profile
+        action:
+          use: action.command
+          with:
+            executable: printf
+            args:
+              kind: list
+              list:
+                - '%s'
+                - '{"data":{"id":"user-123","status":"active","email":"demo@example.test"}}'
+            timeout: 5s
+        logs:
+          - id: profile
+            value:
+              object:
+                id:
+                  field: stdout
+                  decode: json
+                  path: /data/id
+                status:
+                  field: stdout
+                  decode: json
+                  path: /data/status
+                email:
+                  field: stdout
+                  decode: json
+                  path: /data/email
+            capture: summary
+            sensitivity: internal
+        expectations:
+          - id: command-ok
+            subject:
+              field: exit_code
+            assert:
+              ref: expectation.equal
+              args:
+                expected: 0
+          - id: profile-id
+            subject:
+              field: stdout
+              decode: json
+              path: /data/id
+            assert:
+              ref: expectation.equal
+              args:
+                expected: user-123
+          - id: profile-status
+            subject:
+              field: stdout
+              decode: json
+              path: /data/status
+            assert:
+              ref: expectation.equal
+              args:
+                expected: active
+        exports:
+          - as: profile_id
+            field: stdout
+            decode: json
+            path: /data/id
+        transitions:
+          - on: on_pass
+            to: reuse-profile-id
+      - id: reuse-profile-id
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                seen_id:
+                  kind: ref
+                  ref:
+                    name: profile_id
+        expectations:
+          - id: same-id
+            subject:
+              field: values
+              path: /seen_id
+            assert:
+              ref: expectation.equal
+              args:
+                expected: user-123
+scenario_calls:
+  - id: run
+    scenario_id: check-profile

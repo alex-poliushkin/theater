@@ -1,0 +1,12 @@
+{
+  "schema": "theater.plugin.registry/v1alpha1",
+  "plugins": {
+    "smoke-plugin": {
+      "manifest": "smoke/manifest.json",
+      "exec": {
+        "command": ["python3", "smoke.py"]
+      },
+      "allow_capabilities": ["action.smoke.echo"]
+    }
+  }
+}

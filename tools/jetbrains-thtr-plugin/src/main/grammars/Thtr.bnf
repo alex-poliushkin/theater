@@ -1,0 +1,187 @@
+{
+  parserClass="com.github.alexpoliushkin.theater.thtrij.parser.ThtrParser"
+  extends="com.intellij.extapi.psi.ASTWrapperPsiElement"
+
+  psiClassPrefix="Thtr"
+  psiImplClassSuffix="Impl"
+  psiPackage="com.github.alexpoliushkin.theater.thtrij.psi"
+  psiImplPackage="com.github.alexpoliushkin.theater.thtrij.psi.impl"
+
+  elementTypeHolderClass="com.github.alexpoliushkin.theater.thtrij.psi.ThtrTypes"
+  elementTypeClass="com.github.alexpoliushkin.theater.thtrij.ThtrElementType"
+  tokenTypeClass="com.github.alexpoliushkin.theater.thtrij.ThtrTokenType"
+
+  tokens = [
+    STAGE="stage"
+    HTTP="http"
+    STATE="state"
+    SESSION="session"
+    AUTH="auth"
+    IDENTITY="identity"
+    SCENARIO="scenario"
+    ACT="act"
+    CALL="call"
+    NAME="name"
+    DO="do"
+    LOG="log"
+    EXPECT="expect"
+    EVENTUALLY="eventually"
+    PROP="prop"
+    EXPORT="export"
+    ON="on"
+    DEPENDENCY="dependency"
+    WHEN="when"
+    EVERY="every"
+    CAPTURE_AUTH="capture_auth"
+    BACKEND="backend"
+    RECORD="record"
+    POOL="pool"
+    REPEATABLE="repeatable"
+    OBJECT="object"
+    LIST="list"
+    FIELD="field"
+    DECODE="decode"
+    PATH="path"
+    PICK="pick"
+    REGEXP="regexp"
+    TRUE="true"
+    FALSE="false"
+    NULL="null"
+    HAS="has"
+    NO="no"
+    ITEM="item"
+    ALL="all"
+    ITEMS="items"
+    ENTRY="entry"
+    KEY="key"
+    LACKS="lacks"
+    IS="is"
+    BETWEEN="between"
+    AND="and"
+    WHERE="where"
+    MATCHES="matches"
+    CONTAINS="contains"
+    ASSERT="assert"
+    GENERATE_REF="generate_ref"
+    IDENTIFIER="identifier"
+    DOTTED_REF="dotted_ref"
+    DOLLAR_REF="dollar_ref"
+    STRING="string"
+    NUMBER="number"
+    DURATION="duration"
+    LINE_COMMENT="line_comment"
+    BAD_CHARACTER="bad_character"
+    BAD_INDENT="bad_indent"
+    L_PAREN="("
+    R_PAREN=")"
+    L_BRACE="{"
+    R_BRACE="}"
+    L_BRACKET="["
+    R_BRACKET="]"
+    COMMA=","
+    COLON=":"
+    DOT="."
+    EQUALS="="
+    EQEQ="=="
+    ARROW="->"
+    PIPE="|"
+    BANG="!"
+    GT=">"
+    GTE=">="
+    LT="<"
+    LTE="<="
+  ]
+}
+
+thtrFile ::= item*
+
+private item ::= declaration | line_atom
+
+declaration ::= stage_declaration
+  | http_block
+  | state_block
+  | session_declaration
+  | auth_declaration
+  | identity_declaration
+  | scenario_declaration
+  | act_declaration
+  | call_declaration
+  | backend_declaration
+  | record_declaration
+  | pool_declaration
+  | name_statement
+  | do_statement
+  | log_statement
+  | expect_statement
+  | eventually_statement
+  | prop_statement
+  | export_statement
+  | transition_statement
+  | dependency_statement
+  | capture_auth_statement
+
+stage_declaration ::= STAGE identifier_like line_tail { pin=1 recoverWhile=recover_declaration }
+http_block ::= HTTP line_tail
+state_block ::= STATE line_tail
+session_declaration ::= SESSION declaration_tail { pin=1 recoverWhile=recover_declaration }
+auth_declaration ::= AUTH declaration_tail { pin=1 recoverWhile=recover_declaration }
+identity_declaration ::= IDENTITY declaration_tail { pin=1 recoverWhile=recover_declaration }
+scenario_declaration ::= SCENARIO identifier_like line_tail {
+  pin=1
+  recoverWhile=recover_declaration
+  mixin="com.github.alexpoliushkin.theater.thtrij.psi.impl.ThtrNamedElementImpl"
+  implements="com.github.alexpoliushkin.theater.thtrij.psi.ThtrNamedElement"
+}
+act_declaration ::= ACT identifier_like line_tail {
+  pin=1
+  recoverWhile=recover_declaration
+  mixin="com.github.alexpoliushkin.theater.thtrij.psi.impl.ThtrNamedElementImpl"
+  implements="com.github.alexpoliushkin.theater.thtrij.psi.ThtrNamedElement"
+}
+call_declaration ::= CALL identifier_like line_tail { pin=1 recoverWhile=recover_declaration }
+backend_declaration ::= BACKEND declaration_tail { pin=1 recoverWhile=recover_declaration }
+record_declaration ::= RECORD declaration_tail { pin=1 recoverWhile=recover_declaration }
+pool_declaration ::= POOL declaration_tail { pin=1 recoverWhile=recover_declaration }
+name_statement ::= NAME line_tail
+do_statement ::= DO line_tail
+log_statement ::= LOG identifier_like line_tail {
+  pin=1
+  recoverWhile=recover_declaration
+  mixin="com.github.alexpoliushkin.theater.thtrij.psi.impl.ThtrNamedElementImpl"
+  implements="com.github.alexpoliushkin.theater.thtrij.psi.ThtrNamedElement"
+}
+expect_statement ::= EXPECT line_tail
+eventually_statement ::= EVENTUALLY line_tail
+prop_statement ::= PROP identifier_like line_tail {
+  pin=1
+  recoverWhile=recover_declaration
+  mixin="com.github.alexpoliushkin.theater.thtrij.psi.impl.ThtrNamedElementImpl"
+  implements="com.github.alexpoliushkin.theater.thtrij.psi.ThtrNamedElement"
+}
+export_statement ::= EXPORT identifier_like line_tail {
+  pin=1
+  recoverWhile=recover_declaration
+  mixin="com.github.alexpoliushkin.theater.thtrij.psi.impl.ThtrNamedElementImpl"
+  implements="com.github.alexpoliushkin.theater.thtrij.psi.ThtrNamedElement"
+}
+transition_statement ::= ON line_tail
+dependency_statement ::= DEPENDENCY line_tail
+capture_auth_statement ::= CAPTURE_AUTH line_tail {
+  mixin="com.github.alexpoliushkin.theater.thtrij.psi.impl.ThtrNamedElementImpl"
+  implements="com.github.alexpoliushkin.theater.thtrij.psi.ThtrNamedElement"
+}
+
+private declaration_tail ::= (identifier_like | COLON)? line_tail
+private line_tail ::= line_atom*
+private line_atom ::= generator_call | selector_call | object_value | list_value | descriptor_ref | identifier_like | keyword_atom | literal | punctuation | bad_character
+generator_call ::= GENERATE_REF
+selector_call ::= FIELD | DECODE | PATH | PICK | REGEXP
+object_value ::= OBJECT
+list_value ::= LIST
+descriptor_ref ::= DOTTED_REF
+private identifier_like ::= IDENTIFIER | DOTTED_REF | DOLLAR_REF
+private keyword_atom ::= WHEN | EVERY | REPEATABLE | TRUE | FALSE | NULL | HAS | NO | ITEM | ALL | ITEMS | ENTRY | KEY | LACKS | IS | BETWEEN | AND | WHERE | MATCHES | CONTAINS | ASSERT
+private literal ::= STRING | NUMBER | DURATION
+private punctuation ::= L_PAREN | R_PAREN | L_BRACE | R_BRACE | L_BRACKET | R_BRACKET | COMMA | COLON | DOT | EQUALS | EQEQ | ARROW | PIPE | BANG | GT | GTE | LT | LTE
+private bad_character ::= BAD_CHARACTER
+private recover_declaration ::= !(STAGE | HTTP | STATE | SESSION | AUTH | IDENTITY | SCENARIO | ACT | CALL | BACKEND | RECORD | POOL | NAME | DO | LOG | EXPECT | EVENTUALLY | PROP | EXPORT | ON | DEPENDENCY | CAPTURE_AUTH)

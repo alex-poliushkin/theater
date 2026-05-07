@@ -1,0 +1,8 @@
+stage invalid-plugin-descriptor
+
+scenario plugins/echo-check
+  act echo
+    do action.smoke.echo(value: 42)
+    expect echoed: field(echo) assert matcher.smoke.equal(expected: "hello")
+
+call plugin-echo = plugins/echo-check()

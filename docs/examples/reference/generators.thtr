@@ -1,0 +1,20 @@
+stage reference-generators
+
+scenario inspect
+  act generate-values
+    do action.generate
+      outputs:
+        sequence_value: generate.sequence(start: 1000, step: 1)
+        uuid_value: generate.uuid(version: "v7")
+        uuid_default: generate.uuid()
+        timestamp_value: generate.timestamp(format: "rfc3339", offset: "5m")
+        timestamp_default: generate.timestamp()
+        string_value: generate.string(length: 12, alphabet: "abcdef0123456789")
+        digits_value: generate.digits(length: 6)
+        email_value: generate.email(prefix: "demo", domain: "example.test")
+        email_stem: generate.email(stem: "customer", domain: "example.test")
+        phone_value: generate.phone(prefix: "+1555", digits: 4, random: true)
+        slug_value: generate.slug(prefix: "profile", max_length: 24)
+    expect generated: field(values) has key("email_value")
+
+call run = inspect()
