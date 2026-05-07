@@ -1,5 +1,11 @@
 # Theater
 
+[![Tests](https://github.com/alex-poliushkin/theater/actions/workflows/test.yml/badge.svg)](https://github.com/alex-poliushkin/theater/actions/workflows/test.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/alex-poliushkin/theater.svg)](https://pkg.go.dev/github.com/alex-poliushkin/theater)
+[![Go Report Card](https://goreportcard.com/badge/github.com/alex-poliushkin/theater)](https://goreportcard.com/report/github.com/alex-poliushkin/theater)
+[![Go Version](https://img.shields.io/badge/go-1.25%2B-00ADD8?logo=go)](go.mod)
+[![License](https://img.shields.io/github/license/alex-poliushkin/theater)](LICENSE)
+
 Theater runs repeatable API and workflow checks from `.thtr` or YAML files.
 Validate a stage before execution, reuse scenarios across flows, and get a run
 report that points back to the exact act, action, or expectation that passed or
@@ -38,7 +44,7 @@ scenario http/profile
 call run = http/profile()
 ```
 
-## First Success
+## Run The HTTP Check
 
 From a repository checkout, validate the HTTP profile example:
 
@@ -90,6 +96,51 @@ file.
 - Capture source-linked expectations and scenario-authored logs in the run
   report.
 
+## Install
+
+Released CLI archives are attached to
+[GitHub Releases](https://github.com/alex-poliushkin/theater/releases). Choose
+the archive for your OS and CPU:
+
+- `theater_<version>_linux_amd64.tar.gz`
+- `theater_<version>_linux_arm64.tar.gz`
+- `theater_<version>_darwin_amd64.tar.gz`
+- `theater_<version>_darwin_arm64.tar.gz`
+
+Each release also includes `SHA256SUMS`.
+
+macOS assets use the Go `darwin` OS name. After downloading the archive and
+`SHA256SUMS`, verify with `sha256sum -c SHA256SUMS`, unpack with
+`tar -xzf theater_<version>_<os>_<arch>.tar.gz`, then run `./theater help` or
+move `theater` onto your `PATH`.
+
+If Go 1.25 or newer is installed, you can run Theater directly from a source
+checkout:
+
+<!-- theater-doc: command id=readme-help expect-stdout="Usage:" expect-stdout-2="validate, check" -->
+```sh
+go run ./cmd/theater help
+```
+
+Build a local binary when you want a reusable executable inside the checkout:
+run `go build -o ./bin/theater ./cmd/theater`, then run `./bin/theater help`.
+
+Install from the checkout into `GOBIN`, or into `GOPATH/bin` when `GOBIN` is not
+set, with `go install ./cmd/theater`. Make sure that install directory is on
+your `PATH`, then run `theater help`.
+
+After the repository is public, the same Go toolchain can install a released
+version directly from GitHub with
+`go install github.com/alex-poliushkin/theater/cmd/theater@latest`.
+
+JetBrains IDE users can install the released
+`jetbrains-thtr-plugin-<version>.zip` through
+`Settings | Plugins | Install Plugin from Disk`. The native plugin enables
+`.thtr` syntax highlighting, completion, diagnostics, formatting, navigation,
+structure view, folding, quick documentation, find usages and rename support.
+For compatibility details, use the
+[Editor Tooling reference](docs/reference/editor-tooling.md).
+
 ## Where To Go Next
 
 | Goal                                   | Start here                                                                                 |
@@ -104,3 +155,7 @@ file.
 | Inspect run reports and output formats | [Reports](docs/reference/reports.md) and [output formats](docs/reference/outputs/index.md) |
 
 The full documentation map is in [docs/index.md](docs/index.md).
+
+## License
+
+MIT - see [LICENSE](LICENSE).

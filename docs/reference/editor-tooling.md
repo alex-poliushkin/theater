@@ -105,10 +105,21 @@ files remain the descriptor discovery source.
 
 The native plugin does not declare the JetBrains LSP module dependency and does
 not start `thtr-lsp` for ordinary language support. Full validation-diagnostic
-parity, broader navigation polish, Marketplace publication and signed
-distribution are not shipped yet.
+parity, broader navigation polish, JetBrains Marketplace publication and signed
+Marketplace distribution are not shipped yet.
 
 ## Native JetBrains Build And Install
+
+Released native plugin archives are attached to
+[GitHub Releases](https://github.com/alex-poliushkin/theater/releases) as
+`jetbrains-thtr-plugin-<version>.zip` files. The release workflow checks that
+the plugin version matches the Git tag before publishing the ZIP. Download the
+ZIP for the release you want, then install it in a JetBrains IDE through
+`Settings | Plugins | Install Plugin from Disk`. Restart the IDE if prompted.
+
+Use the native plugin when you want `.thtr` syntax highlighting, completion,
+diagnostics, formatting, navigation, structure view, folding, quick
+documentation, find usages and rename support.
 
 Run the native plugin verification gate from the repository root with
 `gradle -p tools/jetbrains-thtr-plugin nativePluginCheck`.
@@ -120,8 +131,8 @@ declared IDE matrix.
 To build only the local plugin archive, run
 `gradle -p tools/jetbrains-thtr-plugin buildPlugin`.
 
-The current archive is written under
-`tools/jetbrains-thtr-plugin/build/distributions/jetbrains-thtr-plugin-0.1.0.zip`.
+The local installable archive is written under
+`tools/jetbrains-thtr-plugin/build/distributions/jetbrains-thtr-plugin-<version>.zip`.
 
 Install the archive from disk in a JetBrains IDE through Settings | Plugins |
 Install Plugin from Disk. Restart the IDE if prompted.

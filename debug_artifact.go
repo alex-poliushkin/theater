@@ -184,7 +184,7 @@ func linkCount(info os.FileInfo) uint64 {
 		return 1
 	}
 
-	return stat.Nlink
+	return uint64(stat.Nlink) //nolint:unconvert // Stat_t.Nlink has platform-specific integer widths.
 }
 
 func (s *debugArtifactSink) Close() error {

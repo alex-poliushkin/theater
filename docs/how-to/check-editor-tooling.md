@@ -24,8 +24,8 @@ Plugin Verifier for the declared IDE matrix.
 Build the installable local archive with
 `gradle -p tools/jetbrains-thtr-plugin buildPlugin` when you only need the ZIP.
 
-The archive is written to
-`tools/jetbrains-thtr-plugin/build/distributions/jetbrains-thtr-plugin-0.1.0.zip`.
+The installable archive is written to
+`tools/jetbrains-thtr-plugin/build/distributions/jetbrains-thtr-plugin-<version>.zip`.
 
 Install it in a JetBrains IDE from Settings | Plugins | Install Plugin from
 Disk. Restart the IDE if prompted.

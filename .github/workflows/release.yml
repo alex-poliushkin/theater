@@ -1,0 +1,148 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish, for example v0.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Build and publish release assets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      GRADLE_VERSION: "8.13"
+      THEATER_COLOR: never
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
+
+      - name: Verify tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse --verify "refs/tags/${RELEASE_TAG}"
+
+          release_version="${RELEASE_TAG#v}"
+          plugin_version="$(
+            awk -F= '
+              $1 ~ /^[[:space:]]*pluginVersion[[:space:]]*$/ {
+                gsub(/[[:space:]]/, "", $2)
+                print $2
+              }
+            ' tools/jetbrains-thtr-plugin/gradle.properties
+          )"
+
+          if [[ -z "${plugin_version}" ]]; then
+            echo "tools/jetbrains-thtr-plugin/gradle.properties does not define pluginVersion" >&2
+            exit 1
+          fi
+          if [[ "${plugin_version}" != "${release_version}" ]]; then
+            echo "Release tag ${RELEASE_TAG} does not match JetBrains pluginVersion ${plugin_version}" >&2
+            exit 1
+          fi
+
+          echo "RELEASE_VERSION=${release_version}" >> "${GITHUB_ENV}"
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Build CLI release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          package_root="${RUNNER_TEMP}/theater-release-package"
+          mkdir -p dist "${package_root}"
+
+          build_archive() {
+            local goos="$1"
+            local goarch="$2"
+            local asset="theater_${RELEASE_VERSION}_${goos}_${goarch}"
+            local package_dir="${package_root}/${asset}"
+
+            rm -rf "${package_dir}"
+            mkdir -p "${package_dir}"
+
+            CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build \
+              -trimpath \
+              -ldflags="-s -w -X github.com/alex-poliushkin/theater/internal/theatercli.version=${RELEASE_TAG}" \
+              -o "${package_dir}/theater" \
+              ./cmd/theater
+
+            cp LICENSE "${package_dir}/LICENSE"
+            tar -czf "dist/${asset}.tar.gz" -C "${package_dir}" .
+          }
+
+          build_archive linux amd64
+          build_archive linux arm64
+          build_archive darwin amd64
+          build_archive darwin arm64
+
+      - name: Verify JetBrains plugin
+        run: gradle -p tools/jetbrains-thtr-plugin nativePluginCheck
+
+      - name: Collect JetBrains plugin ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          plugin_zip="tools/jetbrains-thtr-plugin/build/distributions/jetbrains-thtr-plugin-${RELEASE_VERSION}.zip"
+          if [[ ! -f "${plugin_zip}" ]]; then
+            echo "Expected JetBrains plugin ZIP was not produced: ${plugin_zip}" >&2
+            exit 1
+          fi
+          cp "${plugin_zip}" dist/
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum * > SHA256SUMS)
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" dist/* --clobber
+          else
+            gh release create "${RELEASE_TAG}" dist/* \
+              --verify-tag \
+              --title "${RELEASE_TAG}" \
+              --generate-notes
+          fi
