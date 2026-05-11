@@ -97,6 +97,62 @@ func TestRunnerExportsReportThroughPluginExporter(t *testing.T) {
 	}
 }
 
+func TestRunnerRedactsPluginReportExporterSensitiveConfigError(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is required for the non-Go smoke plugin")
+	}
+
+	paths := preparePluginFixtures(t)
+	configPath, lockPath := writePluginRegistryFiles(t, paths)
+	bundle, err := builtin.NewBundle()
+	if err != nil {
+		t.Fatalf("builtins: %v", err)
+	}
+	catalog := bundle.Catalog
+	matchers := bundle.Matchers
+
+	plugins, err := theater.LoadPluginCatalog(catalog, matchers, configPath, lockPath)
+	if err != nil {
+		t.Fatalf("load plugin catalog: %v", err)
+	}
+
+	spec := theater.StageSpec{
+		ID: "plugin-export-redaction",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "echo",
+			Acts: []theater.ActSpec{{
+				ID: "submit",
+				Action: theater.ActionSpec{
+					Use: "action.smoke.echo",
+					With: map[string]theater.BindingSpec{
+						"value": literalBinding("hello"),
+					},
+				},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{ID: "echo-call", ScenarioID: "echo"}},
+	}
+
+	secret := "leak-report-secret"
+	_, err = theater.NewRunner(plugins, plugins).Run(context.Background(), spec, theater.RunOptions{
+		ReportExporters: []theater.ReportExportSpec{{
+			Ref:  "report_exporter.smoke.write",
+			With: theater.Values{"path": secret},
+		}},
+	})
+	if err == nil {
+		t.Fatal("expected report exporter error")
+	}
+	if strings.Contains(err.Error(), secret) {
+		t.Fatalf("report exporter error leaked config value: %q", err)
+	}
+	if !strings.Contains(err.Error(), "[redacted]") {
+		t.Fatalf("report exporter error missing redaction marker: %q", err)
+	}
+}
+
 func TestRunnerUsesPluginStateBackend(t *testing.T) {
 	t.Parallel()
 
@@ -339,6 +395,13 @@ func TestRunnerRedactsPluginSensitiveFailuresAndDiagnostics(t *testing.T) {
 	if strings.Contains(actionNode.Failure.Cause.Error(), secret) {
 		t.Fatalf("action failure leaked secret: %q", actionNode.Failure.Cause.Error())
 	}
+	secretOutput, ok := actionNode.Observations.Outputs["secret_echo"]
+	if !ok {
+		t.Fatalf("action partial output shape lost: %#v", actionNode.Observations.Outputs)
+	}
+	if secretOutput.Preview == nil || !secretOutput.Preview.Redacted {
+		t.Fatalf("action partial output must be redacted: %#v", secretOutput)
+	}
 
 	raw, err := json.Marshal(result.Document())
 	if err != nil {
@@ -361,6 +424,85 @@ func TestRunnerRedactsPluginSensitiveFailuresAndDiagnostics(t *testing.T) {
 	}
 	if !foundDiagnostic {
 		t.Fatal("expected plugin diagnostic envelope")
+	}
+}
+
+func TestRunnerRedactsPluginTransformRootSensitiveInput(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is required for the non-Go smoke plugin")
+	}
+
+	paths := preparePluginFixtures(t)
+	configPath, lockPath := writePluginRegistryFiles(t, paths)
+	bundle, err := builtin.NewBundle()
+	if err != nil {
+		t.Fatalf("builtins: %v", err)
+	}
+	catalog := bundle.Catalog
+	matchers := bundle.Matchers
+
+	plugins, err := theater.LoadPluginCatalog(catalog, matchers, configPath, lockPath)
+	if err != nil {
+		t.Fatalf("load plugin catalog: %v", err)
+	}
+
+	secret := "leak-transform-secret"
+	spec := theater.StageSpec{
+		ID: "plugin-transform-redaction",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "fail",
+			Acts: []theater.ActSpec{{
+				ID: "transform",
+				Properties: map[string]theater.PropertySpec{
+					"value": {
+						Inventory: &theater.InventoryCall{
+							Use: "inventory.smoke.echo",
+							With: map[string]theater.BindingSpec{
+								"value": literalBinding(secret),
+							},
+						},
+						Decorators: []theater.DecoratorSpec{{
+							Use: "transform.smoke.wrap",
+							With: map[string]any{
+								"prefix": "",
+								"suffix": "",
+							},
+						}},
+					},
+				},
+				Action: theater.ActionSpec{
+					Use: "action.smoke.echo",
+					With: map[string]theater.BindingSpec{
+						"value": refBinding("value"),
+					},
+				},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{ID: "fail-call", ScenarioID: "fail"}},
+	}
+
+	result, err := theater.NewRunner(plugins, plugins).Run(context.Background(), spec, theater.RunOptions{})
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+	if got, want := result.Report.Status, theater.StatusFailed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+	if result.Report.Failure == nil || result.Report.Failure.Cause == nil {
+		t.Fatal("expected failed report cause")
+	}
+	if strings.Contains(result.Report.Failure.Cause.Error(), secret) {
+		t.Fatalf("report failure leaked transform input: %q", result.Report.Failure.Cause.Error())
+	}
+
+	raw, err := json.Marshal(result.Document())
+	if err != nil {
+		t.Fatalf("marshal run document: %v", err)
+	}
+	if strings.Contains(string(raw), secret) {
+		t.Fatalf("run document leaked transform input: %s", raw)
 	}
 }
 

@@ -32,5 +32,10 @@ go run ./cmd/theater explain transform json.decode
 Use selectors to apply transforms before `path`, `pick`, or matcher checks. See
 [Selectors](../selectors.md).
 
+Plugin transforms declare the same contracts in their manifest metadata.
+Single-shape contracts use `type`; union contracts use `kinds`, such as
+`"kinds": ["string", "object"]`. `theater explain transform <ref>` renders
+that contract as `string|object`.
+
 For procedures, use
 [Check JSON Response Fields](../../how-to/check-json-response-fields.md).

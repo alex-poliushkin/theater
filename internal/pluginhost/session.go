@@ -49,7 +49,6 @@ type Session struct {
 type OpenConfig struct {
 	Mode                protocol.SessionMode
 	AllowedCapabilities []string
-	Grants              protocol.HostGrants
 	SessionConfig       map[string]any
 }
 
@@ -58,9 +57,18 @@ type CallError struct {
 }
 
 func Open(ctx context.Context, plugin pluginregistry.LoadedPlugin, config OpenConfig) (*Session, protocol.InitializeResult, error) {
-	transport, err := openTransport(ctx, plugin)
+	env, err := pluginregistry.ResolvePluginEnv(plugin)
 	if err != nil {
 		return nil, protocol.InitializeResult{}, err
+	}
+	transport, err := openTransport(ctx, plugin, env)
+	if err != nil {
+		return nil, protocol.InitializeResult{}, err
+	}
+	grants := protocol.HostGrants{
+		ObserveLog:      plugin.Config.Grants.ObserveLog,
+		ObserveProgress: plugin.Config.Grants.ObserveProgress,
+		Env:             cloneStringMap(env),
 	}
 
 	session := &Session{
@@ -71,7 +79,7 @@ func Open(ctx context.Context, plugin pluginregistry.LoadedPlugin, config OpenCo
 		shutdownGrace:  resolveDuration(plugin.Config.Timeouts.Shutdown, defaultShutdownGrace),
 		cancelGrace:    resolveDuration(plugin.Config.Timeouts.CancelGrace, defaultCancelGrace),
 		requestTimeout: resolveDuration(plugin.Config.Timeouts.RequestDefault, defaultRequestTimeout),
-		redactor:       pluginredact.New(plugin.Config.Config, plugin.Config.Grants.Env),
+		redactor:       pluginredact.New(plugin.Config.Config, env),
 		kill:           transport.kill,
 		closeTransport: transport.close,
 	}
@@ -91,7 +99,7 @@ func Open(ctx context.Context, plugin pluginregistry.LoadedPlugin, config OpenCo
 		Mode:                config.Mode,
 		SessionConfig:       cloneMap(config.SessionConfig),
 		AllowedCapabilities: append([]string(nil), config.AllowedCapabilities...),
-		Grants:              config.Grants,
+		Grants:              grants,
 	}, nil, &result)
 	if err != nil {
 		_ = session.Close(ctx)
@@ -160,7 +168,7 @@ func (s *Session) Call(ctx context.Context, method string, params any, sink Noti
 			return s.wrapProcessError(fmt.Errorf("unexpected response id %q", response.ID))
 		}
 		if response.Error != nil {
-			return &CallError{Response: *response.Error}
+			return (&CallError{Response: *response.Error}).Redact(s.redactor.RedactText)
 		}
 		if result == nil || response.Result == nil {
 			return nil
@@ -209,7 +217,18 @@ func (e *CallError) Redact(redact func(string) string) *CallError {
 
 	cloned := *e
 	cloned.Response.Message = redact(cloned.Response.Message)
+	if len(cloned.Response.Data.PartialOutputs) != 0 {
+		outputs, _ := redactValue(cloned.Response.Data.PartialOutputs, redact).(map[string]any)
+		cloned.Response.Data.PartialOutputs = outputs
+	}
 	return &cloned
+}
+
+func (s *Session) RedactText(text string) string {
+	if s == nil {
+		return text
+	}
+	return s.redactor.RedactText(text)
 }
 
 func (s *Session) cancelOnContext(ctx context.Context, id string, done <-chan struct{}) {
@@ -389,6 +408,40 @@ func cloneMap(source map[string]any) map[string]any {
 	}
 
 	cloned := make(map[string]any, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+
+	return cloned
+}
+
+func redactValue(value any, redact func(string) string) any {
+	switch typed := value.(type) {
+	case string:
+		return redact(typed)
+	case map[string]any:
+		cloned := make(map[string]any, len(typed))
+		for key, child := range typed {
+			cloned[redact(key)] = redactValue(child, redact)
+		}
+		return cloned
+	case []any:
+		cloned := make([]any, len(typed))
+		for i := range typed {
+			cloned[i] = redactValue(typed[i], redact)
+		}
+		return cloned
+	default:
+		return value
+	}
+}
+
+func cloneStringMap(source map[string]string) map[string]string {
+	if len(source) == 0 {
+		return nil
+	}
+
+	cloned := make(map[string]string, len(source))
 	for key, value := range source {
 		cloned[key] = value
 	}

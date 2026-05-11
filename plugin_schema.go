@@ -311,6 +311,29 @@ func protectJSONCompatibleValue(value any, pointers []string) (any, error) {
 	return protected, nil
 }
 
+func protectJSONCompatibleObject(value any, pointers []string) (map[string]any, error) {
+	protected, err := protectJSONCompatibleValue(value, pointers)
+	if err != nil {
+		return nil, err
+	}
+	if object, ok := protected.(map[string]any); ok {
+		return object, nil
+	}
+	if !containsRootJSONPointer(pointers) {
+		return nil, fmt.Errorf("protected plugin value must be object, got %T", protected)
+	}
+
+	object, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("plugin value must be object, got %T", value)
+	}
+	protectedObject := make(map[string]any, len(object))
+	for key, child := range object {
+		protectedObject[key] = secretvalue.New(child)
+	}
+	return protectedObject, nil
+}
+
 func redactorForJSONPointers(value any, pointers []string) pluginredact.Redactor {
 	values, err := pluginredact.StringsAtPointers(value, pointers)
 	if err != nil {
@@ -318,6 +341,34 @@ func redactorForJSONPointers(value any, pointers []string) pluginredact.Redactor
 	}
 
 	return pluginredact.FromStrings(values)
+}
+
+func redactorForPluginValueInput(properties map[string]any, value any, pointers []string) pluginredact.Redactor {
+	if len(pointers) == 0 {
+		return pluginredact.Redactor{}
+	}
+
+	propertyPointers := make([]string, 0, len(pointers))
+	valuePointers := make([]string, 0, 1)
+	for i := range pointers {
+		if pointers[i] == "" {
+			valuePointers = append(valuePointers, pointers[i])
+			continue
+		}
+		propertyPointers = append(propertyPointers, pointers[i])
+	}
+
+	return redactorForJSONPointers(properties, propertyPointers).
+		Merge(redactorForJSONPointers(value, valuePointers))
+}
+
+func containsRootJSONPointer(pointers []string) bool {
+	for i := range pointers {
+		if pointers[i] == "" {
+			return true
+		}
+	}
+	return false
 }
 
 func partialBindingsJSON(bindings map[string]bindingPlan) (properties map[string]any, dynamic []string, err error) {
@@ -422,9 +473,14 @@ func escapeJSONPointerToken(value string) string {
 }
 
 func applySensitiveValueContractPaths(fields map[string]ValueContract, pointers []string) {
+	rootSensitive := containsRootJSONPointer(pointers)
 	for name := range fields {
 		contract := fields[name]
-		applySensitiveValueContract(&contract, onlyChildPointers(pointers, name))
+		childPointers := onlyChildPointers(pointers, name)
+		if rootSensitive {
+			childPointers = append(childPointers, "")
+		}
+		applySensitiveValueContract(&contract, childPointers)
 		fields[name] = contract
 	}
 }

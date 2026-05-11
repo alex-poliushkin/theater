@@ -95,9 +95,11 @@ type HostGrants struct {
 }
 
 type ValidateParams struct {
-	Capability   string         `json:"capability"`
-	Properties   map[string]any `json:"properties,omitempty"`
-	DynamicPaths []string       `json:"dynamic_paths,omitempty"`
+	Capability string         `json:"capability"`
+	Properties map[string]any `json:"properties,omitempty"`
+	// DynamicPaths names property JSON Pointer paths that are present in the
+	// authored call but unavailable during static validation.
+	DynamicPaths []string `json:"dynamic_paths,omitempty"`
 }
 
 type ValidateResult struct {
@@ -110,9 +112,11 @@ type ValidationDiagnostic struct {
 }
 
 type PrepareParams struct {
-	Capability   string         `json:"capability"`
-	Properties   map[string]any `json:"properties,omitempty"`
-	DynamicPaths []string       `json:"dynamic_paths,omitempty"`
+	Capability string         `json:"capability"`
+	Properties map[string]any `json:"properties,omitempty"`
+	// DynamicPaths has the same shape as ValidateParams.DynamicPaths. Prepare
+	// hooks must not assume dynamic paths are resolved before live execution.
+	DynamicPaths []string `json:"dynamic_paths,omitempty"`
 }
 
 type PrepareResult struct{}

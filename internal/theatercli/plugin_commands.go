@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	internalpluginregistry "github.com/alex-poliushkin/theater/internal/pluginregistry"
 	pluginmanifest "github.com/alex-poliushkin/theater/plugin/manifest"
@@ -48,7 +49,15 @@ type pluginInspectPluginView struct {
 	ManifestPath     string                        `json:"manifest_path"`
 	ExecutablePath   string                        `json:"executable_path"`
 	DescriptorDigest string                        `json:"descriptor_digest"`
+	Grants           *pluginInspectGrantsView      `json:"grants,omitempty"`
 	Capabilities     []pluginInspectCapabilityView `json:"capabilities"`
+}
+
+type pluginInspectGrantsView struct {
+	ObserveLog      bool     `json:"observe_log,omitempty"`
+	ObserveProgress bool     `json:"observe_progress,omitempty"`
+	LiteralEnv      []string `json:"literal_env,omitempty"`
+	EnvFromHost     []string `json:"env_from_host,omitempty"`
 }
 
 type pluginInspectCapabilityView struct {
@@ -75,6 +84,7 @@ type pluginDoctorPluginView struct {
 	Version         string
 	ManifestPath    string
 	ExecutablePath  string
+	Grants          []string
 	CapabilityCount int
 }
 
@@ -179,6 +189,9 @@ func (a *application) inspectPlugins(args []string) int {
 		fmt.Fprintf(a.stdout, "  manifest: %s\n", plugin.ManifestPath)
 		fmt.Fprintf(a.stdout, "  executable: %s\n", plugin.ExecutablePath)
 		fmt.Fprintf(a.stdout, "  digest: %s\n", plugin.Manifest.DescriptorDigest)
+		for _, grant := range pluginGrantLabels(plugin.Config.Grants) {
+			fmt.Fprintf(a.stdout, "  grant: %s\n", sanitizeCLIText(grant))
+		}
 		names := make([]string, 0, len(plugin.Capabilities))
 		for name := range plugin.Capabilities {
 			names = append(names, name)
@@ -218,6 +231,7 @@ func buildPluginInspectView(loaded *internalpluginregistry.LoadedRegistry) plugi
 			ManifestPath:     plugin.ManifestPath,
 			ExecutablePath:   plugin.ExecutablePath,
 			DescriptorDigest: plugin.Manifest.DescriptorDigest,
+			Grants:           buildPluginInspectGrants(plugin.Config.Grants),
 			Capabilities:     make([]pluginInspectCapabilityView, 0, len(names)),
 		}
 		for _, name := range names {
@@ -352,6 +366,9 @@ func (a *application) renderPluginDoctorReport(report pluginDoctorReport) {
 			fmt.Fprintf(a.stdout, "  %s %s\n", sanitizeCLIText(plugin.ID), sanitizeCLIText(plugin.Version))
 			fmt.Fprintf(a.stdout, "    manifest: %s\n", sanitizeCLIText(plugin.ManifestPath))
 			fmt.Fprintf(a.stdout, "    executable: %s\n", sanitizeCLIText(plugin.ExecutablePath))
+			if len(plugin.Grants) != 0 {
+				fmt.Fprintf(a.stdout, "    grants: %s\n", sanitizeCLIText(strings.Join(plugin.Grants, ", ")))
+			}
 			fmt.Fprintf(a.stdout, "    capabilities: %d\n", plugin.CapabilityCount)
 		}
 	}
@@ -366,12 +383,16 @@ func (a *application) renderPluginDoctorReport(report pluginDoctorReport) {
 		return
 	}
 	if report.LockPath == "" {
-		fmt.Fprintln(a.stdout, "  Fix the reported config, manifest, or executable problem, then rerun theater plugins doctor.")
+		fmt.Fprintln(
+			a.stdout,
+			"  Fix the reported config, manifest, executable, or host environment problem, "+
+				"then rerun theater plugins doctor.",
+		)
 		return
 	}
 	fmt.Fprintln(
 		a.stdout,
-		"  Fix the reported config, manifest, executable, or lock problem, "+
+		"  Fix the reported config, manifest, executable, host environment, or lock problem, "+
 			"or rerun theater plugins lock if the drift is intentional.",
 	)
 }
@@ -406,7 +427,12 @@ func buildPluginDoctorReport(options pluginCommandOptions) (report pluginDoctorR
 			Name:   "manifest and executable reachability",
 			Detail: fmt.Sprintf("%d plugin(s) reachable with manifest and executable digests", len(loaded.Plugins)),
 		},
+		buildPluginHostEnvironmentCheck(loaded),
 	)
+	if report.Checks[len(report.Checks)-1].Status != checkStatusOK {
+		report.Healthy = false
+		exitCode = 1
+	}
 	report.Plugins = buildPluginDoctorPlugins(loaded)
 
 	if options.pluginsLock == "" {
@@ -453,11 +479,93 @@ func buildPluginDoctorPlugins(loaded *internalpluginregistry.LoadedRegistry) []p
 			Version:         plugin.Manifest.Plugin.Version,
 			ManifestPath:    plugin.ManifestPath,
 			ExecutablePath:  plugin.ExecutablePath,
+			Grants:          pluginGrantLabels(plugin.Config.Grants),
 			CapabilityCount: len(plugin.Capabilities),
 		})
 	}
 
 	return plugins
+}
+
+func buildPluginInspectGrants(grants pluginregistry.Grants) *pluginInspectGrantsView {
+	literalEnv := sortedMapKeys(grants.Env)
+	envFromHost := sortedStrings(grants.EnvFromHost)
+	if !grants.ObserveLog && !grants.ObserveProgress && len(literalEnv) == 0 && len(envFromHost) == 0 {
+		return nil
+	}
+
+	return &pluginInspectGrantsView{
+		ObserveLog:      grants.ObserveLog,
+		ObserveProgress: grants.ObserveProgress,
+		LiteralEnv:      literalEnv,
+		EnvFromHost:     envFromHost,
+	}
+}
+
+func buildPluginHostEnvironmentCheck(loaded *internalpluginregistry.LoadedRegistry) pluginDoctorCheck {
+	count := 0
+	ids := sortedMapKeys(loaded.Plugins)
+	for _, id := range ids {
+		plugin := loaded.Plugins[id]
+		count += len(plugin.Config.Grants.EnvFromHost)
+		if _, err := internalpluginregistry.ResolvePluginEnv(plugin); err != nil {
+			return pluginDoctorCheck{
+				Status: checkStatusFail,
+				Name:   "host environment grants",
+				Detail: pluginCommandErrorDetail(err),
+			}
+		}
+	}
+
+	detail := "no host environment grants declared"
+	if count != 0 {
+		detail = fmt.Sprintf("%d host environment grant(s) available", count)
+	}
+	return pluginDoctorCheck{
+		Status: checkStatusOK,
+		Name:   "host environment grants",
+		Detail: detail,
+	}
+}
+
+func pluginGrantLabels(grants pluginregistry.Grants) []string {
+	labels := make([]string, 0, 2+len(grants.Env)+len(grants.EnvFromHost))
+	if grants.ObserveLog {
+		labels = append(labels, "observe_log")
+	}
+	if grants.ObserveProgress {
+		labels = append(labels, "observe_progress")
+	}
+	for _, name := range sortedMapKeys(grants.Env) {
+		labels = append(labels, "env literal "+name)
+	}
+	for _, name := range sortedStrings(grants.EnvFromHost) {
+		labels = append(labels, "env from host "+name)
+	}
+	return labels
+}
+
+func sortedMapKeys[V any](source map[string]V) []string {
+	if len(source) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(source))
+	for key := range source {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sortedStrings(source []string) []string {
+	if len(source) == 0 {
+		return nil
+	}
+
+	sorted := append([]string(nil), source...)
+	sort.Strings(sorted)
+	return sorted
 }
 
 func pluginCommandProfileFor(command string) pluginCommandProfile {

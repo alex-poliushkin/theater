@@ -1,6 +1,8 @@
 package pluginredact
 
 import (
+	"encoding/json"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -135,10 +137,18 @@ func collectStrings(source any) []string {
 			return nil
 		}
 		return []string{typed}
+	case bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, json.Number:
+		return []string{fmt.Sprint(typed)}
 	case secretvalue.Value:
 		return collectStrings(typed.Reveal())
 	case map[string]any:
 		values := make([]string, 0)
+		for key := range typed {
+			values = append(values, collectStrings(typed[key])...)
+		}
+		return values
+	case map[string]string:
+		values := make([]string, 0, len(typed))
 		for key := range typed {
 			values = append(values, collectStrings(typed[key])...)
 		}

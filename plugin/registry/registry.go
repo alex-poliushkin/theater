@@ -35,6 +35,7 @@ type Grants struct {
 	ObserveLog      bool              `json:"observe_log,omitempty"`
 	ObserveProgress bool              `json:"observe_progress,omitempty"`
 	Env             map[string]string `json:"env,omitempty"`
+	EnvFromHost     []string          `json:"env_from_host,omitempty"`
 }
 
 type TimeoutPolicy struct {
@@ -146,10 +147,30 @@ func (e PluginEntry) Validate(id string) error {
 		if strings.TrimSpace(name) == "" {
 			return fmt.Errorf("plugin %q env grant name must not be empty", id)
 		}
+		if !validEnvGrantName(name) {
+			return fmt.Errorf("plugin %q env grant name %q must be a valid environment variable name", id, name)
+		}
+	}
+	seenHostEnv := make(map[string]struct{}, len(e.Grants.EnvFromHost))
+	for _, name := range e.Grants.EnvFromHost {
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("plugin %q env_from_host grant name must not be empty", id)
+		}
+		if !validEnvGrantName(name) {
+			return fmt.Errorf("plugin %q env_from_host grant name %q must be a valid environment variable name", id, name)
+		}
+		if _, ok := seenHostEnv[name]; ok {
+			return fmt.Errorf("plugin %q env_from_host grant %q is duplicated", id, name)
+		}
+		if _, ok := e.Grants.Env[name]; ok {
+			return fmt.Errorf("plugin %q env grant %q cannot be both literal and env_from_host", id, name)
+		}
+		seenHostEnv[name] = struct{}{}
 	}
 
 	return nil
 }
+
 func (l LockFile) Validate() error {
 	if l.Schema != LockSchemaVersion {
 		return fmt.Errorf("plugin lock schema %q is not supported", l.Schema)
@@ -163,4 +184,18 @@ func (l LockFile) Validate() error {
 		}
 	}
 	return nil
+}
+
+func validEnvGrantName(name string) bool {
+	for i, r := range name {
+		switch {
+		case r == '_':
+		case 'A' <= r && r <= 'Z':
+		case 'a' <= r && r <= 'z':
+		case i > 0 && '0' <= r && r <= '9':
+		default:
+			return false
+		}
+	}
+	return name != ""
 }

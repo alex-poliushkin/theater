@@ -103,7 +103,7 @@
           "/secret"
         ],
         "sensitive_output_paths": [
-          "/secret_echo"
+          ""
         ]
       }
     },
@@ -127,6 +127,71 @@
       }
     },
     {
+      "kind": "action",
+      "name": "action.smoke.validate_probe",
+      "summary": "Exercise validate and prepare hook binding shapes",
+      "property_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "type": "string"
+          },
+          "literal": {
+            "type": "string"
+          },
+          "secret": {
+            "type": "string"
+          },
+          "dynamic": {
+            "type": "string"
+          },
+          "missing": {
+            "type": "string"
+          },
+          "object": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "literal": {
+                "type": "string"
+              },
+              "dynamic": {
+                "type": "string"
+              }
+            }
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "result_schema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": [
+          "prepared"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "prepared": {
+            "type": "boolean"
+          }
+        }
+      },
+      "annotations": {
+        "supports_validate": true,
+        "supports_prepare": true,
+        "sensitive_input_paths": [
+          "/secret"
+        ]
+      }
+    },
+    {
       "kind": "report_exporter",
       "name": "report_exporter.smoke.write",
       "summary": "Write the final run document to a JSON file",
@@ -145,7 +210,10 @@
       },
       "annotations": {
         "read_only": true,
-        "idempotent": true
+        "idempotent": true,
+        "sensitive_input_paths": [
+          "/path"
+        ]
       }
     },
     {
@@ -198,6 +266,9 @@
         }
       },
       "annotations": {
+        "sensitive_input_paths": [
+          ""
+        ],
         "transform": {
           "accepts": {
             "type": "string"
@@ -234,5 +305,5 @@
       }
     }
   ],
-  "descriptor_digest": "sha256:2cdcafd9890305367fbeef88ce917062503ec9ca0f0d8cc50e8b42c0fc1aa64d"
+  "descriptor_digest": "sha256:b613b0132363b27a38d1e7d99980695df6e1af5929493e75845e6a38173f507c"
 }

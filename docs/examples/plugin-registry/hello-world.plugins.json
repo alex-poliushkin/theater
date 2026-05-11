@@ -13,7 +13,12 @@
       "allow_capabilities": [
         "inventory.hello_world.message",
         "action.hello_world.echo"
-      ]
+      ],
+      "grants": {
+        "env_from_host": [
+          "PATH"
+        ]
+      }
     }
   }
 }

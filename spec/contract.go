@@ -1,6 +1,12 @@
 package spec
 
-import reportmodel "github.com/alex-poliushkin/theater/report"
+import (
+	"encoding/json"
+	"errors"
+	"sort"
+
+	reportmodel "github.com/alex-poliushkin/theater/report"
+)
 
 // Supported canonical runtime value kinds.
 const (
@@ -34,7 +40,10 @@ type Capture = reportmodel.Capture
 // ValueKind identifies the canonical runtime shape of a value.
 type ValueKind string
 
-// ValueKindSet is a set of allowed runtime value kinds.
+// ValueKindSet is a set of allowed runtime value kinds. JSON encodes it as a
+// stable array of kind names.
+//
+//nolint:recvcheck // UnmarshalJSON must assign the map; read-only set methods use value receivers.
 type ValueKindSet map[ValueKind]struct{}
 
 // ValueContract describes accepted or produced runtime values, including
@@ -159,6 +168,39 @@ func (s ValueKindSet) Clone() ValueKindSet {
 	return cloned
 }
 
+func (s ValueKindSet) MarshalJSON() ([]byte, error) {
+	if len(s) == 0 {
+		return []byte("null"), nil
+	}
+
+	return json.Marshal(valueKindsInStableOrder(s))
+}
+
+func (s *ValueKindSet) UnmarshalJSON(raw []byte) error {
+	if string(raw) == "null" {
+		*s = nil
+		return nil
+	}
+
+	var kinds []ValueKind
+	if err := json.Unmarshal(raw, &kinds); err == nil {
+		*s = NewValueKindSet(kinds...)
+		return nil
+	}
+
+	var legacy map[ValueKind]json.RawMessage
+	if err := json.Unmarshal(raw, &legacy); err == nil {
+		set := make(ValueKindSet, len(legacy))
+		for kind := range legacy {
+			set[kind] = struct{}{}
+		}
+		*s = set
+		return nil
+	}
+
+	return errors.New("value kind set must be an array of strings")
+}
+
 func (s ValueKindSet) Valid() bool {
 	if len(s) == 0 {
 		return false
@@ -171,6 +213,39 @@ func (s ValueKindSet) Valid() bool {
 	}
 
 	return true
+}
+
+func valueKindsInStableOrder(set ValueKindSet) []ValueKind {
+	ordered := []ValueKind{
+		ValueKindAny,
+		ValueKindString,
+		ValueKindNumber,
+		ValueKindBool,
+		ValueKindBytes,
+		ValueKindObject,
+		ValueKindList,
+		ValueKindNull,
+	}
+	values := make([]ValueKind, 0, len(set))
+	seen := make(map[ValueKind]struct{}, len(ordered))
+	for _, kind := range ordered {
+		seen[kind] = struct{}{}
+		if set.Contains(kind) {
+			values = append(values, kind)
+		}
+	}
+
+	extra := make([]ValueKind, 0)
+	for kind := range set {
+		if _, ok := seen[kind]; !ok {
+			extra = append(extra, kind)
+		}
+	}
+	sort.Slice(extra, func(i, j int) bool {
+		return extra[i] < extra[j]
+	})
+
+	return append(values, extra...)
 }
 
 func (c ValueContract) Clone() ValueContract {

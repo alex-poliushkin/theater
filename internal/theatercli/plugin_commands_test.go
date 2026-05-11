@@ -324,6 +324,230 @@ func TestApplicationPluginsLockAndInspect(t *testing.T) {
 	}
 }
 
+func TestApplicationPluginsInspectAndDoctorReportGrantShapeWithoutValues(t *testing.T) {
+	t.Setenv("THEATER_PLUGIN_HOST_GRANT_SHAPE", "host-secret-value")
+
+	grants := defaultSmokePluginGrants()
+	grants.ObserveLog = true
+	grants.EnvFromHost = []string{"THEATER_PLUGIN_HOST_GRANT_SHAPE"}
+	configPath, _ := writeSmokePluginFilesWithGrants(t, grants)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := newApplication(stdout, stderr)
+	if code := app.Run([]string{"plugins", "inspect", "-plugins-config", configPath}); code != 0 {
+		t.Fatalf("plugins inspect exit code: %d stderr=%s", code, stderr.String())
+	}
+	output := stdout.String()
+	for _, want := range []string{
+		"grant: observe_log",
+		"grant: env literal PATH",
+		"grant: env from host THEATER_PLUGIN_HOST_GRANT_SHAPE",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("plugins inspect output missing %q: %s", want, output)
+		}
+	}
+	if strings.Contains(output, "host-secret-value") {
+		t.Fatalf("plugins inspect output must not expose copied host env values: %s", output)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := app.Run([]string{"plugins", "inspect", "-plugins-config", configPath, "-format", "json"}); code != 0 {
+		t.Fatalf("plugins inspect json exit code: %d stderr=%s", code, stderr.String())
+	}
+	var view pluginInspectView
+	if err := json.Unmarshal(stdout.Bytes(), &view); err != nil {
+		t.Fatalf("decode inspect json: %v", err)
+	}
+	if len(view.Plugins) != 1 || view.Plugins[0].Grants == nil {
+		t.Fatalf("inspect json missing grants: %#v", view)
+	}
+	inspectGrants := view.Plugins[0].Grants
+	if !inspectGrants.ObserveLog {
+		t.Fatalf("inspect json missing observe_log grant: %#v", inspectGrants)
+	}
+	if got, want := fmt.Sprint(inspectGrants.LiteralEnv), "[PATH]"; got != want {
+		t.Fatalf("inspect json literal_env mismatch: got %s want %s", got, want)
+	}
+	if got, want := fmt.Sprint(inspectGrants.EnvFromHost), "[THEATER_PLUGIN_HOST_GRANT_SHAPE]"; got != want {
+		t.Fatalf("inspect json env_from_host mismatch: got %s want %s", got, want)
+	}
+	if strings.Contains(stdout.String(), "host-secret-value") {
+		t.Fatalf("plugins inspect json must not expose copied host env values: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := app.Run([]string{"plugins", "doctor", "-plugins-config", configPath}); code != 0 {
+		t.Fatalf("plugins doctor exit code: %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+	}
+	output = stdout.String()
+	for _, want := range []string{
+		"OK  host environment grants: 1 host environment grant(s) available",
+		"grants: observe_log, env literal PATH, env from host THEATER_PLUGIN_HOST_GRANT_SHAPE",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("plugins doctor output missing %q: %s", want, output)
+		}
+	}
+	if strings.Contains(output, "host-secret-value") {
+		t.Fatalf("plugins doctor output must not expose copied host env values: %s", output)
+	}
+}
+
+func TestApplicationPluginsDoctorReportsMissingHostEnvironmentGrant(t *testing.T) {
+	t.Parallel()
+
+	envName := "THEATER_PLUGIN_MISSING_HOST_GRANT_FOR_TEST"
+	if _, ok := os.LookupEnv(envName); ok {
+		t.Skipf("%s is set in the host environment", envName)
+	}
+
+	grants := defaultSmokePluginGrants()
+	grants.EnvFromHost = []string{envName}
+	configPath, _ := writeSmokePluginFilesWithGrants(t, grants)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := newApplication(stdout, stderr)
+	if code := app.Run([]string{"plugins", "inspect", "-plugins-config", configPath}); code != 0 {
+		t.Fatalf("plugins inspect exit code: %d stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "grant: env from host "+envName) {
+		t.Fatalf("plugins inspect output missing host grant name: %s", stdout.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := app.Run([]string{"plugins", "doctor", "-plugins-config", configPath}); code != 1 {
+		t.Fatalf("plugins doctor exit code mismatch: got %d want 1 stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+	}
+	output := stdout.String()
+	for _, want := range []string{
+		"plugin registry: not ready",
+		"FAIL  host environment grants:",
+		`plugin "smoke-plugin" env_from_host "` + envName + `" is not set`,
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("plugins doctor output missing %q: %s", want, output)
+		}
+	}
+}
+
+func TestApplicationValidateReportsMissingHostEnvironmentGrant(t *testing.T) {
+	t.Parallel()
+
+	envName := "THEATER_PLUGIN_MISSING_VALIDATE_HOST_GRANT_FOR_TEST"
+	if _, ok := os.LookupEnv(envName); ok {
+		t.Skipf("%s is set in the host environment", envName)
+	}
+
+	grants := defaultSmokePluginGrants()
+	grants.EnvFromHost = []string{envName}
+	configPath, lockPath := writeLockedSmokePluginFilesWithGrants(t, grants)
+	stagePath := writeStageFile(t, "plugin.thtr", `stage plugin_env
+scenario smoke
+  act echo
+    do action.smoke.echo(value: "hello")
+`)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := newApplication(stdout, stderr)
+	code := app.Run([]string{
+		commandValidate,
+		"--file", stagePath,
+		"--plugins-config", configPath,
+		"--plugins-lock", lockPath,
+		"--format", "json",
+	})
+	if code != 1 {
+		t.Fatalf("validate exit code mismatch: got %d want 1 stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+	}
+	response := decodeValidationResponse(t, stdout.Bytes())
+	diagnostic := findValidationDiagnostic(response.Diagnostics, "plugin_validate_session_failed")
+	if diagnostic == nil {
+		t.Fatalf("missing plugin_validate_session_failed diagnostic: %#v", response.Diagnostics)
+	}
+	if !strings.Contains(diagnostic.Summary, envName) {
+		t.Fatalf("diagnostic summary missing env name: %#v", diagnostic)
+	}
+}
+
+func TestApplicationValidateRedactsHostEnvironmentGrantDiagnostics(t *testing.T) {
+	secret := "host-secret-value"
+	t.Setenv("THEATER_PLUGIN_HOST_SECRET", secret)
+
+	grants := defaultSmokePluginGrants()
+	grants.EnvFromHost = []string{"THEATER_PLUGIN_HOST_SECRET"}
+	configPath, lockPath := writeLockedSmokePluginFilesWithGrants(t, grants)
+	stagePath := writeStageFile(t, "plugin.thtr", `stage plugin_env
+scenario smoke
+  act read
+    prop value = inventory.smoke.echo(value: "leak-env")
+    do action.generate
+      outputs:
+        value: $value
+`)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := newApplication(stdout, stderr)
+	code := app.Run([]string{
+		commandValidate,
+		"--file", stagePath,
+		"--plugins-config", configPath,
+		"--plugins-lock", lockPath,
+		"--format", "json",
+	})
+	if code != 1 {
+		t.Fatalf("validate exit code mismatch: got %d want 1 stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+	}
+	output := stdout.String()
+	if strings.Contains(output, secret) || strings.Contains(stderr.String(), secret) {
+		t.Fatalf("validate output leaked host env value: stdout=%s stderr=%s", output, stderr.String())
+	}
+	if !strings.Contains(output, "[redacted]") {
+		t.Fatalf("validate output missing redaction marker: %s", output)
+	}
+}
+
+func TestApplicationRunRedactsHostEnvironmentGrantErrors(t *testing.T) {
+	secret := "host-secret-value"
+	t.Setenv("THEATER_PLUGIN_HOST_SECRET", secret)
+
+	grants := defaultSmokePluginGrants()
+	grants.EnvFromHost = []string{"THEATER_PLUGIN_HOST_SECRET"}
+	configPath, lockPath := writeLockedSmokePluginFilesWithGrants(t, grants)
+	stagePath := writeStageFile(t, "plugin.thtr", `stage plugin_env
+scenario smoke
+  act echo
+    do action.smoke.echo(value: "leak-env-error")
+
+call run = smoke()
+`)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := newApplication(stdout, stderr)
+	code := app.Run([]string{
+		commandRun,
+		"--file", stagePath,
+		"--plugins-config", configPath,
+		"--plugins-lock", lockPath,
+		"--format", "json",
+	})
+	if code != 1 {
+		t.Fatalf("run exit code mismatch: got %d want 1 stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+	}
+	output := stdout.String()
+	if strings.Contains(output, secret) || strings.Contains(stderr.String(), secret) {
+		t.Fatalf("run output leaked host env value: stdout=%s stderr=%s", output, stderr.String())
+	}
+}
+
 func TestApplicationPluginsCommandsUseEnvironmentDefaults(t *testing.T) {
 	configPath, lockPath := writeSmokePluginFiles(t)
 	t.Setenv(envPluginsConfig, configPath)
@@ -579,10 +803,53 @@ func writeSmokePluginFiles(t *testing.T) (string, string) {
 	t.Helper()
 
 	root := repoRoot(t)
-	return writeSmokePluginFilesWithManifest(t, filepath.Join(root, "testdata", "plugins", "smoke", "manifest.json"))
+	return writeSmokePluginFilesWithManifestAndGrants(
+		t,
+		filepath.Join(root, "testdata", "plugins", "smoke", "manifest.json"),
+		defaultSmokePluginGrants(),
+	)
+}
+
+func writeSmokePluginFilesWithGrants(t *testing.T, grants pluginregistry.Grants) (string, string) {
+	t.Helper()
+
+	root := repoRoot(t)
+	return writeSmokePluginFilesWithManifestAndGrants(
+		t,
+		filepath.Join(root, "testdata", "plugins", "smoke", "manifest.json"),
+		grants,
+	)
+}
+
+func writeLockedSmokePluginFilesWithGrants(t *testing.T, grants pluginregistry.Grants) (string, string) {
+	t.Helper()
+
+	configPath, lockPath := writeSmokePluginFilesWithGrants(t, grants)
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		commandPlugins,
+		commandPluginsLock,
+		"--plugins-config", configPath,
+		"--plugins-lock", lockPath,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("plugins lock exit code mismatch: got %d stderr=%q stdout=%q", code, stderr.String(), stdout.String())
+	}
+
+	return configPath, lockPath
 }
 
 func writeSmokePluginFilesWithManifest(t *testing.T, manifestPath string) (string, string) {
+	t.Helper()
+
+	return writeSmokePluginFilesWithManifestAndGrants(t, manifestPath, defaultSmokePluginGrants())
+}
+
+func writeSmokePluginFilesWithManifestAndGrants(
+	t *testing.T,
+	manifestPath string,
+	grants pluginregistry.Grants,
+) (string, string) {
 	t.Helper()
 
 	root := repoRoot(t)
@@ -614,11 +881,7 @@ func writeSmokePluginFilesWithManifest(t *testing.T, manifestPath string) (strin
 					"transform.smoke.wrap",
 					"matcher.smoke.equal",
 				},
-				Grants: pluginregistry.Grants{
-					Env: map[string]string{
-						"PATH": os.Getenv("PATH"),
-					},
-				},
+				Grants: grants,
 			},
 		},
 	}
@@ -627,6 +890,14 @@ func writeSmokePluginFilesWithManifest(t *testing.T, manifestPath string) (strin
 	lockPath := filepath.Join(tempDir, "plugins.lock.json")
 	writeJSONFile(t, configPath, config)
 	return configPath, lockPath
+}
+
+func defaultSmokePluginGrants() pluginregistry.Grants {
+	return pluginregistry.Grants{
+		Env: map[string]string{
+			"PATH": os.Getenv("PATH"),
+		},
+	}
 }
 
 func writeDraftSmokeManifest(t *testing.T, digest string) string {

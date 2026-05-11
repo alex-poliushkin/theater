@@ -1,0 +1,12 @@
+{
+  "kinds": [
+    "string",
+    "object"
+  ],
+  "fields": {
+    "otp": {
+      "type": "string",
+      "required": true
+    }
+  }
+}

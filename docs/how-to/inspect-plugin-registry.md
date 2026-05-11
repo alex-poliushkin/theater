@@ -23,7 +23,12 @@ and allows two capability names.
       "allow_capabilities": [
         "inventory.hello_world.message",
         "action.hello_world.echo"
-      ]
+      ],
+      "grants": {
+        "env_from_host": [
+          "PATH"
+        ]
+      }
     }
   }
 }
@@ -31,25 +36,25 @@ and allows two capability names.
 
 Inspect the registry:
 
-<!-- theater-doc: command id=howto-plugin-inspect cwd=../.. expect-stdout=hello-world expect-stdout-2=inventory.hello_world.message -->
+<!-- theater-doc: command id=howto-plugin-inspect cwd=../.. expect-stdout=hello-world expect-stdout-2=inventory.hello_world.message expect-stdout-3="\"grants\"" expect-stdout-4="\"env_from_host\"" -->
 ```sh
 go run ./cmd/theater plugins inspect --plugins-config docs/examples/plugin-registry/hello-world.plugins.json --format json
 ```
 
-The JSON output includes the `hello-world` plugin id and the allowed capability
-names.
+The JSON output includes the `hello-world` plugin id, allowed capability names,
+and grant names. Environment values are not printed.
 
 Run the readiness check:
 
-<!-- theater-doc: command id=howto-plugin-doctor cwd=../.. expect-stdout=ready -->
+<!-- theater-doc: command id=howto-plugin-doctor cwd=../.. expect-stdout=ready expect-stdout-2="host environment grants" expect-stdout-3="env from host PATH" -->
 ```sh
 go run ./cmd/theater plugins doctor --plugins-config docs/examples/plugin-registry/hello-world.plugins.json
 ```
 
-`plugin registry: ready` means the registry is valid and the manifest and
-executable path are reachable. When a lock file is supplied, `plugins doctor`
-also checks lock drift. Use `plugins inspect` to review allowed capability
-names.
+`plugin registry: ready` means the registry is valid, the manifest and
+executable path are reachable, and copied host environment grants are available.
+When a lock file is supplied, `plugins doctor` also checks lock drift. Use
+`plugins inspect` to review allowed capability names and plugin grant shape.
 
 Check that the example plugin process can start from this checkout:
 
@@ -62,3 +67,8 @@ Use `plugins inspect` and `plugins doctor` as preflight with only
 `--plugins-config`. Before a plugin-backed stage can be used with `validate` or
 `run`, create a lock file with `plugins lock` and pass both `--plugins-config`
 and `--plugins-lock`.
+
+For source-safe registries, prefer `grants.env_from_host` over literal
+`grants.env` secret values. A registry such as
+`"env_from_host": ["AZURE_CLIENT_ID"]` copies only that named host variable into
+the plugin process. Theater does not pass through the full ambient environment.

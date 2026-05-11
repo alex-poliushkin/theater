@@ -9,12 +9,14 @@ import time
 
 PLUGIN = {"id": "smoke-plugin", "version": "0.2.0"}
 PROTOCOL = {"name": "theater-jsonrpc", "major": 1, "minor": 0}
-DIGEST = "sha256:2cdcafd9890305367fbeef88ce917062503ec9ca0f0d8cc50e8b42c0fc1aa64d"
+DIGEST = "sha256:b613b0132363b27a38d1e7d99980695df6e1af5929493e75845e6a38173f507c"
+PREPARED = set()
 SUPPORTED = {
     "inventory.smoke.echo",
     "action.smoke.echo",
     "action.smoke.secret_fail",
     "action.smoke.sleep",
+    "action.smoke.validate_probe",
     "report_exporter.smoke.write",
     "state_backend.smoke.file",
     "transform.smoke.wrap",
@@ -56,6 +58,34 @@ def plugin_error(message, theater_code="plugin_failed", partial=None):
     if partial is not None:
         data["partial_outputs"] = partial
     return {"code": -32001, "message": message, "data": data}
+
+
+def validate_probe_shape(params):
+    properties = params.get("properties") or {}
+    dynamic_paths = set(params.get("dynamic_paths") or [])
+    expected_paths = {"/dynamic", "/object/dynamic", "/items/1", "/items"}
+    expected_keys = {"mode", "literal", "secret", "object"}
+    errors = []
+    if set(properties.keys()) != expected_keys:
+        errors.append(f"properties keys mismatch: got {sorted(properties.keys())}")
+    if dynamic_paths != expected_paths:
+        errors.append(f"dynamic paths mismatch: got {sorted(dynamic_paths)}")
+    if properties.get("literal") != "static":
+        errors.append("literal property missing")
+    if properties.get("secret") != "validate-secret":
+        errors.append("secret property missing")
+    if "dynamic" in properties:
+        errors.append("dynamic property was resolved too early")
+    if "missing" in properties or "/missing" in dynamic_paths:
+        errors.append("absent property was reported as present")
+    nested = properties.get("object") or {}
+    if set(nested.keys()) != {"literal"}:
+        errors.append(f"object keys mismatch: got {sorted(nested.keys())}")
+    if nested.get("literal") != "nested-static":
+        errors.append("object literal property missing")
+    if "items" in properties:
+        errors.append("dynamic list was resolved too early")
+    return errors
 
 
 def now_utc():
@@ -326,7 +356,12 @@ def main():
                 capability = params.get("capability")
                 properties = params.get("properties", {})
                 if capability == "action.smoke.echo":
-                    response["result"] = {"outputs": {"echo": properties.get("value")}}
+                    value = properties.get("value")
+                    if value == "leak-env-error":
+                        leaked = os.environ.get("THEATER_PLUGIN_HOST_SECRET", "")
+                        response["error"] = plugin_error(f"host env leak {leaked}", partial={"echo": leaked})
+                    else:
+                        response["result"] = {"outputs": {"echo": value}}
                 elif capability == "action.smoke.secret_fail":
                     secret = properties.get("secret")
                     notify("theater.log", {"message": f"secret log {secret}"})
@@ -338,15 +373,24 @@ def main():
                 elif capability == "action.smoke.sleep":
                     time.sleep(int(properties.get("ms", 0)) / 1000.0)
                     response["result"] = {"outputs": {}}
+                elif capability == "action.smoke.validate_probe":
+                    response["result"] = {
+                        "outputs": {
+                            "prepared": "action.smoke.validate_probe" in PREPARED
+                        }
+                    }
                 else:
                     response["error"] = {"code": -32600, "message": f"unsupported action {capability}"}
             elif method == "theater.report.export":
                 properties = params.get("properties", {})
                 path = properties.get("path") or ""
-                with open(path, "w", encoding="utf-8") as fh:
-                    json.dump(params.get("document"), fh, indent=2, sort_keys=True)
-                    fh.write("\n")
-                response["result"] = {}
+                if path == "leak-report-secret":
+                    response["error"] = plugin_error(f"report path leaked {path}")
+                else:
+                    with open(path, "w", encoding="utf-8") as fh:
+                        json.dump(params.get("document"), fh, indent=2, sort_keys=True)
+                        fh.write("\n")
+                    response["result"] = {}
             elif method == "theater.state.read":
                 response["result"] = state_read(params)
             elif method == "theater.state.cas":
@@ -364,9 +408,12 @@ def main():
                 value = params.get("value")
                 if not isinstance(value, str):
                     raise RuntimeError(f"transform.smoke.wrap expects string value, got {type(value).__name__}")
+                if value == "leak-transform-secret":
+                    response["error"] = plugin_error(f"transform leaked {value}")
                 prefix = properties.get("prefix") or ""
                 suffix = properties.get("suffix") or ""
-                response["result"] = {"value": f"{prefix}{value}{suffix}"}
+                if "error" not in response:
+                    response["result"] = {"value": f"{prefix}{value}{suffix}"}
             elif method == "theater.matcher.check":
                 properties = params.get("properties", {})
                 actual = params.get("actual")
@@ -382,8 +429,30 @@ def main():
                 diagnostics = []
                 if capability == "inventory.smoke.echo" and properties.get("value") == "invalid":
                     diagnostics.append({"path": "/value", "message": "value must not be invalid"})
+                if capability == "inventory.smoke.echo" and properties.get("value") == "leak-env":
+                    leaked = os.environ.get("THEATER_PLUGIN_HOST_SECRET", "")
+                    diagnostics.append({"path": "/value", "message": f"host env leak {leaked}"})
+                if capability == "action.smoke.validate_probe" and properties.get("mode") == "assert-validate-shape":
+                    errors = validate_probe_shape(params)
+                    if errors:
+                        diagnostics.append({"path": "/mode", "message": "shape wrong: " + ", ".join(errors)})
+                    else:
+                        diagnostics.append({"path": "/mode", "message": "shape ok: static, nested dynamic, list dynamic, missing absent"})
+                if capability == "action.smoke.validate_probe" and properties.get("mode") == "leak-validate-secret":
+                    diagnostics.append({"path": f"/{properties.get('secret')}", "message": f"validate secret leak {properties.get('secret')}"})
+                if capability == "action.smoke.validate_probe" and properties.get("mode") == "leak-validate-error-secret":
+                    raise RuntimeError(f"validate error secret leak {properties.get('secret')}")
                 response["result"] = {"diagnostics": diagnostics}
             elif method == "theater.prepare":
+                capability = params.get("capability")
+                properties = params.get("properties", {})
+                if capability == "action.smoke.validate_probe" and properties.get("mode") == "assert-prepare-shape":
+                    errors = validate_probe_shape(params)
+                    if errors:
+                        raise RuntimeError("prepare shape wrong: " + ", ".join(errors))
+                    PREPARED.add(capability)
+                if capability == "action.smoke.validate_probe" and properties.get("mode") == "leak-prepare-secret":
+                    raise RuntimeError(f"prepare secret leak {properties.get('secret')}")
                 response["result"] = {}
             elif method == "theater.shutdown":
                 response["result"] = {}

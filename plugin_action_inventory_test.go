@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	theater "github.com/alex-poliushkin/theater"
@@ -76,6 +77,191 @@ func TestValidatorRunsPluginValidateHooks(t *testing.T) {
 	}
 	if got, want := diagnostics[0].Path, "stage.plugin-validate/scenario.validate/act.query/property.user/inventory/with.value"; got != want {
 		t.Fatalf("diagnostic path mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestValidatorPassesDynamicBindingShapeToPluginValidateHook(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is required for the non-Go smoke plugin")
+	}
+
+	paths := preparePluginFixtures(t)
+	configPath, lockPath := writePluginRegistryFiles(t, paths)
+	bundle, err := builtin.NewBundle()
+	if err != nil {
+		t.Fatalf("builtins: %v", err)
+	}
+	catalog := bundle.Catalog
+	matchers := bundle.Matchers
+
+	plugins, err := theater.LoadPluginCatalog(catalog, matchers, configPath, lockPath)
+	if err != nil {
+		t.Fatalf("load plugin catalog: %v", err)
+	}
+
+	diagnostics := theater.NewValidator(plugins, plugins).Validate(pluginValidateProbeSpec("assert-validate-shape", false))
+	if len(diagnostics) == 0 {
+		t.Fatal("expected plugin validation diagnostic")
+	}
+	if got, want := diagnostics[0].Code, "plugin_validate_diagnostic"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+	if got := diagnostics[0].Summary; got != "shape ok: static, nested dynamic, list dynamic, missing absent" {
+		t.Fatalf("diagnostic summary mismatch: got %q", got)
+	}
+}
+
+func TestRunnerPassesDynamicBindingShapeToPluginPrepareHook(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is required for the non-Go smoke plugin")
+	}
+
+	paths := preparePluginFixtures(t)
+	configPath, lockPath := writePluginRegistryFiles(t, paths)
+	bundle, err := builtin.NewBundle()
+	if err != nil {
+		t.Fatalf("builtins: %v", err)
+	}
+	catalog := bundle.Catalog
+	matchers := bundle.Matchers
+
+	plugins, err := theater.LoadPluginCatalog(catalog, matchers, configPath, lockPath)
+	if err != nil {
+		t.Fatalf("load plugin catalog: %v", err)
+	}
+
+	result, err := theater.NewRunner(plugins, plugins).Run(
+		context.Background(),
+		pluginValidateProbeSpec("assert-prepare-shape", true),
+		theater.RunOptions{},
+	)
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+	if got, want := result.Report.Status, theater.StatusPassed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestValidatorRedactsPluginValidateSensitiveStaticProperties(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is required for the non-Go smoke plugin")
+	}
+
+	paths := preparePluginFixtures(t)
+	configPath, lockPath := writePluginRegistryFiles(t, paths)
+	bundle, err := builtin.NewBundle()
+	if err != nil {
+		t.Fatalf("builtins: %v", err)
+	}
+	catalog := bundle.Catalog
+	matchers := bundle.Matchers
+
+	plugins, err := theater.LoadPluginCatalog(catalog, matchers, configPath, lockPath)
+	if err != nil {
+		t.Fatalf("load plugin catalog: %v", err)
+	}
+
+	diagnostics := theater.NewValidator(plugins, plugins).Validate(pluginValidateProbeSpec("leak-validate-secret", false))
+	if len(diagnostics) == 0 {
+		t.Fatal("expected plugin validation diagnostic")
+	}
+	if got := diagnostics[0].Summary; strings.Contains(got, "validate-secret") {
+		t.Fatalf("validate diagnostic leaked secret: %q", got)
+	}
+	if got := diagnostics[0].Summary; !strings.Contains(got, "[redacted]") {
+		t.Fatalf("validate diagnostic missing redaction marker: %q", got)
+	}
+	if got := diagnostics[0].Path; strings.Contains(got, "validate-secret") {
+		t.Fatalf("validate diagnostic path leaked secret: %q", got)
+	}
+	if got := diagnostics[0].Path; !strings.Contains(got, "[redacted]") {
+		t.Fatalf("validate diagnostic path missing redaction marker: %q", got)
+	}
+}
+
+func TestValidatorRedactsPluginValidateSensitiveStaticPropertyError(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is required for the non-Go smoke plugin")
+	}
+
+	paths := preparePluginFixtures(t)
+	configPath, lockPath := writePluginRegistryFiles(t, paths)
+	bundle, err := builtin.NewBundle()
+	if err != nil {
+		t.Fatalf("builtins: %v", err)
+	}
+	catalog := bundle.Catalog
+	matchers := bundle.Matchers
+
+	plugins, err := theater.LoadPluginCatalog(catalog, matchers, configPath, lockPath)
+	if err != nil {
+		t.Fatalf("load plugin catalog: %v", err)
+	}
+
+	diagnostics := theater.NewValidator(plugins, plugins).Validate(pluginValidateProbeSpec("leak-validate-error-secret", false))
+	if len(diagnostics) == 0 {
+		t.Fatal("expected plugin validation diagnostic")
+	}
+	if got, want := diagnostics[0].Code, "plugin_validate_call_failed"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+	if got := diagnostics[0].Summary; strings.Contains(got, "validate-secret") {
+		t.Fatalf("validate error leaked secret: %q", got)
+	}
+	if got := diagnostics[0].Summary; !strings.Contains(got, "[redacted]") {
+		t.Fatalf("validate error missing redaction marker: %q", got)
+	}
+}
+
+func TestRunnerRedactsPluginPrepareSensitiveStaticPropertyError(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is required for the non-Go smoke plugin")
+	}
+
+	paths := preparePluginFixtures(t)
+	configPath, lockPath := writePluginRegistryFiles(t, paths)
+	bundle, err := builtin.NewBundle()
+	if err != nil {
+		t.Fatalf("builtins: %v", err)
+	}
+	catalog := bundle.Catalog
+	matchers := bundle.Matchers
+
+	plugins, err := theater.LoadPluginCatalog(catalog, matchers, configPath, lockPath)
+	if err != nil {
+		t.Fatalf("load plugin catalog: %v", err)
+	}
+
+	result, err := theater.NewRunner(plugins, plugins).Run(
+		context.Background(),
+		pluginValidateProbeSpec("leak-prepare-secret", false),
+		theater.RunOptions{},
+	)
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+	if got, want := result.Report.Status, theater.StatusFailed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+	if result.Report.Failure == nil || result.Report.Failure.Cause == nil {
+		t.Fatal("expected prepare failure cause")
+	}
+	if got := result.Report.Failure.Cause.Error(); strings.Contains(got, "validate-secret") {
+		t.Fatalf("prepare error leaked secret: %q", got)
+	}
+	if got := result.Report.Failure.Cause.Error(); !strings.Contains(got, "[redacted]") {
+		t.Fatalf("prepare error missing redaction marker: %q", got)
 	}
 }
 
@@ -349,6 +535,7 @@ func writePluginRegistryFiles(t *testing.T, paths pluginFixturePaths) (string, s
 					"action.smoke.echo",
 					"action.smoke.secret_fail",
 					"action.smoke.sleep",
+					"action.smoke.validate_probe",
 					"report_exporter.smoke.write",
 					"state_backend.smoke.file",
 					"transform.smoke.wrap",
@@ -408,6 +595,60 @@ func writeJSONFile(t *testing.T, path string, value any) {
 	}
 }
 
+func pluginValidateProbeSpec(mode string, expectPrepared bool) theater.StageSpec {
+	expectations := []theater.ExpectationSpec(nil)
+	if expectPrepared {
+		expectations = []theater.ExpectationSpec{{
+			ID:      "prepared",
+			Subject: theater.SubjectSpec{Field: "prepared"},
+			Assert: theater.AssertSpec{
+				Ref: builtinexpectation.EqualRef,
+				Args: map[string]theater.BindingSpec{
+					"expected": literalBinding(true),
+				},
+			},
+		}}
+	}
+
+	return theater.StageSpec{
+		ID: "plugin-validate-probe",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "probe",
+			Inputs: map[string]theater.ValueContract{
+				"runtime_value": {Kind: theater.ValueKindString, Required: true},
+			},
+			Acts: []theater.ActSpec{{
+				ID: "check",
+				Action: theater.ActionSpec{
+					Use: "action.smoke.validate_probe",
+					With: map[string]theater.BindingSpec{
+						"mode":    literalBinding(mode),
+						"literal": literalBinding("static"),
+						"secret":  literalBinding("validate-secret"),
+						"dynamic": refBinding("runtime_value"),
+						"object": objectBinding(map[string]theater.BindingSpec{
+							"literal": literalBinding("nested-static"),
+							"dynamic": refBinding("runtime_value"),
+						}),
+						"items": listBinding(
+							literalBinding("first"),
+							refBinding("runtime_value"),
+						),
+					},
+				},
+				Expectations: expectations,
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{
+			ID:         "probe-call",
+			ScenarioID: "probe",
+			Bindings: map[string]theater.BindingSpec{
+				"runtime_value": literalBinding("resolved-at-runtime"),
+			},
+		}},
+	}
+}
+
 func repoRoot(t *testing.T) string {
 	t.Helper()
 
@@ -430,6 +671,13 @@ func objectBinding(fields map[string]theater.BindingSpec) theater.BindingSpec {
 	return theater.BindingSpec{
 		Kind:   theater.BindingKindObject,
 		Object: fields,
+	}
+}
+
+func listBinding(items ...theater.BindingSpec) theater.BindingSpec {
+	return theater.BindingSpec{
+		Kind: theater.BindingKindList,
+		List: items,
 	}
 }
 

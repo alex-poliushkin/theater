@@ -219,20 +219,24 @@ func (c *PluginCatalog) validatePlugins(ctx context.Context, stage *stagePlan) [
 		}
 
 		session := sessions[reference.pluginID]
+		callRedactor := redactorForJSONPointers(properties, capability.capability.Manifest.Annotations.SensitiveInputPaths)
+		redactHookText := func(text string) string {
+			return callRedactor.RedactText(session.RedactText(text))
+		}
 		callCtx, cancel := pluginPhaseTimeoutContext(ctx, capability.plugin.Config.Timeouts.Validate)
 		var result pluginprotocol.ValidateResult
 		err = session.Call(callCtx, pluginprotocol.MethodValidate, pluginprotocol.ValidateParams{
 			Capability:   reference.capabilityName,
 			Properties:   properties,
 			DynamicPaths: dynamicPaths,
-		}, nil, &result)
+		}, pluginActionSink{redactor: callRedactor}, &result)
 		cancel()
 		if err != nil {
 			diagnostics = append(diagnostics, Diagnostic{
 				Code:     "plugin_validate_call_failed",
 				Path:     reference.descriptorPath,
 				Severity: SeverityError,
-				Summary:  err.Error(),
+				Summary:  redactPluginCallErrorText(err, redactHookText).Error(),
 			})
 			continue
 		}
@@ -240,9 +244,9 @@ func (c *PluginCatalog) validatePlugins(ctx context.Context, stage *stagePlan) [
 		for _, item := range result.Diagnostics {
 			diagnostics = append(diagnostics, Diagnostic{
 				Code:     "plugin_validate_diagnostic",
-				Path:     pluginDiagnosticPath(reference.bindingParentPath, item.Path),
+				Path:     redactHookText(pluginDiagnosticPath(reference.bindingParentPath, item.Path)),
 				Severity: SeverityError,
-				Summary:  item.Message,
+				Summary:  redactHookText(item.Message),
 			})
 		}
 	}
@@ -274,14 +278,19 @@ func (c *PluginCatalog) preparePluginRun(ctx context.Context, stage *stagePlan) 
 		}
 
 		callCtx, cancel := pluginPhaseTimeoutContext(ctx, capability.plugin.Config.Timeouts.Prepare)
-		if err := sessions[reference.pluginID].Call(callCtx, pluginprotocol.MethodPrepare, pluginprotocol.PrepareParams{
+		session := sessions[reference.pluginID]
+		callRedactor := redactorForJSONPointers(properties, capability.capability.Manifest.Annotations.SensitiveInputPaths)
+		redactHookText := func(text string) string {
+			return callRedactor.RedactText(session.RedactText(text))
+		}
+		if err := session.Call(callCtx, pluginprotocol.MethodPrepare, pluginprotocol.PrepareParams{
 			Capability:   reference.capabilityName,
 			Properties:   properties,
 			DynamicPaths: dynamicPaths,
-		}, nil, nil); err != nil {
+		}, pluginActionSink{redactor: callRedactor}, nil); err != nil {
 			cancel()
 			closeSessions(ctx)
-			return ctx, nil, err
+			return ctx, nil, redactPluginCallErrorText(err, redactHookText)
 		}
 		cancel()
 	}
@@ -690,7 +699,6 @@ func (c *PluginCatalog) openPluginSessions(
 		session, _, err := pluginhost.Open(ctx, plugin, pluginhost.OpenConfig{
 			Mode:                mode,
 			AllowedCapabilities: names,
-			Grants:              pluginHostGrants(plugin.Config),
 			SessionConfig:       plugin.Config.Config,
 		})
 		if err != nil {
@@ -701,14 +709,6 @@ func (c *PluginCatalog) openPluginSessions(
 	}
 
 	return sessions, closeSessions, nil
-}
-
-func pluginHostGrants(entry pluginregistry.PluginEntry) pluginprotocol.HostGrants {
-	return pluginprotocol.HostGrants{
-		ObserveLog:      entry.Grants.ObserveLog,
-		ObserveProgress: entry.Grants.ObserveProgress,
-		Env:             cloneStringMap(entry.Grants.Env),
-	}
 }
 
 func pluginPhaseTimeoutContext(ctx context.Context, raw string) (context.Context, context.CancelFunc) {
@@ -904,7 +904,11 @@ func (t pluginTransform) Compile(args Values) (DecoratorFunc, error) {
 			return nil, err
 		}
 
-		callRedactor := redactorForJSONPointers(propertiesMap, t.capability.Manifest.Annotations.SensitiveInputPaths)
+		callRedactor := redactorForPluginValueInput(
+			propertiesMap,
+			inputValue,
+			t.capability.Manifest.Annotations.SensitiveInputPaths,
+		)
 		var result pluginprotocol.TransformApplyResult
 		callCtx := context.Background()
 		if runtime.callContext != nil && runtime.callContext() != nil {
@@ -982,7 +986,11 @@ func (m pluginMatcher) Check(ctx context.Context, actual any) error {
 		return err
 	}
 
-	callRedactor := redactorForJSONPointers(propertiesMap, m.capability.Manifest.Annotations.SensitiveInputPaths)
+	callRedactor := redactorForPluginValueInput(
+		propertiesMap,
+		actualValue,
+		m.capability.Manifest.Annotations.SensitiveInputPaths,
+	)
 	if err := runtime.sessions[m.pluginID].Call(
 		ctx,
 		pluginprotocol.MethodMatcherCheck,
@@ -1154,6 +1162,18 @@ func redactPluginError(err error, redact func(string) string) error {
 	}
 }
 
+func redactPluginCallError(err error, redactor pluginredact.Redactor) error {
+	return redactPluginCallErrorText(err, redactor.RedactText)
+}
+
+func redactPluginCallErrorText(err error, redact func(string) string) error {
+	var callErr *pluginhost.CallError
+	if errors.As(err, &callErr) {
+		return callErr.Redact(redact)
+	}
+	return redactPluginError(err, redact)
+}
+
 func pluginActionOutputs(capability internalpluginregistry.LoadedCapability, outputs map[string]any) (Outputs, error) {
 	if outputs == nil {
 		outputs = map[string]any{}
@@ -1169,12 +1189,11 @@ func pluginActionOutputs(capability internalpluginregistry.LoadedCapability, out
 	if err := validateJSONCompatibleSchema(capability.ResultResolved, value); err != nil {
 		return nil, err
 	}
-	value, err = protectJSONCompatibleValue(value, capability.Manifest.Annotations.SensitiveOutputPaths)
+	mapValue, err := protectJSONCompatibleObject(value, capability.Manifest.Annotations.SensitiveOutputPaths)
 	if err != nil {
 		return nil, err
 	}
 
-	mapValue, _ := value.(map[string]any)
 	resolved := make(Outputs, len(mapValue))
 	for key, child := range mapValue {
 		resolved[key] = child
@@ -1294,26 +1313,31 @@ func (e pluginReportExporter) Export(ctx context.Context, config Values, documen
 	if err := validateJSONCompatibleSchema(e.capability.PropertyResolved, propertiesMap); err != nil {
 		return err
 	}
+	callRedactor := redactorForJSONPointers(propertiesMap, e.capability.Manifest.Annotations.SensitiveInputPaths)
 
 	if e.capability.Manifest.Annotations.SupportsPrepare {
 		callCtx, cancel := pluginPhaseTimeoutContext(ctx, e.plugin.Config.Timeouts.Prepare)
 		err = session.Call(callCtx, pluginprotocol.MethodPrepare, pluginprotocol.PrepareParams{
 			Capability: e.capabilityName,
 			Properties: propertiesMap,
-		}, nil, nil)
+		}, pluginActionSink{redactor: callRedactor}, nil)
 		cancel()
 		if err != nil {
-			return err
+			return redactPluginCallError(err, callRedactor)
 		}
 	}
 
 	callCtx, cancel := pluginPhaseTimeoutContext(ctx, e.plugin.Config.Timeouts.RequestDefault)
 	defer cancel()
-	return session.Call(callCtx, pluginprotocol.MethodReportExport, pluginprotocol.ReportExportParams{
+	if err := session.Call(callCtx, pluginprotocol.MethodReportExport, pluginprotocol.ReportExportParams{
 		Capability: e.capabilityName,
 		Properties: propertiesMap,
 		Document:   document,
-	}, nil, nil)
+	}, pluginActionSink{redactor: callRedactor}, nil); err != nil {
+		return redactPluginCallError(err, callRedactor)
+	}
+
+	return nil
 }
 
 func (d pluginStateBackendDef) Describe(_ Values) (StateDescriptor, error) {
@@ -1350,20 +1374,21 @@ func (b pluginStateBackend) ReadRecord(ctx context.Context, key string) (statemo
 	}
 
 	var result pluginprotocol.StateReadResult
+	callRedactor := redactorForJSONPointers(b.config, b.capability.Manifest.Annotations.SensitiveInputPaths)
 	if err := runtime.sessions[b.pluginID].Call(ctx, pluginprotocol.MethodStateRead, pluginprotocol.StateReadParams{
 		Capability: b.capabilityName,
 		Config:     cloneValues(Values(b.config)),
 		Key:        key,
-	}, nil, &result); err != nil {
-		return statemodel.RecordSnapshot{}, err
+	}, pluginActionSink{redactor: callRedactor}, &result); err != nil {
+		return statemodel.RecordSnapshot{}, redactPluginCallError(err, callRedactor)
 	}
 
 	snapshot := result.Snapshot
-	protected, err := protectJSONCompatibleValue(snapshot.Value, b.capability.Manifest.Annotations.SensitiveOutputPaths)
+	protected, err := protectJSONCompatibleObject(snapshot.Value, b.capability.Manifest.Annotations.SensitiveOutputPaths)
 	if err != nil {
 		return statemodel.RecordSnapshot{}, err
 	}
-	snapshot.Value, _ = protected.(map[string]any)
+	snapshot.Value = protected
 	return snapshot, nil
 }
 
@@ -1383,22 +1408,23 @@ func (b pluginStateBackend) CompareAndSetRecord(
 	}
 	payloadMap, _ := payload.(map[string]any)
 	var result pluginprotocol.StateCASResult
+	callRedactor := redactorForJSONPointers(b.config, b.capability.Manifest.Annotations.SensitiveInputPaths)
 	if err := runtime.sessions[b.pluginID].Call(ctx, pluginprotocol.MethodStateCAS, pluginprotocol.StateCASParams{
 		Capability:      b.capabilityName,
 		Config:          cloneValues(Values(b.config)),
 		Key:             key,
 		ExpectedVersion: expectedVersion,
 		Value:           payloadMap,
-	}, nil, &result); err != nil {
-		return statemodel.RecordSnapshot{}, err
+	}, pluginActionSink{redactor: callRedactor}, &result); err != nil {
+		return statemodel.RecordSnapshot{}, redactPluginCallError(err, callRedactor)
 	}
 
 	snapshot := result.Snapshot
-	protected, err := protectJSONCompatibleValue(snapshot.Value, b.capability.Manifest.Annotations.SensitiveOutputPaths)
+	protected, err := protectJSONCompatibleObject(snapshot.Value, b.capability.Manifest.Annotations.SensitiveOutputPaths)
 	if err != nil {
 		return statemodel.RecordSnapshot{}, err
 	}
-	snapshot.Value, _ = protected.(map[string]any)
+	snapshot.Value = protected
 	return snapshot, nil
 }
 
@@ -1414,21 +1440,22 @@ func (b pluginStateBackend) Claim(
 	}
 
 	var result pluginprotocol.StateClaimResult
+	callRedactor := redactorForJSONPointers(b.config, b.capability.Manifest.Annotations.SensitiveInputPaths)
 	if err := runtime.sessions[b.pluginID].Call(ctx, pluginprotocol.MethodStateClaim, pluginprotocol.StateClaimParams{
 		Capability: b.capabilityName,
 		Config:     cloneValues(Values(b.config)),
 		Pool:       pool,
 		Selector:   selector,
 		Lease:      lease,
-	}, nil, &result); err != nil {
-		return statemodel.ClaimResult{}, err
+	}, pluginActionSink{redactor: callRedactor}, &result); err != nil {
+		return statemodel.ClaimResult{}, redactPluginCallError(err, callRedactor)
 	}
 
-	protected, err := protectJSONCompatibleValue(result.Result.Item, b.capability.Manifest.Annotations.SensitiveOutputPaths)
+	protected, err := protectJSONCompatibleObject(result.Result.Item, b.capability.Manifest.Annotations.SensitiveOutputPaths)
 	if err != nil {
 		return statemodel.ClaimResult{}, err
 	}
-	result.Result.Item, _ = protected.(map[string]any)
+	result.Result.Item = protected
 	return result.Result, nil
 }
 
@@ -1439,13 +1466,14 @@ func (b pluginStateBackend) Renew(ctx context.Context, claim statemodel.ClaimHan
 	}
 
 	var result pluginprotocol.StateRenewResult
+	callRedactor := redactorForJSONPointers(b.config, b.capability.Manifest.Annotations.SensitiveInputPaths)
 	if err := runtime.sessions[b.pluginID].Call(ctx, pluginprotocol.MethodStateRenew, pluginprotocol.StateRenewParams{
 		Capability: b.capabilityName,
 		Config:     cloneValues(Values(b.config)),
 		Claim:      claim,
 		TTL:        ttl,
-	}, nil, &result); err != nil {
-		return statemodel.ClaimHandle{}, err
+	}, pluginActionSink{redactor: callRedactor}, &result); err != nil {
+		return statemodel.ClaimHandle{}, redactPluginCallError(err, callRedactor)
 	}
 
 	return result.Claim, nil
@@ -1457,12 +1485,17 @@ func (b pluginStateBackend) Release(ctx context.Context, claim statemodel.ClaimH
 		return errors.New("plugin runtime session is not available")
 	}
 
-	return runtime.sessions[b.pluginID].Call(ctx, pluginprotocol.MethodStateRelease, pluginprotocol.StateReleaseParams{
+	callRedactor := redactorForJSONPointers(b.config, b.capability.Manifest.Annotations.SensitiveInputPaths)
+	if err := runtime.sessions[b.pluginID].Call(ctx, pluginprotocol.MethodStateRelease, pluginprotocol.StateReleaseParams{
 		Capability: b.capabilityName,
 		Config:     cloneValues(Values(b.config)),
 		Claim:      claim,
 		Reason:     reason,
-	}, nil, nil)
+	}, pluginActionSink{redactor: callRedactor}, nil); err != nil {
+		return redactPluginCallError(err, callRedactor)
+	}
+
+	return nil
 }
 
 func (b pluginStateBackend) Consume(ctx context.Context, claim statemodel.ClaimHandle, reason string, tombstone map[string]any) error {
@@ -1476,13 +1509,18 @@ func (b pluginStateBackend) Consume(ctx context.Context, claim statemodel.ClaimH
 		return err
 	}
 	valueMap, _ := value.(map[string]any)
-	return runtime.sessions[b.pluginID].Call(ctx, pluginprotocol.MethodStateConsume, pluginprotocol.StateConsumeParams{
+	callRedactor := redactorForJSONPointers(b.config, b.capability.Manifest.Annotations.SensitiveInputPaths)
+	if err := runtime.sessions[b.pluginID].Call(ctx, pluginprotocol.MethodStateConsume, pluginprotocol.StateConsumeParams{
 		Capability: b.capabilityName,
 		Config:     cloneValues(Values(b.config)),
 		Claim:      claim,
 		Reason:     reason,
 		Tombstone:  valueMap,
-	}, nil, nil)
+	}, pluginActionSink{redactor: callRedactor}, nil); err != nil {
+		return redactPluginCallError(err, callRedactor)
+	}
+
+	return nil
 }
 
 func openSinglePluginSession(
@@ -1494,7 +1532,6 @@ func openSinglePluginSession(
 	session, _, err := pluginhost.Open(ctx, plugin, pluginhost.OpenConfig{
 		Mode:                mode,
 		AllowedCapabilities: []string{capability},
-		Grants:              pluginHostGrants(plugin.Config),
 		SessionConfig:       plugin.Config.Config,
 	})
 	if err != nil {

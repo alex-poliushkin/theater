@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"sort"
 
 	"github.com/alex-poliushkin/theater/internal/pluginregistry"
 )
@@ -21,18 +22,17 @@ type transport struct {
 func openTransport(
 	_ context.Context,
 	plugin pluginregistry.LoadedPlugin,
+	env map[string]string,
 ) (transport, error) {
-	return openNativeTransport(plugin)
+	return openNativeTransport(plugin, env)
 }
 
 func openNativeTransport(
 	plugin pluginregistry.LoadedPlugin,
+	env map[string]string,
 ) (transport, error) {
 	process := exec.Command(plugin.ExecutablePath, plugin.Config.Exec.Command[1:]...)
-	process.Env = make([]string, 0, len(plugin.Config.Grants.Env))
-	for key, value := range plugin.Config.Grants.Env {
-		process.Env = append(process.Env, key+"="+value)
-	}
+	process.Env = processEnv(env)
 
 	stderr := &bytes.Buffer{}
 	stdout, err := process.StdoutPipe()
@@ -77,4 +77,22 @@ func openNativeTransport(
 		kill:   kill,
 		close:  closeTransport,
 	}, nil
+}
+
+func processEnv(env map[string]string) []string {
+	if len(env) == 0 {
+		return []string{}
+	}
+
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	values := make([]string, 0, len(keys))
+	for _, key := range keys {
+		values = append(values, key+"="+env[key])
+	}
+	return values
 }

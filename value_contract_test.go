@@ -2,6 +2,7 @@ package theater
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 )
 
@@ -41,6 +42,49 @@ func TestValueContractCloneDeepCopiesNestedContracts(t *testing.T) {
 	}
 	if got, want := original.Elem.Kind, ValueKindNumber; got != want {
 		t.Fatalf("elem clone mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestValueKindSetJSONUsesArrayShape(t *testing.T) {
+	t.Parallel()
+
+	contract := ValueContract{
+		Kinds: NewValueKindSet(ValueKindString, ValueKindObject),
+		Fields: map[string]ValueContract{
+			"otp": {Kind: ValueKindString, Required: true},
+		},
+	}
+
+	raw, err := json.Marshal(contract)
+	if err != nil {
+		t.Fatalf("marshal value contract: %v", err)
+	}
+	if got, want := string(raw), `{"kinds":["string","object"],"fields":{"otp":{"type":"string","required":true}}}`; got != want {
+		t.Fatalf("value contract JSON mismatch: got %s want %s", got, want)
+	}
+
+	var decoded ValueContract
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("unmarshal value contract: %v", err)
+	}
+	if !decoded.Supports(ValueKindString) || !decoded.Supports(ValueKindObject) {
+		t.Fatalf("decoded contract must support string and object: %#v", decoded)
+	}
+	if field := decoded.Fields["otp"]; !field.Required || field.Kind != ValueKindString {
+		t.Fatalf("decoded object field contract mismatch: %#v", field)
+	}
+}
+
+func TestValueKindSetJSONReadsLegacyObjectShape(t *testing.T) {
+	t.Parallel()
+
+	var contract ValueContract
+	if err := json.Unmarshal([]byte(`{"kinds":{"object":{},"string":{}}}`), &contract); err != nil {
+		t.Fatalf("unmarshal legacy value contract: %v", err)
+	}
+
+	if !contract.Supports(ValueKindString) || !contract.Supports(ValueKindObject) {
+		t.Fatalf("legacy contract must support string and object: %#v", contract)
 	}
 }
 

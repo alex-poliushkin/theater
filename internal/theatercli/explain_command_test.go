@@ -3,6 +3,8 @@ package theatercli
 import (
 	"strings"
 	"testing"
+
+	theater "github.com/alex-poliushkin/theater"
 )
 
 func TestExplainCommandOverviewListsFamiliesAndTopics(t *testing.T) {
@@ -171,6 +173,17 @@ func TestExplainCommandShowsDetailAcrossFamilies(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestExplainFormatsUnionValueContracts(t *testing.T) {
+	t.Parallel()
+
+	got := formatValueContract(theater.ValueContract{
+		Kinds: theater.NewValueKindSet(theater.ValueKindObject, theater.ValueKindString),
+	}, false)
+	if want := "string|object"; got != want {
+		t.Fatalf("union contract format mismatch: got %q want %q", got, want)
 	}
 }
 

@@ -480,11 +480,11 @@ var manifestSchemaJSON = []byte(`{
               },
               "sensitive_input_paths": {
                 "type": "array",
-                "items": { "type": "string", "minLength": 1 }
+                "items": { "type": "string" }
               },
               "sensitive_output_paths": {
                 "type": "array",
-                "items": { "type": "string", "minLength": 1 }
+                "items": { "type": "string" }
               },
               "state": {
                 "type": "object",

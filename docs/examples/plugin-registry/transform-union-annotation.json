@@ -1,0 +1,21 @@
+{
+  "annotations": {
+    "transform": {
+      "accepts": {
+        "kinds": [
+          "string",
+          "object"
+        ],
+        "fields": {
+          "otp": {
+            "type": "string",
+            "required": true
+          }
+        }
+      },
+      "produces": {
+        "type": "string"
+      }
+    }
+  }
+}

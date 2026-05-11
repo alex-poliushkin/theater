@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	publicregistry "github.com/alex-poliushkin/theater/plugin/registry"
@@ -54,6 +55,55 @@ func TestLoadDescriptorsDoesNotResolveExecutable(t *testing.T) {
 	}
 	if _, ok := plugin.Capabilities["action.smoke.echo"]; !ok {
 		t.Fatalf("descriptor-only load must retain allowed manifest capabilities: %#v", plugin.Capabilities)
+	}
+}
+
+func TestResolvePluginEnvCopiesExplicitHostValues(t *testing.T) {
+	t.Setenv("THEATER_PLUGIN_LITERAL_ONLY", "ambient-value")
+	t.Setenv("THEATER_PLUGIN_HOST_SECRET", "host-secret-value")
+
+	env, err := ResolvePluginEnv(LoadedPlugin{
+		ID: "smoke-plugin",
+		Config: publicregistry.PluginEntry{
+			Grants: publicregistry.Grants{
+				Env: map[string]string{
+					"THEATER_PLUGIN_LITERAL_ONLY": "literal-value",
+				},
+				EnvFromHost: []string{"THEATER_PLUGIN_HOST_SECRET"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolve plugin env: %v", err)
+	}
+	if got, want := env["THEATER_PLUGIN_LITERAL_ONLY"], "literal-value"; got != want {
+		t.Fatalf("literal env mismatch: got %q want %q", got, want)
+	}
+	if got, want := env["THEATER_PLUGIN_HOST_SECRET"], "host-secret-value"; got != want {
+		t.Fatalf("host env mismatch: got %q want %q", got, want)
+	}
+	if _, ok := env["PATH"]; ok {
+		t.Fatal("ambient host environment must not be copied without an explicit grant")
+	}
+}
+
+func TestResolvePluginEnvReportsMissingHostGrantWithoutValue(t *testing.T) {
+	t.Parallel()
+
+	envName := "THEATER_PLUGIN_MISSING_FOR_RESOLVE_TEST"
+	env, err := ResolvePluginEnv(LoadedPlugin{
+		ID: "smoke-plugin",
+		Config: publicregistry.PluginEntry{
+			Grants: publicregistry.Grants{
+				EnvFromHost: []string{envName},
+			},
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected missing host env error, got env %#v", env)
+	}
+	if got := err.Error(); !strings.Contains(got, `plugin "smoke-plugin" env_from_host "THEATER_PLUGIN_MISSING_FOR_RESOLVE_TEST" is not set`) {
+		t.Fatalf("missing env error mismatch: %q", got)
 	}
 }
 

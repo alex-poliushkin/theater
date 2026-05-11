@@ -55,9 +55,20 @@ type SchemaShape struct {
 	AdditionalProperties *SchemaShape
 }
 
-type runtimeArtifact struct {
-	executablePath string
-	executableSum  string
+func ResolvePluginEnv(plugin LoadedPlugin) (map[string]string, error) {
+	env := make(map[string]string, len(plugin.Config.Grants.Env)+len(plugin.Config.Grants.EnvFromHost))
+	for key, value := range plugin.Config.Grants.Env {
+		env[key] = value
+	}
+	for _, name := range plugin.Config.Grants.EnvFromHost {
+		value, ok := os.LookupEnv(name)
+		if !ok {
+			return nil, fmt.Errorf("plugin %q env_from_host %q is not set", plugin.ID, name)
+		}
+		env[name] = value
+	}
+
+	return env, nil
 }
 
 func Load(configPath, lockPath string) (*LoadedRegistry, error) {
@@ -158,6 +169,11 @@ func BuildDescriptors(
 	}
 
 	return loaded, nil
+}
+
+type runtimeArtifact struct {
+	executablePath string
+	executableSum  string
 }
 
 func loadPlugin(
