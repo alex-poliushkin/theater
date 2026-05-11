@@ -170,6 +170,8 @@ func validateScenarioLocalBindingRefs(scenario scenarioPlan, analysis scenarioSc
 			)
 		}
 
+		diagnostics = append(diagnostics, validateActExportRefAvailability(act, availableRoots)...)
+
 		for j := range act.Logs {
 			diagnostics = append(
 				diagnostics,
@@ -184,6 +186,27 @@ func validateScenarioLocalBindingRefs(scenario scenarioPlan, analysis scenarioSc
 		}
 	}
 
+	return diagnostics
+}
+
+func validateActExportRefAvailability(act *actPlan, allowedRoots map[string]struct{}) []Diagnostic {
+	diagnostics := make([]Diagnostic, 0)
+	for i := range act.Exports {
+		export := act.Exports[i]
+		if export.Ref == nil || export.Ref.Name == "" {
+			continue
+		}
+
+		path := exportPath(act.Path, exportAlias(export))
+		if _, ok := allowedRoots[export.Ref.Name]; !ok {
+			diagnostics = append(diagnostics, Diagnostic{
+				Code:     "unresolved_act_export_ref",
+				Path:     path,
+				Severity: SeverityError,
+				Summary:  fmt.Sprintf("act export ref %q is not available in act scope at this point", export.Ref.Name),
+			})
+		}
+	}
 	return diagnostics
 }
 

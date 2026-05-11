@@ -308,6 +308,75 @@ func TestMarshalStageKeepsCollectionMatchersCanonical(t *testing.T) {
 	requireSemanticStageYAMLEqual(t, roundTripped, spec)
 }
 
+func TestMarshalStagePreservesActRefExportSelector(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "ref-export",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "profile",
+			Acts: []theater.ActSpec{{
+				ID:     "load",
+				Action: theater.ActionSpec{Use: "action.noop"},
+				Exports: []theater.ExportSpec{{
+					As: "profile_id",
+					Ref: &theater.RefSpec{
+						Name: "profile",
+						Path: theater.JSONPointer("/id"),
+					},
+				}},
+			}},
+		}},
+	}
+
+	got, err := MarshalStage(spec)
+	if err != nil {
+		t.Fatalf("marshal stage failed: %v", err)
+	}
+
+	text := string(got)
+	if !strings.Contains(text, `export profile_id = $profile | path("/id")`) {
+		t.Fatalf("ref export selector must be preserved:\n%s", text)
+	}
+
+	roundTripped, err := Parse(got, nil)
+	if err != nil {
+		t.Fatalf("parse migrated source failed: %v", err)
+	}
+	requireSemanticStageYAMLEqual(t, roundTripped, spec)
+}
+
+func TestMarshalStageRejectsUnrepresentableSplitActRefExportSelector(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "split-ref-export",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "profile",
+			Acts: []theater.ActSpec{{
+				ID:     "load",
+				Action: theater.ActionSpec{Use: "action.noop"},
+				Exports: []theater.ExportSpec{{
+					As: "profile",
+					Ref: &theater.RefSpec{
+						Name: "raw",
+						Path: theater.JSONPointer("/payload"),
+					},
+					Decode: theater.DecodeJSON,
+				}},
+			}},
+		}},
+	}
+
+	_, err := MarshalStage(spec)
+	if err == nil {
+		t.Fatal("marshal stage must reject unrepresentable split ref export selector")
+	}
+	if !strings.Contains(err.Error(), "export-level decode") {
+		t.Fatalf("marshal error mismatch: %v", err)
+	}
+}
+
 func TestMarshalStageRendersHasEntrySugar(t *testing.T) {
 	t.Parallel()
 
@@ -440,6 +509,69 @@ func TestMarshalStageRendersPickWhereSelector(t *testing.T) {
 	}
 	if string(formatted) != text {
 		t.Fatalf("migrated source must already be formatter-clean:\n--- got ---\n%s\n--- fmt ---\n%s", text, string(formatted))
+	}
+
+	roundTripped, err := Parse(got, nil)
+	if err != nil {
+		t.Fatalf("parse migrated source failed: %v", err)
+	}
+	requireSemanticStageYAMLEqual(t, roundTripped, spec)
+}
+
+func TestMarshalStageRendersTransformSelector(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "transform-selector",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "jwt",
+			Acts: []theater.ActSpec{{
+				ID: "inspect",
+				Action: theater.ActionSpec{
+					Use: "action.http",
+					With: map[string]theater.BindingSpec{
+						"method": literalBinding("GET"),
+						"url":    literalBinding("https://example.test/token"),
+					},
+				},
+				Expectations: []theater.ExpectationSpec{{
+					ID: "uid",
+					Subject: theater.SubjectSpec{
+						Field:  "body",
+						Decode: theater.DecodeJSON,
+						Path:   theater.JSONPointer("/token"),
+						Through: []theater.ThroughStepSpec{
+							{
+								Transform: &theater.DecoratorSpec{
+									Use: "transform.jwt.claims",
+									With: map[string]any{
+										"audience": "mobile",
+									},
+								},
+							},
+							{Path: theater.JSONPointer("/uid")},
+						},
+					},
+					Assert: theater.AssertSpec{
+						Ref: builtinexpectation.EqualRef,
+						Args: map[string]theater.BindingSpec{
+							"expected": literalBinding("user-123"),
+						},
+					},
+				}},
+			}},
+		}},
+	}
+
+	got, err := MarshalStage(spec)
+	if err != nil {
+		t.Fatalf("marshal stage failed: %v", err)
+	}
+
+	text := string(got)
+	want := `field(body) | decode(json) | path("/token") | transform.jwt.claims(audience: "mobile") | path("/uid") == "user-123"`
+	if !strings.Contains(text, want) {
+		t.Fatalf("migrated source must include transform selector:\n%s", text)
 	}
 
 	roundTripped, err := Parse(got, nil)

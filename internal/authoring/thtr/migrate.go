@@ -1490,11 +1490,7 @@ func buildActExport(spec theater.ExportSpec) (exportSyntax, error) {
 
 func buildExportExpression(spec theater.ExportSpec) (expressionSyntax, error) {
 	if spec.Ref != nil {
-		ref := *spec.Ref
-		ref.Decode = spec.Decode
-		ref.Path = spec.Path
-		ref.Through = spec.Through
-		return buildRefSelectionExpression(ref)
+		return buildExportRefExpression(spec)
 	}
 	if spec.Field == "" {
 		return nil, fmt.Errorf("export %q must declare field or ref", spec.As)
@@ -1506,6 +1502,40 @@ func buildExportExpression(spec theater.ExportSpec) (expressionSyntax, error) {
 		Path:    spec.Path,
 		Through: spec.Through,
 	})
+}
+
+func buildExportRefExpression(spec theater.ExportSpec) (expressionSyntax, error) {
+	if spec.Ref.Name == "" {
+		return nil, errors.New("ref selection requires ref name")
+	}
+	if spec.Decode != "" && (spec.Ref.Decode != "" || !spec.Ref.Path.IsZero() || len(spec.Ref.Through) != 0) {
+		return nil, fmt.Errorf("export %q cannot migrate split ref and export selectors with export-level decode", spec.As)
+	}
+	refName, err := requireLocalIdentifier(spec.Ref.Name, "ref name")
+	if err != nil {
+		return nil, err
+	}
+
+	refSteps, err := buildSelectorSteps(spec.Ref.Decode, spec.Ref.Path, spec.Ref.Through)
+	if err != nil {
+		return nil, err
+	}
+	exportSteps, err := buildSelectorSteps(spec.Decode, spec.Path, spec.Through)
+	if err != nil {
+		return nil, err
+	}
+	steps := refSteps
+	steps = append(steps, exportSteps...)
+
+	base := refExpressionSyntax{Name: refName}
+	if len(steps) == 0 {
+		return base, nil
+	}
+
+	return pipelineExpressionSyntax{
+		Base:  base,
+		Steps: steps,
+	}, nil
 }
 
 func buildScenarioCall(spec theater.ScenarioCallSpec) (scenarioCallSyntax, error) {
@@ -1907,6 +1937,12 @@ func buildSelectorSteps(
 				Name: migrateSelectorRegexp,
 				Args: args,
 			})
+		case through[i].Transform != nil:
+			call, err := buildStaticCall(through[i].Transform.Use, through[i].Transform.With, nil)
+			if err != nil {
+				return nil, err
+			}
+			steps = append(steps, call)
 		default:
 			return nil, errors.New("through step is empty")
 		}

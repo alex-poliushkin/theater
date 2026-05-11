@@ -114,7 +114,9 @@ type HTTPAuthCaptureSpec = specmodel.HTTPAuthCaptureSpec
 // HTTPCaptureSourceSpec selects one response source for a captured auth slot.
 type HTTPCaptureSourceSpec = specmodel.HTTPCaptureSourceSpec
 
-// ExportSpec declares a named export from action outputs or scenario scope.
+// ExportSpec declares a named export. Act exports can select current action
+// outputs with Field or available act-scope values with Ref. Scenario-call
+// exports use Ref to select from the completed scenario scope.
 type ExportSpec = specmodel.ExportSpec
 
 // InventoryCall configures one inventory use+with call-site.

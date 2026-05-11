@@ -700,6 +700,88 @@ func TestValidateReportsSelectorThroughDiagnostics(t *testing.T) {
 	}
 }
 
+func TestValidateReportsSelectorTransformThroughShapeDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		through  theater.ThroughStepSpec
+		wantCode string
+	}{
+		{
+			name: "empty transform use",
+			through: theater.ThroughStepSpec{
+				Transform: &theater.DecoratorSpec{},
+			},
+			wantCode: "invalid_expectation_subject_through_transform",
+		},
+		{
+			name: "mixed path and transform",
+			through: theater.ThroughStepSpec{
+				Path:      "/uid",
+				Transform: &theater.DecoratorSpec{Use: "transform.jwt.claims"},
+			},
+			wantCode: "invalid_expectation_subject_through_step",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			spec := theater.StageSpec{
+				ID: "main",
+				Scenarios: []theater.ScenarioSpec{{
+					ID: "login",
+					Acts: []theater.ActSpec{{
+						ID:     "submit",
+						Action: theater.ActionSpec{Use: "action.submit"},
+						Expectations: []theater.ExpectationSpec{{
+							ID: "token",
+							Subject: theater.SubjectSpec{
+								Field:   "token",
+								Through: []theater.ThroughStepSpec{testCase.through},
+							},
+							Assert: theater.AssertSpec{Ref: builtinexpectation.PresentRef},
+						}},
+					}},
+				}},
+				ScenarioCalls: []theater.ScenarioCallSpec{{ID: "login", ScenarioID: "login"}},
+			}
+
+			catalog := theater.NewCatalog()
+			if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{
+				ContractValue: theater.ActionContract{
+					Outputs: map[string]theater.ValueContract{
+						"token": {Kind: theater.ValueKindString},
+					},
+				},
+			}); err != nil {
+				t.Fatalf("register action failed: %v", err)
+			}
+			if err := catalog.RegisterDecorator("transform.jwt.claims", theater.DecoratorDef{
+				Contract: theater.DecoratorContract{
+					Accepts:  theater.ValueContract{Kind: theater.ValueKindString},
+					Produces: theater.ValueContract{Kind: theater.ValueKindObject},
+				},
+				Compile: func(theater.Values) (theater.DecoratorFunc, error) {
+					return func(value any) (any, error) { return value, nil }, nil
+				},
+			}); err != nil {
+				t.Fatalf("register decorator failed: %v", err)
+			}
+
+			diagnostics := validateStage(spec, catalog, matcherCatalog(t, builtinexpectation.Descriptors()...))
+			for _, diagnostic := range diagnostics {
+				if diagnostic.Code == testCase.wantCode {
+					return
+				}
+			}
+			t.Fatalf("expected diagnostic %q, got %#v", testCase.wantCode, diagnostics)
+		})
+	}
+}
+
 func TestValidateReportsPickWhereAssertDiagnostics(t *testing.T) {
 	t.Parallel()
 
@@ -1995,6 +2077,87 @@ func TestValidateRejectsActExportAliasThatCollidesWithScenarioInput(t *testing.T
 	}
 }
 
+func TestValidateAllowsActExportCurrentPropertyRef(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{
+			{
+				ID: "login",
+				Acts: []theater.ActSpec{
+					{
+						ID: "submit",
+						Properties: map[string]theater.PropertySpec{
+							"token": {
+								Inventory: &theater.InventoryCall{Use: "inventory.token"},
+							},
+						},
+						Action:  theater.ActionSpec{Use: "action.submit"},
+						Exports: []theater.ExportSpec{{Ref: &theater.RefSpec{Name: "token"}}},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterInventory("inventory.token", &testkit.ScriptedInventory{
+		ContractValue: theater.InventoryContract{
+			Produces: theater.ValueContract{Kind: theater.ValueKindString},
+		},
+	}); err != nil {
+		t.Fatalf("register inventory failed: %v", err)
+	}
+	if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	diagnostics := validateStage(spec, catalog, matcherCatalog(t))
+	if got, want := len(diagnostics), 0; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d (%v)", got, want, diagnostics)
+	}
+}
+
+func TestValidateRejectsUnavailableActExportRef(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{
+			{
+				ID: "login",
+				Acts: []theater.ActSpec{
+					{
+						ID:      "submit",
+						Action:  theater.ActionSpec{Use: "action.submit"},
+						Exports: []theater.ExportSpec{{Ref: &theater.RefSpec{Name: "token"}}},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	diagnostics := validateStage(spec, nil, matcherCatalog(t))
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d (%v)", got, want, diagnostics)
+	}
+
+	if got, want := diagnostics[0].Code, "unresolved_act_export_ref"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+
+	if got, want := diagnostics[0].Path, "stage.main/scenario.login/act.submit/export.token"; got != want {
+		t.Fatalf("diagnostic path mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestValidateRejectsRefsThatAreNotGuaranteedAcrossActPaths(t *testing.T) {
 	t.Parallel()
 
@@ -2550,6 +2713,460 @@ func TestValidateRejectsActExportPathThatConflictsWithScalarOutputContract(t *te
 
 	if got, want := diagnostics[0].Code, "incompatible_act_export_path"; got != want {
 		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestValidateRejectsActExportPathThatConflictsWithScalarPropertyContract(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{
+			{
+				ID: "login",
+				Acts: []theater.ActSpec{
+					{
+						ID: "submit",
+						Properties: map[string]theater.PropertySpec{
+							"payload": {
+								Inventory: &theater.InventoryCall{Use: "inventory.payload"},
+							},
+						},
+						Action: theater.ActionSpec{Use: "action.submit"},
+						Exports: []theater.ExportSpec{
+							{
+								As:  "issued_token",
+								Ref: &theater.RefSpec{Name: "payload", Path: theater.JSONPointer("/token")},
+							},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterInventory("inventory.payload", &testkit.ScriptedInventory{
+		ContractValue: theater.InventoryContract{
+			Produces: theater.ValueContract{Kind: theater.ValueKindString},
+		},
+	}); err != nil {
+		t.Fatalf("register inventory failed: %v", err)
+	}
+	if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	diagnostics := validateStage(spec, catalog, matcherCatalog(t))
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d (%v)", got, want, diagnostics)
+	}
+
+	if got, want := diagnostics[0].Code, "incompatible_act_export_path"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+
+	if got, want := diagnostics[0].Path, "stage.main/scenario.login/act.submit/export.issued_token"; got != want {
+		t.Fatalf("diagnostic path mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestValidateRejectsActExportPathThatConflictsWithScalarScenarioInputContract(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{
+			{
+				ID: "login",
+				Inputs: map[string]theater.ValueContract{
+					"payload": {Kind: theater.ValueKindString},
+				},
+				Acts: []theater.ActSpec{
+					{
+						ID:     "submit",
+						Action: theater.ActionSpec{Use: "action.submit"},
+						Exports: []theater.ExportSpec{
+							{
+								As:  "issued_token",
+								Ref: &theater.RefSpec{Name: "payload", Path: theater.JSONPointer("/token")},
+							},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{
+				ID:         "login-user",
+				ScenarioID: "login",
+				Bindings: map[string]theater.BindingSpec{
+					"payload": {Kind: theater.BindingKindLiteral, Value: "raw-token"},
+				},
+			},
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	diagnostics := validateStage(spec, catalog, matcherCatalog(t))
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d (%v)", got, want, diagnostics)
+	}
+
+	if got, want := diagnostics[0].Code, "incompatible_act_export_path"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+
+	if got, want := diagnostics[0].Path, "stage.main/scenario.login/act.submit/export.issued_token"; got != want {
+		t.Fatalf("diagnostic path mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestValidateRejectsActExportPathThatConflictsWithScalarPriorExportContract(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{
+			{
+				ID: "login",
+				Acts: []theater.ActSpec{
+					{
+						ID:      "issue",
+						Action:  theater.ActionSpec{Use: "action.issue"},
+						Exports: []theater.ExportSpec{{As: "payload", Field: "payload"}},
+						Transitions: []theater.TransitionSpec{
+							{On: theater.TransitionOnPass, To: "submit"},
+						},
+					},
+					{
+						ID:     "submit",
+						Action: theater.ActionSpec{Use: "action.submit"},
+						Exports: []theater.ExportSpec{
+							{
+								As:  "issued_token",
+								Ref: &theater.RefSpec{Name: "payload", Path: theater.JSONPointer("/token")},
+							},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.issue", &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Outputs: map[string]theater.ValueContract{
+				"payload": {Kind: theater.ValueKindString},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	diagnostics := validateStage(spec, catalog, matcherCatalog(t))
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d (%v)", got, want, diagnostics)
+	}
+
+	if got, want := diagnostics[0].Code, "incompatible_act_export_path"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+
+	if got, want := diagnostics[0].Path, "stage.main/scenario.login/act.submit/export.issued_token"; got != want {
+		t.Fatalf("diagnostic path mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestValidateAcceptsSelectorTransformThroughPipeline(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "login",
+			Acts: []theater.ActSpec{{
+				ID:     "submit",
+				Action: theater.ActionSpec{Use: "action.submit"},
+				Expectations: []theater.ExpectationSpec{{
+					ID: "uid",
+					Subject: theater.SubjectSpec{
+						Field: "token",
+						Through: []theater.ThroughStepSpec{
+							{
+								Transform: &theater.DecoratorSpec{
+									Use: "transform.jwt.claims",
+								},
+							},
+							{Path: "/uid"},
+						},
+					},
+					Assert: theater.AssertSpec{
+						Ref: builtinexpectation.EqualRef,
+						Args: map[string]theater.BindingSpec{
+							"expected": literalBinding("user-123"),
+						},
+					},
+				}},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Outputs: map[string]theater.ValueContract{
+				"token": {Kind: theater.ValueKindString},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	if err := catalog.RegisterDecorator("transform.jwt.claims", theater.DecoratorDef{
+		Contract: theater.DecoratorContract{
+			Accepts: theater.ValueContract{Kind: theater.ValueKindString},
+			Produces: theater.ValueContract{
+				Kind: theater.ValueKindObject,
+				Fields: map[string]theater.ValueContract{
+					"uid": {Kind: theater.ValueKindString},
+				},
+			},
+		},
+		Compile: func(theater.Values) (theater.DecoratorFunc, error) {
+			return func(value any) (any, error) { return value, nil }, nil
+		},
+	}); err != nil {
+		t.Fatalf("register decorator failed: %v", err)
+	}
+
+	diagnostics := validateStage(spec, catalog, matcherCatalog(t, builtinexpectation.Descriptors()...))
+	if got := len(diagnostics); got != 0 {
+		t.Fatalf("diagnostic count mismatch: got %d want 0 (%v)", got, diagnostics)
+	}
+}
+
+func TestValidateRejectsSelectorTransformInputContractMismatch(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "login",
+			Acts: []theater.ActSpec{{
+				ID:     "submit",
+				Action: theater.ActionSpec{Use: "action.submit"},
+				Expectations: []theater.ExpectationSpec{{
+					ID: "uid",
+					Subject: theater.SubjectSpec{
+						Field: "token",
+						Through: []theater.ThroughStepSpec{{
+							Transform: &theater.DecoratorSpec{
+								Use: "transform.object-only",
+							},
+						}},
+					},
+					Assert: theater.AssertSpec{Ref: builtinexpectation.PresentRef},
+				}},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Outputs: map[string]theater.ValueContract{
+				"token": {Kind: theater.ValueKindString},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	if err := catalog.RegisterDecorator("transform.object-only", theater.DecoratorDef{
+		Contract: theater.DecoratorContract{
+			Accepts:  theater.ValueContract{Kind: theater.ValueKindObject},
+			Produces: theater.ValueContract{Kind: theater.ValueKindObject},
+		},
+		Compile: func(theater.Values) (theater.DecoratorFunc, error) {
+			return func(value any) (any, error) { return value, nil }, nil
+		},
+	}); err != nil {
+		t.Fatalf("register decorator failed: %v", err)
+	}
+
+	diagnostics := validateStage(spec, catalog, matcherCatalog(t, builtinexpectation.Descriptors()...))
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d (%v)", got, want, diagnostics)
+	}
+	if got, want := diagnostics[0].Code, "incompatible_expectation_subject_transform"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+	if !strings.Contains(diagnostics[0].Summary, `kind "string" is not accepted`) {
+		t.Fatalf("diagnostic summary mismatch: got %q", diagnostics[0].Summary)
+	}
+}
+
+func TestValidateRejectsBindingSelectorTransformConfig(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "login",
+			Inputs: map[string]theater.ValueContract{
+				"token": {Kind: theater.ValueKindString},
+			},
+			Acts: []theater.ActSpec{{
+				ID: "submit",
+				Action: theater.ActionSpec{
+					Use: "action.submit",
+					With: map[string]theater.BindingSpec{
+						"value": {
+							Kind: theater.BindingKindRef,
+							Ref: &theater.RefSpec{
+								Name: "token",
+								Through: []theater.ThroughStepSpec{{
+									Transform: &theater.DecoratorSpec{Use: "transform.wrap"},
+								}},
+							},
+						},
+					},
+				},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{
+			ID:         "login",
+			ScenarioID: "login",
+			Bindings: map[string]theater.BindingSpec{
+				"token": literalBinding("issued"),
+			},
+		}},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Inputs: map[string]theater.ValueContract{
+				"value": {Kind: theater.ValueKindString},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	if err := catalog.RegisterDecorator("transform.wrap", theater.DecoratorDef{
+		Contract: theater.DecoratorContract{
+			Accepts:  theater.ValueContract{Kind: theater.ValueKindString},
+			Produces: theater.ValueContract{Kind: theater.ValueKindString},
+			Params: []theater.ParamSpec{
+				{Name: "prefix", Accepts: theater.ValueContract{Kind: theater.ValueKindString}, Required: true},
+			},
+		},
+		Compile: func(theater.Values) (theater.DecoratorFunc, error) {
+			return func(value any) (any, error) { return value, nil }, nil
+		},
+	}); err != nil {
+		t.Fatalf("register decorator failed: %v", err)
+	}
+
+	diagnostics := validateStage(spec, catalog, matcherCatalog(t, builtinexpectation.Descriptors()...))
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d (%v)", got, want, diagnostics)
+	}
+	if got, want := diagnostics[0].Code, "incompatible_action_arg"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+	if !strings.Contains(diagnostics[0].Summary, `transform "transform.wrap" config is invalid`) {
+		t.Fatalf("diagnostic summary mismatch: got %q", diagnostics[0].Summary)
+	}
+}
+
+func TestValidateRejectsBindingSelectorTransformOutputContractMismatch(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "login",
+			Inputs: map[string]theater.ValueContract{
+				"token": {Kind: theater.ValueKindString},
+			},
+			Acts: []theater.ActSpec{{
+				ID: "submit",
+				Action: theater.ActionSpec{
+					Use: "action.submit",
+					With: map[string]theater.BindingSpec{
+						"value": {
+							Kind: theater.BindingKindRef,
+							Ref: &theater.RefSpec{
+								Name: "token",
+								Through: []theater.ThroughStepSpec{{
+									Transform: &theater.DecoratorSpec{Use: "transform.claims"},
+								}},
+							},
+						},
+					},
+				},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{
+			ID:         "login",
+			ScenarioID: "login",
+			Bindings: map[string]theater.BindingSpec{
+				"token": literalBinding("issued"),
+			},
+		}},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Inputs: map[string]theater.ValueContract{
+				"value": {Kind: theater.ValueKindString},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	if err := catalog.RegisterDecorator("transform.claims", theater.DecoratorDef{
+		Contract: theater.DecoratorContract{
+			Accepts:  theater.ValueContract{Kind: theater.ValueKindString},
+			Produces: theater.ValueContract{Kind: theater.ValueKindObject},
+		},
+		Compile: func(theater.Values) (theater.DecoratorFunc, error) {
+			return func(value any) (any, error) { return value, nil }, nil
+		},
+	}); err != nil {
+		t.Fatalf("register decorator failed: %v", err)
+	}
+
+	diagnostics := validateStage(spec, catalog, matcherCatalog(t, builtinexpectation.Descriptors()...))
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d (%v)", got, want, diagnostics)
+	}
+	if got, want := diagnostics[0].Code, "incompatible_action_arg"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+	if !strings.Contains(diagnostics[0].Summary, `selector produces object incompatible with string`) {
+		t.Fatalf("diagnostic summary mismatch: got %q", diagnostics[0].Summary)
 	}
 }
 

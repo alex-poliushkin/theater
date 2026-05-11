@@ -17,13 +17,15 @@ type valueLookup interface {
 }
 
 type referenceResolver struct {
-	source         valueLookup
-	propertySource valueLookup
-	bindingSource  valueLookup
-	generators     GeneratorResolver
-	matchers       MatcherResolver
-	generation     *generationRuntime
-	identity       executionIdentity
+	source          valueLookup
+	propertySource  valueLookup
+	bindingSource   valueLookup
+	exportRefSource valueLookup
+	decorators      DecoratorResolver
+	generators      GeneratorResolver
+	matchers        MatcherResolver
+	generation      *generationRuntime
+	identity        executionIdentity
 }
 
 type layeredValueLookup struct {
@@ -65,8 +67,18 @@ func (r referenceResolver) withMatchers(matchers MatcherResolver) referenceResol
 	return r
 }
 
+func (r referenceResolver) withDecorators(decorators DecoratorResolver) referenceResolver {
+	r.decorators = decorators
+	return r
+}
+
 func (r referenceResolver) withBindingSource(source any) referenceResolver {
 	r.bindingSource = newValueLookup(source)
+	return r
+}
+
+func (r referenceResolver) withExportRefSource(source any) referenceResolver {
+	r.exportRefSource = newValueLookup(source)
 	return r
 }
 
@@ -237,7 +249,16 @@ func (r referenceResolver) ResolveExport(export exportPlan) (any, error) {
 func (r referenceResolver) ResolveExportContext(ctx context.Context, export exportPlan) (any, error) {
 	switch {
 	case export.Ref != nil:
-		return r.ResolveRefContext(ctx, *export.Ref)
+		refSource := r.bindingSource
+		if r.exportRefSource != nil {
+			refSource = r.exportRefSource
+		}
+		value, err := r.resolveNamedValueFromContext(ctx, refSource, export.Ref.Name, export.Ref.selectorPlan, "ref %q is missing")
+		if err != nil {
+			return nil, err
+		}
+
+		return r.resolveSelectedValueContext(ctx, value, export.selectorPlan)
 	case export.Field != "":
 		return r.resolveNamedValueContext(ctx, export.Field, export.selectorPlan, "export field %q is missing")
 	default:
@@ -335,9 +356,37 @@ func (r referenceResolver) applyThroughStepContext(ctx context.Context, value an
 		return r.applyPickStepContext(ctx, value, *step.Pick)
 	case step.Regexp != nil:
 		return applyRegexpStep(value, *step.Regexp)
+	case step.Transform != nil:
+		return r.applyDecoratorStep(value, *step.Transform)
 	default:
 		return nil, errors.New("through step is invalid")
 	}
+}
+
+func (r referenceResolver) applyDecoratorStep(value any, step decoratorPlan) (any, error) {
+	transform := step.Transform
+	if transform == nil {
+		if dependencyMissing(r.decorators) {
+			return nil, fmt.Errorf("transform %q is not available", step.Use)
+		}
+
+		def, err := r.decorators.ResolveDecorator(step.Use)
+		if err != nil {
+			return nil, err
+		}
+
+		transform, err = def.Compile(step.With)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	transformed, err := transform(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return runtimevalue.PreserveSecret(value, transformed), nil
 }
 
 func (r referenceResolver) applyPickStepContext(ctx context.Context, value any, step pickStepPlan) (any, error) {

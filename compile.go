@@ -156,9 +156,10 @@ type bindingPlan struct {
 }
 
 type throughStepPlan struct {
-	Path   JSONPointer
-	Pick   *pickStepPlan
-	Regexp *regexpStepPlan
+	Path      JSONPointer
+	Pick      *pickStepPlan
+	Regexp    *regexpStepPlan
+	Transform *decoratorPlan
 }
 
 type pickStepPlan struct {
@@ -183,6 +184,7 @@ type regexpStepPlan struct {
 }
 
 type exportPlan struct {
+	Path  string
 	As    string
 	Ref   *refPlan
 	Field string
@@ -263,6 +265,7 @@ func validateScenarioCallBindings(
 	inputs map[string]ValueContract,
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 ) []Diagnostic {
 	diagnostics := make([]Diagnostic, 0)
 
@@ -279,7 +282,7 @@ func validateScenarioCallBindings(
 			continue
 		}
 
-		if err := validateBindingContractWithResolver(resolver, matchers, binding, spec); err != nil {
+		if err := validateBindingContractWithResolver(resolver, matchers, decorators, binding, spec); err != nil {
 			diagnostics = append(diagnostics, Diagnostic{
 				Code:     "incompatible_scenario_input",
 				Path:     bindingPath(call.Path, key),
@@ -574,22 +577,36 @@ func validateActExports(parentPath string, exports []exportPlan) []Diagnostic {
 
 	for _, export := range exports {
 		path := exportPath(parentPath, exportAlias(export))
-		if export.Ref != nil {
+		if export.Ref != nil && export.Field != "" {
 			diagnostics = append(diagnostics, Diagnostic{
-				Code:     "invalid_act_export_ref",
+				Code:     "invalid_act_export_selector",
 				Path:     path,
 				Severity: SeverityError,
-				Summary:  "act export must select an action output via field, not ref",
+				Summary:  "act export must select either an action output field or a ref, not both",
 			})
+			continue
 		}
 
-		if export.Field == "" {
+		if export.Ref == nil && export.Field == "" {
 			diagnostics = append(diagnostics, Diagnostic{
 				Code:     "missing_act_export_field",
 				Path:     path,
 				Severity: SeverityError,
-				Summary:  "act export field is required",
+				Summary:  "act export field or ref is required",
 			})
+			continue
+		}
+
+		if export.Ref != nil {
+			if err := validateRefSpec(*export.Ref); err != nil {
+				diagnostics = append(diagnostics, Diagnostic{
+					Code:     "invalid_act_export_ref",
+					Path:     path,
+					Severity: SeverityError,
+					Summary:  err.Error(),
+				})
+			}
+			diagnostics = append(diagnostics, validateSelector(path, export.selectorPlan)...)
 			continue
 		}
 
@@ -739,12 +756,23 @@ func validateThroughStep(path string, step throughStepPlan) []Diagnostic {
 			})
 		}
 	}
+	if step.Transform != nil {
+		configured++
+		if step.Transform.Use == "" {
+			diagnostics = append(diagnostics, Diagnostic{
+				Code:     "invalid_selector_through_transform",
+				Path:     path,
+				Severity: SeverityError,
+				Summary:  "transform.use is required",
+			})
+		}
+	}
 	if configured != 1 {
 		diagnostics = append(diagnostics, Diagnostic{
 			Code:     "invalid_selector_through_step",
 			Path:     path,
 			Severity: SeverityError,
-			Summary:  "through step must declare exactly one of path, pick, or regexp",
+			Summary:  "through step must declare exactly one of path, pick, regexp, or transform",
 		})
 	}
 

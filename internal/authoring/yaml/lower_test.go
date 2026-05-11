@@ -179,6 +179,39 @@ ref:
 	)
 }
 
+func TestLowerBindingNodeLowersTransformThroughStep(t *testing.T) {
+	t.Parallel()
+
+	source := `kind: ref
+ref:
+  name: token
+  through:
+    - transform:
+        use: transform.jwt.claims
+        with:
+          audience: mobile
+    - path: /uid
+`
+	binding, err := lowerBindingNodeWithSource(rawBindingNode{Node: mustParseYAMLNode(t, source)}, "/tmp/selector.yaml")
+	if err != nil {
+		t.Fatalf("lower binding failed: %v", err)
+	}
+
+	transform := binding.Ref.Through[0].Transform
+	if transform == nil {
+		t.Fatal("first through step must be transform")
+	}
+	if got, want := transform.Use, "transform.jwt.claims"; got != want {
+		t.Fatalf("transform use mismatch: got %q want %q", got, want)
+	}
+	if got, want := transform.With["audience"], "mobile"; got != want {
+		t.Fatalf("transform arg mismatch: got %#v want %#v", got, want)
+	}
+	if got, want := binding.Ref.Through[1].Path, theater.JSONPointer("/uid"); got != want {
+		t.Fatalf("path step mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestDecodeBindingSpecOrLiteralRecognizesBindingShape(t *testing.T) {
 	t.Parallel()
 

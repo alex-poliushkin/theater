@@ -1,0 +1,23 @@
+id: reference-act-ref-export
+scenarios:
+  - id: runtime
+    acts:
+      - id: load-runtime
+        properties:
+          runtime_path:
+            inventory:
+              use: inventory.env
+              with:
+                name: PATH
+        action:
+          use: action.generate
+          with:
+            outputs:
+              loaded: true
+        exports:
+          - as: runtime_path
+            ref:
+              name: runtime_path
+scenario_calls:
+  - id: run
+    scenario_id: runtime

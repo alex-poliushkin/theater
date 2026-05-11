@@ -72,6 +72,7 @@ func TestValidateSelectorContractPreservesIndexParseCause(t *testing.T) {
 	err := validateSelectorContract(
 		selectorPlan{Path: JSONPointer("/bad")},
 		ValueContract{Kind: ValueKindList},
+		nil,
 	)
 	if err == nil {
 		t.Fatal("expected selector contract error, got nil")

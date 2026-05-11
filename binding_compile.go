@@ -44,6 +44,7 @@ func (c planFragmentCompiler) compileBinding(path string, spec BindingSpec) bind
 
 func (c planFragmentCompiler) compileExport(path string, spec ExportSpec) exportPlan {
 	return exportPlan{
+		Path:  path,
 		As:    spec.As,
 		Ref:   c.compileRef(path, spec.Ref),
 		Field: spec.Field,
@@ -172,6 +173,10 @@ func (c planFragmentCompiler) compileThrough(path string, specs []ThroughStepSpe
 				Pattern: specs[i].Regexp.Pattern,
 				Group:   specs[i].Regexp.Group,
 			}
+		}
+		if specs[i].Transform != nil {
+			transform := c.compileDecorator(*specs[i].Transform)
+			plan.Transform = &transform
 		}
 
 		plans = append(plans, plan)

@@ -173,7 +173,7 @@ func TestValidateGenerateBindingRejectsInvalidLiteralArgs(t *testing.T) {
 	catalog := NewCatalog()
 	registerTestEmailGenerator(t, catalog)
 
-	err := validateBindingContractWithResolver(catalog, nil, bindingPlan{
+	err := validateBindingContractWithResolver(catalog, nil, catalog, bindingPlan{
 		Path:      "stage.main/scenario.register/call.bindings/email",
 		Kind:      BindingKindGenerate,
 		Generator: testEmailGeneratorRef,

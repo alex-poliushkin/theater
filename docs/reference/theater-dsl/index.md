@@ -117,6 +117,7 @@ in `eventually`.
 | Action | `do action.http(method: "GET", url: $url)` | `action.use` plus `action.with` |
 | Repeatable action | `do repeatable action.http(...)` | `action.repeatable: true` |
 | Scenario-authored log | `log response = object { status: field(status_code) }` | `logs[]` with `capture: summary` |
+| Act export | `export token = $issued_token` | `acts[].exports[]` |
 | Scenario call | `call run = hello()` | `scenario_calls[]` |
 | Scenario call dependency | `dependency setup when success` | `dependencies[].when: success` |
 | Scenario call export | `export token = $session_token` | `scenario_calls[].exports[]` |
@@ -127,7 +128,12 @@ Omitting `when` on a dependency lowers to `success`.
 
 Selectors start from action output with `field(...)`, from a ref with `$name`, or
 from an explicit property target in YAML. Common Theater DSL pipeline steps are
-`decode(json)`, `path("/...")`, `pick where ...`, and `regexp(...)`.
+`decode(json)`, `path("/...")`, `pick where ...`, `regexp(...)`, and plugin
+transform calls such as `transform.jwt.claims()`.
+
+Act exports can start from `field(...)` or from an available `$name` in the
+current act scope. Scenario-call exports stay narrower: they must be direct
+`$name` exports from the completed scenario scope.
 
 For exact selector rules, use [Selectors](../selectors.md).
 For matcher names and expectation forms, use [Expectations](../expectations.md).

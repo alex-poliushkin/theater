@@ -19,6 +19,9 @@ func TestCompileStageSpecAssignsStablePathsAndOrdinals(t *testing.T) {
 			},
 			{
 				ID: "login",
+				Inputs: map[string]ValueContract{
+					"payload": {Kind: ValueKindString},
+				},
 				Acts: []ActSpec{
 					{ID: "submit", Action: ActionSpec{Use: "action.submit"}},
 					{ID: "verify", Action: ActionSpec{Use: "action.verify"}},
@@ -103,7 +106,10 @@ func TestValidateStageSpecReportsMissingTransitionTargetsInStableOrder(t *testin
 			},
 		},
 		ScenarioCalls: []ScenarioCallSpec{
-			{ID: "login-user", ScenarioID: "login"},
+			{
+				ID:         "login-user",
+				ScenarioID: "login",
+			},
 		},
 	}
 
@@ -211,6 +217,9 @@ func TestValidateStageSpecReportsScenarioDependencyCycle(t *testing.T) {
 			},
 			{
 				ID: "login",
+				Inputs: map[string]ValueContract{
+					"payload": {Kind: ValueKindString},
+				},
 				Acts: []ActSpec{
 					{ID: "submit", Action: ActionSpec{Use: "action.login"}},
 				},
@@ -480,7 +489,10 @@ func TestValidateStageSpecReportsActTransitionCycle(t *testing.T) {
 			},
 		},
 		ScenarioCalls: []ScenarioCallSpec{
-			{ID: "login-user", ScenarioID: "login"},
+			{
+				ID:         "login-user",
+				ScenarioID: "login",
+			},
 		},
 	}
 
@@ -1210,6 +1222,121 @@ func TestValidateStageSpecReportsDuplicateStageExportNames(t *testing.T) {
 
 	if got, want := diagnostics[0].Path, "stage.main/call.login-user/export.issued_token"; got != want {
 		t.Fatalf("diagnostic path mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestValidateStageSpecRejectsActExportWithFieldAndRef(t *testing.T) {
+	t.Parallel()
+
+	spec := StageSpec{
+		ID: "main",
+		Scenarios: []ScenarioSpec{
+			{
+				ID: "login",
+				Acts: []ActSpec{
+					{
+						ID:     "submit",
+						Action: ActionSpec{Use: "action.submit"},
+						Exports: []ExportSpec{
+							{As: "token", Field: "body", Ref: &RefSpec{Name: "payload"}},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	stage := compileStageSpec(spec)
+	diagnostics := validateStage(stage)
+
+	if _, ok := findDiagnostic(
+		diagnostics,
+		"invalid_act_export_selector",
+		"stage.main/scenario.login/act.submit/export.token",
+	); !ok {
+		t.Fatalf("expected invalid_act_export_selector diagnostic, got %#v", diagnostics)
+	}
+}
+
+func TestValidateStageSpecRejectsMalformedActExportRefSelector(t *testing.T) {
+	t.Parallel()
+
+	spec := StageSpec{
+		ID: "main",
+		Scenarios: []ScenarioSpec{
+			{
+				ID: "login",
+				Acts: []ActSpec{
+					{
+						ID:     "submit",
+						Action: ActionSpec{Use: "action.submit"},
+						Exports: []ExportSpec{
+							{
+								As:  "token",
+								Ref: &RefSpec{Name: "payload", Path: JSONPointer("token")},
+							},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	stage := compileStageSpec(spec)
+	diagnostics := validateStage(stage)
+
+	if _, ok := findDiagnostic(
+		diagnostics,
+		"invalid_act_export_ref",
+		"stage.main/scenario.login/act.submit/export.token",
+	); !ok {
+		t.Fatalf("expected invalid_act_export_ref diagnostic, got %#v", diagnostics)
+	}
+}
+
+func TestValidateStageSpecRejectsMalformedActExportRefTopLevelSelector(t *testing.T) {
+	t.Parallel()
+
+	spec := StageSpec{
+		ID: "main",
+		Scenarios: []ScenarioSpec{
+			{
+				ID: "login",
+				Acts: []ActSpec{
+					{
+						ID:     "submit",
+						Action: ActionSpec{Use: "action.submit"},
+						Exports: []ExportSpec{
+							{
+								As:   "token",
+								Ref:  &RefSpec{Name: "payload"},
+								Path: JSONPointer("token"),
+							},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	stage := compileStageSpec(spec)
+	diagnostics := validateStage(stage)
+
+	if _, ok := findDiagnostic(
+		diagnostics,
+		"invalid_selector_path",
+		"stage.main/scenario.login/act.submit/export.token",
+	); !ok {
+		t.Fatalf("expected invalid_selector_path diagnostic, got %#v", diagnostics)
 	}
 }
 

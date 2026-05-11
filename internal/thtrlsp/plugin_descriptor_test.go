@@ -63,6 +63,18 @@ scenario plugin
 		t.Fatalf("plugin transform completion detail must come from descriptor metadata: %#v", transformItem)
 	}
 
+	selectorTransformText := `stage smoke
+scenario plugin
+  act load
+    expect wrapped: field(body) | transform.sm`
+	selectorTransformItems := completionItemsForDocumentWithCapabilities(selectorTransformText, lspPosition{
+		Line:      3,
+		Character: len(`    expect wrapped: field(body) | transform.sm`),
+	}, descriptors)
+	if !containsCompletionLabel(selectorTransformItems, "transform.smoke.wrap") {
+		t.Fatalf("plugin selector transform completion missing: %#v", selectorTransformItems)
+	}
+
 	stateBackendText := `stage smoke
 state
   backend smoke = state_backend.sm`
@@ -89,6 +101,18 @@ scenario plugin
 	}, descriptors)
 	if !containsCompletionLabel(transformArgItems, "prefix") {
 		t.Fatalf("plugin transform argument completion missing: %#v", transformArgItems)
+	}
+
+	selectorTransformArgText := `stage smoke
+scenario plugin
+  act load
+    expect wrapped: field(body) | transform.smoke.wrap(p`
+	selectorTransformArgItems := completionItemsForDocumentWithCapabilities(selectorTransformArgText, lspPosition{
+		Line:      3,
+		Character: len(`    expect wrapped: field(body) | transform.smoke.wrap(p`),
+	}, descriptors)
+	if !containsCompletionLabel(selectorTransformArgItems, "prefix") {
+		t.Fatalf("plugin selector transform argument completion missing: %#v", selectorTransformArgItems)
 	}
 
 	stateBackendArgText := `stage smoke

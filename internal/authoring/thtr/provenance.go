@@ -794,6 +794,12 @@ func recordSelectorStepPaths(
 			builder.record(throughPath, step.Span, throughLocator)
 			throughIndex++
 		default:
+			if strings.HasPrefix(step.Name, selectorStepTransformPrefix) {
+				throughPath := fmt.Sprintf("%s/through[%d]", path, throughIndex)
+				throughLocator := appendYAMLPath(locator, yamlKey("through"), yamlIndex(throughIndex))
+				builder.record(throughPath, step.Span, throughLocator)
+				recordDecoratorArgs(builder, throughPath+"/transform", appendYAMLPath(throughLocator, yamlKey("transform")), step.Args)
+			}
 			throughIndex++
 		}
 	}

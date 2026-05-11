@@ -612,6 +612,7 @@ func (c *PluginCatalog) collectStageCapabilityRefs(stage *stagePlan) []pluginSta
 					bindingProperties: act.Action.With,
 				})
 			}
+			refs = c.collectBindingMapTransformRefs(refs, act.Path+"/action", act.Action.With)
 
 			for k := range act.Properties {
 				property := act.Properties[k]
@@ -638,22 +639,145 @@ func (c *PluginCatalog) collectStageCapabilityRefs(stage *stagePlan) []pluginSta
 						})
 					}
 				}
+				refs = c.collectBindingMapTransformRefs(refs, property.Path+"/inventory/with", property.Inventory.With)
 			}
 
 			for k := range act.Expectations {
 				expectation := act.Expectations[k]
+				expectationPath := joinChildPath(act.Path, "expectation", expectation.ID)
+				refs = c.collectSelectorTransformRefs(refs, expectationPath+"/subject", expectation.Subject.selectorPlan)
 				if capability, ok := c.capabilities[expectation.Assert.Ref]; ok {
 					refs = append(refs, pluginStageCapabilityRef{
 						pluginID:          capability.pluginID,
 						capabilityName:    expectation.Assert.Ref,
 						kind:              capability.capability.Manifest.Kind,
-						descriptorPath:    joinChildPath(act.Path, "expectation", expectation.ID) + "/assert",
-						bindingParentPath: joinChildPath(act.Path, "expectation", expectation.ID) + "/assert/args",
+						descriptorPath:    expectationPath + "/assert",
+						bindingParentPath: expectationPath + "/assert/args",
 						bindingProperties: expectation.Assert.Args,
 					})
 				}
+				refs = c.collectBindingMapTransformRefs(refs, expectationPath+"/assert/args", expectation.Assert.Args)
+			}
+
+			for k := range act.Logs {
+				log := act.Logs[k]
+				refs = c.collectLogValueTransformRefs(refs, log.Value)
+				keys := sortedMapKeys(log.Fields)
+				for _, key := range keys {
+					refs = c.collectLogValueTransformRefs(refs, log.Fields[key])
+				}
+			}
+
+			for k := range act.Exports {
+				refs = c.collectExportTransformRefs(refs, act.Exports[k])
 			}
 		}
+	}
+	for i := range stage.ScenarioCalls {
+		call := stage.ScenarioCalls[i]
+		refs = c.collectBindingMapTransformRefs(refs, call.Path, call.Bindings)
+		for j := range call.Exports {
+			refs = c.collectExportTransformRefs(refs, call.Exports[j])
+		}
+	}
+
+	return refs
+}
+
+func (c *PluginCatalog) collectExportTransformRefs(refs []pluginStageCapabilityRef, export exportPlan) []pluginStageCapabilityRef {
+	if export.Ref != nil {
+		refs = c.collectSelectorTransformRefs(refs, export.Path+"/ref", export.Ref.selectorPlan)
+	}
+	return c.collectSelectorTransformRefs(refs, export.Path, export.selectorPlan)
+}
+
+func (c *PluginCatalog) collectLogValueTransformRefs(refs []pluginStageCapabilityRef, value logValuePlan) []pluginStageCapabilityRef {
+	refs = c.collectSelectorTransformRefs(refs, value.Path, value.selectorPlan)
+	keys := sortedMapKeys(value.Object)
+	for _, key := range keys {
+		refs = c.collectLogValueTransformRefs(refs, value.Object[key])
+	}
+	for i := range value.List {
+		refs = c.collectLogValueTransformRefs(refs, value.List[i])
+	}
+	return refs
+}
+
+func (c *PluginCatalog) collectBindingMapTransformRefs(
+	refs []pluginStageCapabilityRef,
+	parentPath string,
+	bindings map[string]bindingPlan,
+) []pluginStageCapabilityRef {
+	keys := sortedMapKeys(bindings)
+	for _, key := range keys {
+		refs = c.collectBindingTransformRefs(refs, bindingPath(parentPath, key), bindings[key])
+	}
+	return refs
+}
+
+func (c *PluginCatalog) collectBindingTransformRefs(
+	refs []pluginStageCapabilityRef,
+	path string,
+	binding bindingPlan,
+) []pluginStageCapabilityRef {
+	if binding.Ref != nil {
+		refs = c.collectSelectorTransformRefs(refs, path+"/ref", binding.Ref.selectorPlan)
+	}
+
+	keys := sortedMapKeys(binding.Object)
+	for _, key := range keys {
+		refs = c.collectBindingTransformRefs(refs, bindingPath(path, key), binding.Object[key])
+	}
+	for i := range binding.List {
+		refs = c.collectBindingTransformRefs(refs, bindingPath(path, listBindingKey(i)), binding.List[i])
+	}
+	for i := range binding.Parts {
+		refs = c.collectBindingTransformRefs(refs, bindingPath(path, partBindingKey(i)), binding.Parts[i])
+	}
+	keys = sortedMapKeys(binding.Args)
+	for _, key := range keys {
+		refs = c.collectBindingTransformRefs(refs, bindingPath(path, key), binding.Args[key])
+	}
+	return refs
+}
+
+func (c *PluginCatalog) collectSelectorTransformRefs(
+	refs []pluginStageCapabilityRef,
+	path string,
+	selector selectorPlan,
+) []pluginStageCapabilityRef {
+	for i := range selector.Through {
+		step := selector.Through[i]
+		stepPath := fmt.Sprintf("%s/through[%d]", path, i)
+		if step.Transform != nil {
+			refs = c.collectTransformRef(refs, stepPath+"/transform", *step.Transform)
+		}
+		if step.Pick != nil {
+			refs = c.collectBindingTransformRefs(refs, stepPath+"/pick/equals", step.Pick.Equals)
+			for j := range step.Pick.Where {
+				clausePath := fmt.Sprintf("%s/pick/where[%d]", stepPath, j)
+				refs = c.collectBindingMapTransformRefs(refs, clausePath+"/assert/args", step.Pick.Where[j].Assert.Args)
+			}
+		}
+	}
+	return refs
+}
+
+func (c *PluginCatalog) collectTransformRef(
+	refs []pluginStageCapabilityRef,
+	path string,
+	transform decoratorPlan,
+) []pluginStageCapabilityRef {
+	if capability, ok := c.capabilities[transform.Use]; ok &&
+		capability.capability.Manifest.Kind == pluginmanifest.CapabilityKindTransform {
+		return append(refs, pluginStageCapabilityRef{
+			pluginID:          capability.pluginID,
+			capabilityName:    transform.Use,
+			kind:              capability.capability.Manifest.Kind,
+			descriptorPath:    path,
+			bindingParentPath: path + "/with",
+			staticProperties:  transform.With,
+		})
 	}
 
 	return refs
@@ -907,6 +1031,7 @@ func (t pluginTransform) Compile(args Values) (DecoratorFunc, error) {
 		callRedactor := redactorForPluginValueInput(
 			propertiesMap,
 			inputValue,
+			value,
 			t.capability.Manifest.Annotations.SensitiveInputPaths,
 		)
 		var result pluginprotocol.TransformApplyResult
@@ -989,6 +1114,7 @@ func (m pluginMatcher) Check(ctx context.Context, actual any) error {
 	callRedactor := redactorForPluginValueInput(
 		propertiesMap,
 		actualValue,
+		actual,
 		m.capability.Manifest.Annotations.SensitiveInputPaths,
 	)
 	if err := runtime.sessions[m.pluginID].Call(

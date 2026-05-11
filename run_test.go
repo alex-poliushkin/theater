@@ -19,6 +19,7 @@ import (
 	builtindecorator "github.com/alex-poliushkin/theater/builtin/decorator"
 	builtinexpectation "github.com/alex-poliushkin/theater/builtin/expectation"
 	builtininventory "github.com/alex-poliushkin/theater/builtin/inventory"
+	thtrsyntax "github.com/alex-poliushkin/theater/internal/authoring/thtr"
 	"github.com/alex-poliushkin/theater/internal/testkit"
 	"github.com/alex-poliushkin/theater/observe"
 )
@@ -5048,6 +5049,454 @@ func TestRunCarriesExplicitActExportsIntoNextAct(t *testing.T) {
 
 	if got, want := result.Report.Status, theater.StatusPassed; got != want {
 		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestRunExportsActPropertyRefIntoNextAct(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{
+			{
+				ID: "login",
+				Acts: []theater.ActSpec{
+					{
+						ID: "load-runtime",
+						Properties: map[string]theater.PropertySpec{
+							"token": {
+								Inventory: &theater.InventoryCall{Use: "inventory.token"},
+							},
+						},
+						Action:  theater.ActionSpec{Use: "action.noop"},
+						Exports: []theater.ExportSpec{{Ref: &theater.RefSpec{Name: "token"}}},
+						Transitions: []theater.TransitionSpec{
+							{On: theater.TransitionOnPass, To: "verify"},
+						},
+					},
+					{
+						ID: "verify",
+						Action: theater.ActionSpec{
+							Use: "action.verify",
+							With: map[string]theater.BindingSpec{
+								"token": {Kind: theater.BindingKindRef, Ref: &theater.RefSpec{Name: "token"}},
+							},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	inventory := &testkit.ScriptedInventory{
+		Output: "issued-token",
+	}
+	verifyAction := &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Inputs: map[string]theater.ValueContract{
+				"token": {Kind: theater.ValueKindString, Required: true},
+			},
+		},
+		CheckFunc: func(args theater.Args) error {
+			if got, want := args["token"], "issued-token"; got != want {
+				t.Fatalf("token mismatch: got %v want %v", got, want)
+			}
+			return nil
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterInventory("inventory.token", inventory); err != nil {
+		t.Fatalf("register inventory failed: %v", err)
+	}
+	if err := catalog.RegisterAction("action.noop", &testkit.ScriptedAction{}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	if err := catalog.RegisterAction("action.verify", verifyAction); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(context.Background(), spec, catalog, matcherCatalog(t))
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+
+	if got, want := len(verifyAction.Calls), 1; got != want {
+		t.Fatalf("verify call count mismatch: got %d want %d", got, want)
+	}
+	if got, want := result.Report.Status, theater.StatusPassed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestRunExportsActPropertyRefWithTopLevelSelector(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{
+			{
+				ID: "login",
+				Acts: []theater.ActSpec{
+					{
+						ID: "load-runtime",
+						Properties: map[string]theater.PropertySpec{
+							"profile": {
+								Inventory: &theater.InventoryCall{Use: "inventory.profile"},
+							},
+						},
+						Action: theater.ActionSpec{Use: "action.noop"},
+						Exports: []theater.ExportSpec{{
+							As:   "profile_id",
+							Ref:  &theater.RefSpec{Name: "profile"},
+							Path: theater.JSONPointer("/id"),
+						}},
+						Transitions: []theater.TransitionSpec{
+							{On: theater.TransitionOnPass, To: "verify"},
+						},
+					},
+					{
+						ID: "verify",
+						Action: theater.ActionSpec{
+							Use: "action.verify",
+							With: map[string]theater.BindingSpec{
+								"profile_id": {Kind: theater.BindingKindRef, Ref: &theater.RefSpec{Name: "profile_id"}},
+							},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	verifyAction := &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Inputs: map[string]theater.ValueContract{
+				"profile_id": {Kind: theater.ValueKindString, Required: true},
+			},
+		},
+		CheckFunc: func(args theater.Args) error {
+			if got, want := args["profile_id"], "user-123"; got != want {
+				t.Fatalf("profile id mismatch: got %v want %v", got, want)
+			}
+			return nil
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterInventory("inventory.profile", &testkit.ScriptedInventory{
+		ContractValue: theater.InventoryContract{
+			Produces: theater.ValueContract{
+				Kind: theater.ValueKindObject,
+				Fields: map[string]theater.ValueContract{
+					"id":     {Kind: theater.ValueKindString},
+					"secret": {Kind: theater.ValueKindString},
+				},
+			},
+		},
+		Output: map[string]any{"id": "user-123", "secret": "not-exported"},
+	}); err != nil {
+		t.Fatalf("register inventory failed: %v", err)
+	}
+	if err := catalog.RegisterAction("action.noop", &testkit.ScriptedAction{}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	if err := catalog.RegisterAction("action.verify", verifyAction); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(context.Background(), spec, catalog, matcherCatalog(t))
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+
+	if got, want := result.Report.Status, theater.StatusPassed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q (diagnostics=%v failure=%v)", got, want, result.Diagnostics, result.Report.Failure)
+	}
+}
+
+func TestRunTheaterDSLActPropertyRefExportSelector(t *testing.T) {
+	t.Parallel()
+
+	spec, err := thtrsyntax.Parse([]byte(`stage main
+scenario login
+  act load-runtime
+    prop profile = inventory.profile()
+    do action.noop
+    export profile_id = $profile | path("/id")
+    on pass -> verify
+
+  act verify
+    do action.verify(profile_id: $profile_id)
+
+call login-user = login()
+`), nil)
+	if err != nil {
+		t.Fatalf("parse thtr failed: %v", err)
+	}
+
+	verifyAction := &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Inputs: map[string]theater.ValueContract{
+				"profile_id": {Kind: theater.ValueKindString, Required: true},
+			},
+		},
+		CheckFunc: func(args theater.Args) error {
+			if got, want := args["profile_id"], "user-123"; got != want {
+				t.Fatalf("profile id mismatch: got %v want %v", got, want)
+			}
+			return nil
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterInventory("inventory.profile", &testkit.ScriptedInventory{
+		ContractValue: theater.InventoryContract{
+			Produces: theater.ValueContract{
+				Kind: theater.ValueKindObject,
+				Fields: map[string]theater.ValueContract{
+					"id": {Kind: theater.ValueKindString},
+				},
+			},
+		},
+		Output: map[string]any{"id": "user-123"},
+	}); err != nil {
+		t.Fatalf("register inventory failed: %v", err)
+	}
+	if err := catalog.RegisterAction("action.noop", &testkit.ScriptedAction{}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	if err := catalog.RegisterAction("action.verify", verifyAction); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(context.Background(), spec, catalog, matcherCatalog(t))
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+
+	if got, want := result.Report.Status, theater.StatusPassed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestRunFieldExportSelectorCanReferenceActionOutput(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{
+			{
+				ID: "find",
+				Acts: []theater.ActSpec{
+					{
+						ID:     "select",
+						Action: theater.ActionSpec{Use: "action.find"},
+						Exports: []theater.ExportSpec{{
+							As:    "selected",
+							Field: "items",
+							Through: []theater.ThroughStepSpec{{
+								Pick: &theater.PickStepSpec{
+									At: theater.JSONPointer("/id"),
+									Equals: theater.BindingSpec{
+										Kind: theater.BindingKindRef,
+										Ref:  &theater.RefSpec{Name: "target"},
+									},
+								},
+							}},
+						}},
+						Transitions: []theater.TransitionSpec{
+							{On: theater.TransitionOnPass, To: "verify"},
+						},
+					},
+					{
+						ID: "verify",
+						Action: theater.ActionSpec{
+							Use: "action.verify",
+							With: map[string]theater.BindingSpec{
+								"selected": {Kind: theater.BindingKindRef, Ref: &theater.RefSpec{Name: "selected"}},
+							},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "run", ScenarioID: "find"},
+		},
+	}
+
+	verifyAction := &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Inputs: map[string]theater.ValueContract{
+				"selected": {Kind: theater.ValueKindObject, Required: true},
+			},
+		},
+		CheckFunc: func(args theater.Args) error {
+			selected, ok := args["selected"].(map[string]any)
+			if !ok {
+				t.Fatalf("selected value type mismatch: got %T", args["selected"])
+			}
+			if got, want := selected["id"], "b"; got != want {
+				t.Fatalf("selected id mismatch: got %v want %v", got, want)
+			}
+			return nil
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.find", &testkit.ScriptedAction{
+		Output: theater.Outputs{
+			"target": "b",
+			"items": []any{
+				map[string]any{"id": "a"},
+				map[string]any{"id": "b"},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	if err := catalog.RegisterAction("action.verify", verifyAction); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(context.Background(), spec, catalog, matcherCatalog(t))
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+
+	if got, want := result.Report.Status, theater.StatusPassed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q (diagnostics=%v failure=%v)", got, want, result.Diagnostics, result.Report.Failure)
+	}
+}
+
+func TestRunEventuallyExportsPassingAttemptActPropertyRef(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{
+			{
+				ID: "login",
+				Acts: []theater.ActSpec{
+					{
+						ID:         "load-runtime",
+						Eventually: &theater.EventuallySpec{Timeout: "100ms", Interval: "1ms"},
+						Properties: map[string]theater.PropertySpec{
+							"token": {
+								Inventory: &theater.InventoryCall{Use: "inventory.token"},
+							},
+						},
+						Action: theater.ActionSpec{Use: "action.status", Repeatable: true},
+						Expectations: []theater.ExpectationSpec{
+							{
+								ID:      "ready",
+								Subject: theater.SubjectSpec{Field: "ready"},
+								Assert:  theater.AssertSpec{Ref: "expectation.ready"},
+							},
+						},
+						Exports: []theater.ExportSpec{{Ref: &theater.RefSpec{Name: "token"}}},
+						Transitions: []theater.TransitionSpec{
+							{On: theater.TransitionOnPass, To: "verify"},
+						},
+					},
+					{
+						ID: "verify",
+						Action: theater.ActionSpec{
+							Use: "action.verify",
+							With: map[string]theater.BindingSpec{
+								"token": {Kind: theater.BindingKindRef, Ref: &theater.RefSpec{Name: "token"}},
+							},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	var inventoryCalls int
+	var statusCalls int
+	inventory := &testkit.ScriptedInventory{
+		ContractValue: theater.InventoryContract{
+			Produces: theater.ValueContract{Kind: theater.ValueKindString},
+		},
+		AcquireFunc: func(theater.InventoryRequest) (any, error) {
+			inventoryCalls++
+			return "attempt-" + strconv.Itoa(inventoryCalls), nil
+		},
+	}
+	statusAction := &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Outputs: map[string]theater.ValueContract{
+				"ready": {Kind: theater.ValueKindBool},
+			},
+		},
+		RunFunc: func(theater.Args) (theater.Outputs, error) {
+			statusCalls++
+			return theater.Outputs{"ready": statusCalls >= 2}, nil
+		},
+	}
+	verifyAction := &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Inputs: map[string]theater.ValueContract{
+				"token": {Kind: theater.ValueKindString, Required: true},
+			},
+		},
+		CheckFunc: func(args theater.Args) error {
+			if got, want := args["token"], "attempt-2"; got != want {
+				t.Fatalf("token mismatch: got %v want %v", got, want)
+			}
+			return nil
+		},
+	}
+	expectation := &testkit.ScriptedExpectation{
+		CheckFunc: func(actual any) error {
+			if got, ok := actual.(bool); ok && got {
+				return nil
+			}
+
+			return errors.New("not ready")
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterInventory("inventory.token", inventory); err != nil {
+		t.Fatalf("register inventory failed: %v", err)
+	}
+	if err := catalog.RegisterAction("action.status", statusAction); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	if err := catalog.RegisterAction("action.verify", verifyAction); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(context.Background(), spec, catalog, matcherCatalog(t, expectation.Descriptor("expectation.ready")))
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+
+	if got, want := result.Report.Status, theater.StatusPassed; got != want {
+		t.Fatalf(
+			"report status mismatch: got %q want %q (diagnostics=%v failure=%v inventory_calls=%d status_calls=%d)",
+			got,
+			want,
+			result.Diagnostics,
+			result.Report.Failure,
+			inventoryCalls,
+			statusCalls,
+		)
+	}
+	if got, want := len(verifyAction.Calls), 1; got != want {
+		t.Fatalf("verify call count mismatch: got %d want %d", got, want)
 	}
 }
 

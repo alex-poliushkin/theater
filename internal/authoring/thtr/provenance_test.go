@@ -139,6 +139,27 @@ scenario verify-email(email: string!)
 	}
 }
 
+func TestSourceMapRecordsTransformThroughArgs(t *testing.T) {
+	t.Parallel()
+
+	lowered := mustLowerDocumentWithSourceMap(t, `stage jwt-smoke
+scenario inspect
+  act request
+    do action.http(method: "GET", url: "/token")
+    export uid = field(body) | decode(json) | path("/token") | transform.jwt.claims(audience: "mobile") | path("/uid")
+`)
+
+	entry, ok := lowered.SourceMap.LookupSpecPath(
+		"stage.jwt-smoke/scenario.inspect/act.request/export.uid/through[0]/transform/with/binding.audience",
+	)
+	if !ok {
+		t.Fatal("transform arg source map entry must be present")
+	}
+	if got, want := entry.Source.StartLine, 5; got != want {
+		t.Fatalf("transform arg line mismatch: got %d want %d", got, want)
+	}
+}
+
 func TestSourceMapRecordsPickWhereClausePaths(t *testing.T) {
 	t.Parallel()
 

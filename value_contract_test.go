@@ -293,7 +293,7 @@ func TestValidateExpectationArgsUsesMatcherArgAccepts(t *testing.T) {
 		},
 	}
 
-	if diagnostics := validateExpectationArgs("stage.main/expectation.example", expectation, descriptor, nil, nil); len(diagnostics) != 0 {
+	if diagnostics := validateExpectationArgs("stage.main/expectation.example", expectation, descriptor, nil, nil, nil); len(diagnostics) != 0 {
 		t.Fatalf("expected no diagnostics, got %v", diagnostics)
 	}
 }
@@ -316,7 +316,7 @@ func TestValidateBindingContractSupportsObjectFieldsAndElemTogether(t *testing.T
 		Elem: &ValueContract{Kind: ValueKindNumber},
 	}
 
-	if err := validateBindingContractWithResolver(nil, nil, binding, spec); err != nil {
+	if err := validateBindingContractWithResolver(nil, nil, nil, binding, spec); err != nil {
 		t.Fatalf("expected object binding to satisfy fields and elem, got %v", err)
 	}
 }
@@ -338,7 +338,7 @@ func TestValidateBindingContractRejectsUndeclaredFieldWithoutObjectElem(t *testi
 		},
 	}
 
-	err := validateBindingContractWithResolver(nil, nil, binding, spec)
+	err := validateBindingContractWithResolver(nil, nil, nil, binding, spec)
 	if err == nil {
 		t.Fatal("expected undeclared field error")
 	}

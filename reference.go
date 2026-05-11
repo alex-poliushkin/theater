@@ -15,7 +15,8 @@ type JSONPointer = specmodel.JSONPointer
 // RefSpec names a root value and optional decode/path traversal.
 type RefSpec = specmodel.RefSpec
 
-// ThroughStepSpec declares one pure post-selection value transform.
+// ThroughStepSpec declares one selector through step. Exactly one of Path,
+// Pick, Regexp, or Transform should be set.
 type ThroughStepSpec = specmodel.ThroughStepSpec
 
 // PickStepSpec selects exactly one list item by a compact at/equals predicate

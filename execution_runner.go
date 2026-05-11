@@ -318,6 +318,7 @@ func (r *scenarioRunner) Run(ctx context.Context) (scenarioState, error) {
 	}
 
 	exported, err := newReferenceResolver(r.scope).
+		withDecorators(r.catalog).
 		withGeneration(r.catalog, r.generation, r.identity).
 		withMatchers(r.matchers).
 		ExportValuesContext(ctx, r.call.Exports)
@@ -334,6 +335,7 @@ func (r *scenarioRunner) Run(ctx context.Context) (scenarioState, error) {
 
 func (r *scenarioRunner) applyBindings(ctx context.Context) (scenarioState, bool, error) {
 	bindings, err := newReferenceResolver(r.bindingSource).
+		withDecorators(r.catalog).
 		withGeneration(r.catalog, r.generation, r.identity).
 		withMatchers(r.matchers).
 		ResolveBindingsContext(ctx, r.call.Bindings)
@@ -636,14 +638,25 @@ func (r *actRunner) finishPassed(
 	ctx context.Context,
 	attempt int,
 	actionOutputs Values,
+	propertyValues Values,
 	startedAt time.Time,
 	endedAt time.Time,
 	eventually *EventuallyReport,
 ) (actOutcome, error) {
-	exported, err := newReferenceResolver(layeredValueLookup{
-		primary:  mapValueLookup(actionOutputs),
+	refSource := layeredValueLookup{
+		primary:  mapValueLookup(propertyValues),
 		fallback: r.scenarioScope,
-	}).withMatchers(r.matchers).ExportValuesContext(ctx, r.act.Exports)
+	}
+	selectorSource := layeredValueLookup{
+		primary:  mapValueLookup(actionOutputs),
+		fallback: refSource,
+	}
+	exported, err := newReferenceResolver(mapValueLookup(actionOutputs)).
+		withBindingSource(selectorSource).
+		withExportRefSource(refSource).
+		withDecorators(r.catalog).
+		withMatchers(r.matchers).
+		ExportValuesContext(ctx, r.act.Exports)
 	if err != nil {
 		failure := internalFailure(r.path(), "act export failed", err)
 		return actOutcome{status: StatusFailed, failure: failure}, r.recordTerminal(
@@ -662,7 +675,7 @@ func (r *actRunner) finishPassed(
 		return actOutcome{}, err
 	}
 
-	return actOutcome{status: StatusPassed, values: exported, eventually: eventually}, nil
+	return actOutcome{status: StatusPassed, values: exported, properties: propertyValues, eventually: eventually}, nil
 }
 
 func (r *actRunner) runSingle(ctx context.Context) (actOutcome, error) {
@@ -676,7 +689,7 @@ func (r *actRunner) runSingle(ctx context.Context) (actOutcome, error) {
 	}
 
 	if outcome.status == StatusPassed {
-		return r.finishPassed(ctx, 1, outcome.values, attemptReport.StartedAt, attemptReport.EndedAt, nil)
+		return r.finishPassed(ctx, 1, outcome.values, outcome.properties, attemptReport.StartedAt, attemptReport.EndedAt, nil)
 	}
 
 	if err := r.emitDebugTerminalFailure(ctx, outcome); err != nil {
@@ -738,7 +751,7 @@ func (r *actRunner) runEventually(ctx context.Context) (actOutcome, error) {
 
 		switch {
 		case outcome.status == StatusPassed:
-			return r.finishEventuallyPassed(ctx, attempt, startedAt, outcome.values, lastObservedFailure, timeline)
+			return r.finishEventuallyPassed(ctx, attempt, startedAt, outcome.values, outcome.properties, lastObservedFailure, timeline)
 		case outcome.status == StatusCanceled:
 			return r.finishEventuallyCanceled(ctx, attempt, startedAt, attemptReport.EndedAt, lastObservedFailure, timeline)
 		case !retryable:
@@ -783,6 +796,7 @@ func (r *actRunner) finishEventuallyPassed(
 	attempt int,
 	startedAt time.Time,
 	actionOutputs Values,
+	propertyValues Values,
 	lastObservedFailure *Failure,
 	timeline []AttemptReport,
 ) (actOutcome, error) {
@@ -802,6 +816,7 @@ func (r *actRunner) finishEventuallyPassed(
 		ctx,
 		attempt,
 		actionOutputs,
+		propertyValues,
 		startedAt,
 		timeline[len(timeline)-1].EndedAt,
 		eventually,

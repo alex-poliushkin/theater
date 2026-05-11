@@ -170,7 +170,7 @@ func (v *structureValidator) validateScenarioCall(call scenarioCallPlan) {
 		return
 	}
 
-	v.diagnostics.addAll(validateScenarioCallBindings(call, scenario.Inputs, nil, nil))
+	v.diagnostics.addAll(validateScenarioCallBindings(call, scenario.Inputs, nil, nil, nil))
 }
 
 func (v *structureValidator) validateScenarioDependencies(call scenarioCallPlan) {

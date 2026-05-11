@@ -134,4 +134,24 @@ Log value expressions support:
 | `list` | Build a list from nested log values |
 | `decode` | Decode selected value, currently `json` |
 | `path` | RFC 6901 path over selected value |
-| `through` | Selector pipeline |
+| `through` | Selector pipeline, including path, pick, regexp, and transform steps |
+
+## Act Exports
+
+`acts[].exports` publishes selected values to scenario scope after successful
+act completion. A failed act or failed eventual attempt does not commit its
+exports.
+
+| Path | Meaning |
+| --- | --- |
+| `acts[].exports[].as` | Exported name; defaults to `field` or `ref.name` |
+| `acts[].exports[].field` | Select a current action output |
+| `acts[].exports[].ref.name` | Select an available value from current act scope |
+| `acts[].exports[].decode` | Decode selected value, currently `json` |
+| `acts[].exports[].path` | RFC 6901 path over selected value |
+| `acts[].exports[].through` | Selector pipeline, including path, pick, regexp, and transform steps |
+
+Use exactly one of `field` or `ref` on each act export. `field` is for action
+outputs such as `status_code`, `body`, or `values`. `ref` is for already
+available scope values such as scenario inputs, prior exports, and current-act
+properties.

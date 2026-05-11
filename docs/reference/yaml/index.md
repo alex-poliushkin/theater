@@ -255,14 +255,52 @@ scenario_calls:
     scenario_id: inspect
 ```
 
-Use [Selectors](../selectors.md) for `field`, `ref`, `decode`, `path`, and
-`through` rules.
+Use [Selectors](../selectors.md) for `field`, `ref`, `decode`, `path`,
+`through`, and selector transform rules.
 
 Use [Expectations](../expectations.md) for canonical matcher refs and YAML
 matcher sugar.
 
 YAML expectation subject defaults to current action output through `field`.
 Property-targeted subjects use `from: property` with `ref`.
+
+## Exports
+
+Act exports commit values to scenario scope only after the act passes.
+`field` selects from the current action output map, while `ref` selects an
+already-available value from the current act scope, including resolved act
+properties and scenario inputs or previous exports. Both forms support
+`decode`, `path`, and `through` selector steps.
+
+<!-- theater-doc: source id=reference-yaml-act-ref-export kind=yaml path=../../examples/reference/act-ref-export.yaml checks=validate -->
+```yaml
+id: reference-act-ref-export
+scenarios:
+  - id: runtime
+    acts:
+      - id: load-runtime
+        properties:
+          runtime_path:
+            inventory:
+              use: inventory.env
+              with:
+                name: PATH
+        action:
+          use: action.generate
+          with:
+            outputs:
+              loaded: true
+        exports:
+          - as: runtime_path
+            ref:
+              name: runtime_path
+scenario_calls:
+  - id: run
+    scenario_id: runtime
+```
+
+Scenario-call exports commit values to stage scope after the called scenario
+passes. They use `ref` to select a value from the completed scenario scope.
 
 ## Built-In Action Refs
 
@@ -300,4 +338,6 @@ literal-only in v1.
 | `json.decode` | string or bytes | structured JSON value |
 | `csv.decode` | string or bytes | list of row objects keyed by header |
 
-Plugin-provided transforms use the same `decorators[].use` chain surface.
+Plugin-provided transforms can decorate inventory properties through
+`decorators[].use` and can run inside selector pipelines through
+`through[].transform.use`.

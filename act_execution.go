@@ -88,6 +88,9 @@ func (e actExecution) Run(ctx context.Context, attempt int) (actOutcome, error) 
 
 	outcome, err = e.runExpectations(ctx, actScope, outcome.values, attempt)
 	outcome.logs = logs
+	if err == nil && outcome.status == StatusPassed {
+		outcome.properties = currentActPropertyValues(e.act, actScope)
+	}
 	return outcome, err
 }
 
@@ -130,6 +133,7 @@ func (e actExecution) resolveProperties(ctx context.Context, actScope *valueScop
 		path := property.Path
 
 		args, err := newReferenceResolver(actScope).
+			withDecorators(e.catalog).
 			withGeneration(e.catalog, e.generation, e.identity).
 			withMatchers(e.matchers).
 			ResolveBindingsContext(ctx, property.Inventory.With)
@@ -240,6 +244,7 @@ func (e actExecution) prepareActionExecution(
 	}
 
 	args, err := newReferenceResolver(actScope).
+		withDecorators(e.catalog).
 		withGeneration(e.catalog, e.generation, e.identity).
 		withMatchers(e.matchers).
 		ResolveBindingsContext(ctx, e.act.Action.With)
@@ -344,14 +349,8 @@ func (e actExecution) prepareExpectationExecution(
 		)
 	}
 
-	actual, err := newSubjectResolver(
-		actionOutputs,
-		currentActPropertyValues(e.act, actScope),
-		layeredValueLookup{
-			primary:  mapValueLookup(actionOutputs),
-			fallback: actScope,
-		},
-	).withGeneration(e.catalog, e.generation, e.identity).withMatchers(e.matchers).ResolveSubjectContext(ctx, expectation.Subject)
+	actual, err := e.expectationSubjectResolver(actionOutputs, actScope).
+		ResolveSubjectContext(ctx, expectation.Subject)
 	if err != nil {
 		return e.finishExpectationPreparationFailure(
 			ctx,
@@ -364,10 +363,8 @@ func (e actExecution) prepareExpectationExecution(
 		)
 	}
 
-	args, err := newReferenceResolver(layeredValueLookup{
-		primary:  mapValueLookup(actionOutputs),
-		fallback: actScope,
-	}).withGeneration(e.catalog, e.generation, e.identity).withMatchers(e.matchers).ResolveBindingsContext(ctx, expectation.Assert.Args)
+	args, err := e.expectationBindingResolver(actionOutputs, actScope).
+		ResolveBindingsContext(ctx, expectation.Assert.Args)
 	if err != nil {
 		failure := setupFailure(path, err)
 		return e.finishExpectationPreparationFailure(
@@ -439,6 +436,30 @@ func (e actExecution) prepareExpectationExecution(
 		scopeSection: scopeSection,
 		inputSection: inputSection,
 	}, nil, nil
+}
+
+func (e actExecution) expectationSubjectResolver(actionOutputs Values, actScope *valueScope) referenceResolver {
+	return newSubjectResolver(
+		actionOutputs,
+		currentActPropertyValues(e.act, actScope),
+		layeredValueLookup{
+			primary:  mapValueLookup(actionOutputs),
+			fallback: actScope,
+		},
+	).
+		withDecorators(e.catalog).
+		withGeneration(e.catalog, e.generation, e.identity).
+		withMatchers(e.matchers)
+}
+
+func (e actExecution) expectationBindingResolver(actionOutputs Values, actScope *valueScope) referenceResolver {
+	return newReferenceResolver(layeredValueLookup{
+		primary:  mapValueLookup(actionOutputs),
+		fallback: actScope,
+	}).
+		withDecorators(e.catalog).
+		withGeneration(e.catalog, e.generation, e.identity).
+		withMatchers(e.matchers)
 }
 
 func (e actExecution) runAction(ctx context.Context, actScope *valueScope, attempt int) (actOutcome, error) {

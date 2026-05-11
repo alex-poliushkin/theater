@@ -130,6 +130,7 @@ func TestRedactorForPluginValueInputUsesRootPointerForValue(t *testing.T) {
 	redactor := redactorForPluginValueInput(
 		map[string]any{"prefix": "visible-prefix"},
 		"scalar-secret",
+		nil,
 		[]string{""},
 	)
 
@@ -144,10 +145,41 @@ func TestRedactorForPluginValueInputKeepsPropertyPointers(t *testing.T) {
 	redactor := redactorForPluginValueInput(
 		map[string]any{"token": "property-secret"},
 		"visible-value",
+		nil,
 		[]string{"/token"},
 	)
 
 	if got, want := redactor.RedactText("token=property-secret value=visible-value"), "token=[redacted] value=visible-value"; got != want {
+		t.Fatalf("redacted text mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestRedactorForPluginValueInputIncludesRuntimeSecretValue(t *testing.T) {
+	t.Parallel()
+
+	redactor := redactorForPluginValueInput(
+		map[string]any{"prefix": "visible-prefix"},
+		"runtime-secret",
+		NewSecret("runtime-secret"),
+		nil,
+	)
+
+	if got, want := redactor.RedactText("input=runtime-secret prefix=visible-prefix"), "input=[redacted] prefix=visible-prefix"; got != want {
+		t.Fatalf("redacted text mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestRedactorForPluginValueInputIgnoresPlainRuntimeValue(t *testing.T) {
+	t.Parallel()
+
+	redactor := redactorForPluginValueInput(
+		map[string]any{"prefix": "visible-prefix"},
+		"visible-value",
+		"visible-value",
+		nil,
+	)
+
+	if got, want := redactor.RedactText("value=visible-value"), "value=visible-value"; got != want {
 		t.Fatalf("redacted text mismatch: got %q want %q", got, want)
 	}
 }

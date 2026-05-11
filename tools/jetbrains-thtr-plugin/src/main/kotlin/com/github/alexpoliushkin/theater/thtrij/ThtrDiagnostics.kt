@@ -105,8 +105,8 @@ private fun logDiagnostics(log: ThtrLogStatement): List<ThtrDiagnostic> {
 			continue
 		}
 		val next = children.getOrNull(index + 1) ?: continue
-		if (logValueRootToken(next) !in LOG_VALUE_PIPELINE_TOKENS) {
-			diagnostics += ThtrDiagnostic(next, ".thtr log pipelines support selector steps only: decode, path, pick or regexp")
+		if (logValueRootToken(next) !in LOG_VALUE_PIPELINE_TOKENS && !next.text.startsWith("transform.")) {
+			diagnostics += ThtrDiagnostic(next, ".thtr log pipelines support selector steps only: decode, path, pick, regexp or transform")
 		}
 	}
 

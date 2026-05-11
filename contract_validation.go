@@ -10,6 +10,9 @@ import (
 )
 
 const (
+	actExportPathCode               = "incompatible_act_export_path"
+	actExportDecodeCode             = "incompatible_act_export_decode"
+	actExportTransformCode          = "incompatible_act_export_transform"
 	expectationSubjectPathCode      = "incompatible_expectation_subject_path"
 	expectationSubjectDecodeCode    = "incompatible_expectation_subject_decode"
 	expectationSubjectTransformCode = "incompatible_expectation_subject_transform"
@@ -26,6 +29,7 @@ func validateActionBindings(
 	inputs map[string]ValueContract,
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 ) []Diagnostic {
 	diagnostics := make([]Diagnostic, 0)
 	for key := range bindings {
@@ -41,7 +45,7 @@ func validateActionBindings(
 			continue
 		}
 
-		if err := validateBindingContractWithResolver(resolver, matchers, binding, spec); err != nil {
+		if err := validateBindingContractWithResolver(resolver, matchers, decorators, binding, spec); err != nil {
 			diagnostics = append(diagnostics, Diagnostic{
 				Code:     "incompatible_action_arg",
 				Path:     bindingPath(path, key),
@@ -76,6 +80,7 @@ func validateActionOutputs(
 	outputs map[string]ValueContract,
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 ) []Diagnostic {
 	diagnostics := make([]Diagnostic, 0)
 
@@ -97,14 +102,14 @@ func validateActionOutputs(
 			continue
 		}
 
-		if err := validateSelectorContract(expectation.Subject.selectorPlan, output); err != nil {
+		if err := validateSelectorContract(expectation.Subject.selectorPlan, output, decorators); err != nil {
 			code := expectationSubjectPathCode
 			var typed selectorContractError
 			if errors.As(err, &typed) {
 				switch typed.code {
 				case selectorContractCodeDecode:
 					code = expectationSubjectDecodeCode
-				case selectorContractCodeRegexp:
+				case selectorContractCodeRegexp, selectorContractCodeTransform:
 					code = expectationSubjectTransformCode
 				}
 			}
@@ -117,7 +122,7 @@ func validateActionOutputs(
 			})
 		}
 
-		if err := validateSelectorBindingContracts(expectation.Subject.selectorPlan, resolver, matchers); err != nil {
+		if _, _, err := validateSelectorBindingContracts(expectation.Subject.selectorPlan, resolver, matchers, decorators); err != nil {
 			diagnostics = append(diagnostics, Diagnostic{
 				Code:     expectationSubjectTransformCode,
 				Path:     path,
@@ -145,15 +150,15 @@ func validateActionOutputs(
 			continue
 		}
 
-		if err := validateSelectorContract(export.selectorPlan, output); err != nil {
-			code := "incompatible_act_export_path"
+		if err := validateSelectorContract(export.selectorPlan, output, decorators); err != nil {
+			code := actExportPathCode
 			var typed selectorContractError
 			if errors.As(err, &typed) {
 				switch typed.code {
 				case selectorContractCodeDecode:
-					code = "incompatible_act_export_decode"
-				case selectorContractCodeRegexp:
-					code = "incompatible_act_export_transform"
+					code = actExportDecodeCode
+				case selectorContractCodeRegexp, selectorContractCodeTransform:
+					code = actExportTransformCode
 				}
 			}
 
@@ -165,9 +170,9 @@ func validateActionOutputs(
 			})
 		}
 
-		if err := validateSelectorBindingContracts(export.selectorPlan, resolver, matchers); err != nil {
+		if _, _, err := validateSelectorBindingContracts(export.selectorPlan, resolver, matchers, decorators); err != nil {
 			diagnostics = append(diagnostics, Diagnostic{
-				Code:     "incompatible_act_export_transform",
+				Code:     actExportTransformCode,
 				Path:     path,
 				Severity: SeverityError,
 				Summary:  fmt.Sprintf("export field %q %v", export.Field, err),
@@ -178,18 +183,96 @@ func validateActionOutputs(
 	return diagnostics
 }
 
+func validateActRefExports(
+	act *actPlan,
+	actEntryContracts map[string]ValueContract,
+	properties map[string]ValueContract,
+	resolver GeneratorResolver,
+	matchers MatcherResolver,
+	decorators DecoratorResolver,
+) []Diagnostic {
+	diagnostics := make([]Diagnostic, 0)
+	refContracts := mergeContractMaps(properties, actEntryContracts)
+	for i := range act.Exports {
+		export := act.Exports[i]
+		if export.Ref == nil {
+			continue
+		}
+
+		path := exportPath(act.Path, exportAlias(export))
+		contract, hasContract := refContracts[export.Ref.Name]
+		if hasContract {
+			if err := validateActRefExportSelectorContract(export, contract, decorators); err != nil {
+				diagnostics = append(diagnostics, Diagnostic{
+					Code:     actExportSelectorCode(err),
+					Path:     path,
+					Severity: SeverityError,
+					Summary:  fmt.Sprintf("export ref %q %v", export.Ref.Name, err),
+				})
+			}
+		}
+
+		if _, _, err := validateSelectorBindingContracts(export.Ref.selectorPlan, resolver, matchers, decorators); err != nil {
+			diagnostics = append(diagnostics, Diagnostic{
+				Code:     actExportTransformCode,
+				Path:     path,
+				Severity: SeverityError,
+				Summary:  fmt.Sprintf("export ref %q %v", export.Ref.Name, err),
+			})
+		}
+		if _, _, err := validateSelectorBindingContracts(export.selectorPlan, resolver, matchers, decorators); err != nil {
+			diagnostics = append(diagnostics, Diagnostic{
+				Code:     actExportTransformCode,
+				Path:     path,
+				Severity: SeverityError,
+				Summary:  fmt.Sprintf("export ref %q %v", export.Ref.Name, err),
+			})
+		}
+	}
+
+	return diagnostics
+}
+
+func validateActRefExportSelectorContract(
+	export exportPlan,
+	contract ValueContract,
+	decorators DecoratorResolver,
+) error {
+	selected, known, err := selectedSelectorContract(export.Ref.selectorPlan, contract, decorators)
+	if err != nil || !known {
+		return err
+	}
+
+	return validateSelectorContract(export.selectorPlan, selected, decorators)
+}
+
+func actExportSelectorCode(err error) string {
+	code := actExportPathCode
+	var typed selectorContractError
+	if errors.As(err, &typed) {
+		switch typed.code {
+		case selectorContractCodeDecode:
+			code = actExportDecodeCode
+		case selectorContractCodeRegexp, selectorContractCodeTransform:
+			code = actExportTransformCode
+		}
+	}
+	return code
+}
+
 func validateLogActionOutputs(
 	act *actPlan,
 	outputs map[string]ValueContract,
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 ) []Diagnostic {
 	diagnostics := make([]Diagnostic, 0)
 	for i := range act.Logs {
 		log := act.Logs[i]
-		diagnostics = append(diagnostics, validateLogValueActionOutput(log.Value, outputs, resolver, matchers)...)
+		diagnostics = append(diagnostics, validateLogValueActionOutput(log.Value, outputs, resolver, matchers, decorators)...)
 		for key := range log.Fields {
-			diagnostics = append(diagnostics, validateLogValueActionOutput(log.Fields[key], outputs, resolver, matchers)...)
+			diagnostics = append(diagnostics, validateLogValueActionOutput(log.Fields[key], outputs, resolver, matchers, decorators)...)
 		}
 	}
 
@@ -201,14 +284,15 @@ func validateLogValueActionOutput(
 	outputs map[string]ValueContract,
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 ) []Diagnostic {
 	diagnostics := make([]Diagnostic, 0)
 	if value.Field != "" {
-		diagnostics = append(diagnostics, validateLogValueActionField(value, outputs)...)
+		diagnostics = append(diagnostics, validateLogValueActionField(value, outputs, decorators)...)
 	}
 
 	if value.Field != "" || value.Ref != "" {
-		if err := validateSelectorBindingContracts(value.selectorPlan, resolver, matchers); err != nil {
+		if _, _, err := validateSelectorBindingContracts(value.selectorPlan, resolver, matchers, decorators); err != nil {
 			diagnostics = append(diagnostics, Diagnostic{
 				Code:     "incompatible_log_value_transform",
 				Path:     value.Path,
@@ -219,16 +303,16 @@ func validateLogValueActionOutput(
 	}
 
 	for key := range value.Object {
-		diagnostics = append(diagnostics, validateLogValueActionOutput(value.Object[key], outputs, resolver, matchers)...)
+		diagnostics = append(diagnostics, validateLogValueActionOutput(value.Object[key], outputs, resolver, matchers, decorators)...)
 	}
 	for i := range value.List {
-		diagnostics = append(diagnostics, validateLogValueActionOutput(value.List[i], outputs, resolver, matchers)...)
+		diagnostics = append(diagnostics, validateLogValueActionOutput(value.List[i], outputs, resolver, matchers, decorators)...)
 	}
 
 	return diagnostics
 }
 
-func validateLogValueActionField(value logValuePlan, outputs map[string]ValueContract) []Diagnostic {
+func validateLogValueActionField(value logValuePlan, outputs map[string]ValueContract, decorators DecoratorResolver) []Diagnostic {
 	output, ok := outputs[value.Field]
 	if !ok {
 		return []Diagnostic{{
@@ -239,14 +323,14 @@ func validateLogValueActionField(value logValuePlan, outputs map[string]ValueCon
 		}}
 	}
 
-	if err := validateSelectorContract(value.selectorPlan, output); err != nil {
+	if err := validateSelectorContract(value.selectorPlan, output, decorators); err != nil {
 		code := "incompatible_log_value_path"
 		var typed selectorContractError
 		if errors.As(err, &typed) {
 			switch typed.code {
 			case selectorContractCodeDecode:
 				code = "incompatible_log_value_decode"
-			case selectorContractCodeRegexp:
+			case selectorContractCodeRegexp, selectorContractCodeTransform:
 				code = "incompatible_log_value_transform"
 			}
 		}
@@ -267,6 +351,7 @@ func validatePropertyExpectationSubjects(
 	properties map[string]ValueContract,
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 ) []Diagnostic {
 	diagnostics := make([]Diagnostic, 0)
 
@@ -282,14 +367,14 @@ func validatePropertyExpectationSubjects(
 		}
 
 		path := joinChildPath(act.Path, "expectation", expectation.ID)
-		if err := validateSelectorContract(expectation.Subject.selectorPlan, contract); err != nil {
+		if err := validateSelectorContract(expectation.Subject.selectorPlan, contract, decorators); err != nil {
 			code := expectationSubjectPathCode
 			var typed selectorContractError
 			if errors.As(err, &typed) {
 				switch typed.code {
 				case selectorContractCodeDecode:
 					code = expectationSubjectDecodeCode
-				case selectorContractCodeRegexp:
+				case selectorContractCodeRegexp, selectorContractCodeTransform:
 					code = expectationSubjectTransformCode
 				}
 			}
@@ -302,7 +387,7 @@ func validatePropertyExpectationSubjects(
 			})
 		}
 
-		if err := validateSelectorBindingContracts(expectation.Subject.selectorPlan, resolver, matchers); err != nil {
+		if _, _, err := validateSelectorBindingContracts(expectation.Subject.selectorPlan, resolver, matchers, decorators); err != nil {
 			diagnostics = append(diagnostics, Diagnostic{
 				Code:     expectationSubjectTransformCode,
 				Path:     path,
@@ -460,6 +545,7 @@ func validateResolvedOutputs(contract ActionContract, outputs Outputs) error {
 func validateBindingContractWithResolver(
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 	binding bindingPlan,
 	spec ValueContract,
 ) error {
@@ -471,15 +557,25 @@ func validateBindingContractWithResolver(
 			return nil
 		}
 
-		return validateSelectorBindingContracts(binding.Ref.selectorPlan, resolver, matchers)
+		selected, known, err := validateSelectorBindingContracts(binding.Ref.selectorPlan, resolver, matchers, decorators)
+		if err != nil {
+			return err
+		}
+		if !known || spec.Supports(ValueKindAny) {
+			return nil
+		}
+		if err := contractCompatibilityError(selected, spec); err != nil {
+			return fmt.Errorf("selector produces %s incompatible with %s: %w", contractKindString(selected), contractKindString(spec), err)
+		}
+		return nil
 	case BindingKindObject:
-		return validateObjectBindingContract(resolver, matchers, binding, spec)
+		return validateObjectBindingContract(resolver, matchers, decorators, binding, spec)
 	case BindingKindList:
-		return validateListBindingContract(resolver, matchers, binding, spec)
+		return validateListBindingContract(resolver, matchers, decorators, binding, spec)
 	case BindingKindString:
-		return validateStringBindingContract(resolver, matchers, binding, spec)
+		return validateStringBindingContract(resolver, matchers, decorators, binding, spec)
 	case BindingKindGenerate:
-		return validateGenerateBindingContract(resolver, matchers, binding, spec)
+		return validateGenerateBindingContract(resolver, matchers, decorators, binding, spec)
 	default:
 		return nil
 	}
@@ -488,6 +584,7 @@ func validateBindingContractWithResolver(
 func validateObjectBindingContract(
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 	binding bindingPlan,
 	spec ValueContract,
 ) error {
@@ -506,7 +603,7 @@ func validateObjectBindingContract(
 			return fmt.Errorf("field %q is not declared", key)
 		}
 
-		if err := validateBindingContractWithResolver(resolver, matchers, child, fieldSpec); err != nil {
+		if err := validateBindingContractWithResolver(resolver, matchers, decorators, child, fieldSpec); err != nil {
 			return fmt.Errorf("field %q: %w", key, err)
 		}
 	}
@@ -528,6 +625,7 @@ func validateObjectBindingContract(
 func validateListBindingContract(
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 	binding bindingPlan,
 	spec ValueContract,
 ) error {
@@ -539,7 +637,7 @@ func validateListBindingContract(
 	}
 
 	for i := range binding.List {
-		if err := validateBindingContractWithResolver(resolver, matchers, binding.List[i], *spec.Elem); err != nil {
+		if err := validateBindingContractWithResolver(resolver, matchers, decorators, binding.List[i], *spec.Elem); err != nil {
 			return fmt.Errorf("item %d: %w", i, err)
 		}
 	}
@@ -550,6 +648,7 @@ func validateListBindingContract(
 func validateStringBindingContract(
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 	binding bindingPlan,
 	spec ValueContract,
 ) error {
@@ -564,7 +663,7 @@ func validateStringBindingContract(
 		Kinds: NewValueKindSet(ValueKindString, ValueKindNumber, ValueKindBool),
 	}
 	for i := range binding.Parts {
-		if err := validateBindingContractWithResolver(resolver, matchers, binding.Parts[i], stringPartContract); err != nil {
+		if err := validateBindingContractWithResolver(resolver, matchers, decorators, binding.Parts[i], stringPartContract); err != nil {
 			return fmt.Errorf("part %d: %w", i, err)
 		}
 	}
@@ -575,6 +674,7 @@ func validateStringBindingContract(
 func validateGenerateBindingContract(
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 	binding bindingPlan,
 	spec ValueContract,
 ) error {
@@ -587,7 +687,7 @@ func validateGenerateBindingContract(
 		return err
 	}
 
-	if err := validateGeneratorBindingArgs(resolver, matchers, binding, def.Contract); err != nil {
+	if err := validateGeneratorBindingArgs(resolver, matchers, decorators, binding, def.Contract); err != nil {
 		return err
 	}
 
@@ -706,20 +806,58 @@ func validateSelectorBindingContracts(
 	selector selectorPlan,
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
-) error {
+	decorators DecoratorResolver,
+) (selected ValueContract, known bool, err error) {
+	var current ValueContract
+	known = false
+
 	for i := range selector.Through {
-		if selector.Through[i].Pick == nil {
+		step := selector.Through[i]
+		switch {
+		case step.Transform != nil:
+			def, transformKnown, err := resolveSelectorDecorator(*step.Transform, decorators)
+			if err != nil {
+				return ValueContract{}, false, fmt.Errorf("through step %d transform %w", i, err)
+			}
+			if !transformKnown {
+				current = ValueContract{}
+				known = false
+				continue
+			}
+			if known {
+				if err := contractCompatibilityError(current, def.Contract.Accepts); err != nil {
+					return ValueContract{}, false, fmt.Errorf(
+						"through step %d transform input is incompatible with contract %s: %w",
+						i,
+						contractKindString(def.Contract.Accepts),
+						err,
+					)
+				}
+			}
+			current = def.Contract.Produces.Clone()
+			known = true
+		case known:
+			selected, selectedKnown, err := selectedThroughContract(step, current, decorators)
+			if err != nil {
+				return ValueContract{}, false, fmt.Errorf("through step %d %w", i, err)
+			}
+			current = selected
+			known = selectedKnown
+		}
+
+		if step.Pick == nil {
 			continue
 		}
 
-		if len(selector.Through[i].Pick.Where) != 0 {
-			for j := range selector.Through[i].Pick.Where {
+		if len(step.Pick.Where) != 0 {
+			for j := range step.Pick.Where {
 				if err := validatePickWhereAssert(
 					resolver,
 					matchers,
-					selector.Through[i].Pick.Where[j].Assert,
+					decorators,
+					step.Pick.Where[j].Assert,
 				); err != nil {
-					return fmt.Errorf("through step %d pick where[%d] assert %w", i, j, err)
+					return ValueContract{}, false, fmt.Errorf("through step %d pick where[%d] assert %w", i, j, err)
 				}
 			}
 			continue
@@ -728,19 +866,21 @@ func validateSelectorBindingContracts(
 		if err := validateBindingContractWithResolver(
 			resolver,
 			matchers,
-			selector.Through[i].Pick.Equals,
+			decorators,
+			step.Pick.Equals,
 			ValueContract{Kind: ValueKindAny},
 		); err != nil {
-			return fmt.Errorf("through step %d pick equals %w", i, err)
+			return ValueContract{}, false, fmt.Errorf("through step %d pick equals %w", i, err)
 		}
 	}
 
-	return nil
+	return current, known, nil
 }
 
 func validatePickWhereAssert(
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 	assert assertPlan,
 ) error {
 	if assert.Ref == "" || dependencyMissing(matchers) {
@@ -752,7 +892,7 @@ func validatePickWhereAssert(
 		return err
 	}
 
-	if err := validatePickWhereAssertArgs(resolver, matchers, assert, descriptor); err != nil {
+	if err := validatePickWhereAssertArgs(resolver, matchers, decorators, assert, descriptor); err != nil {
 		return err
 	}
 
@@ -775,6 +915,7 @@ func validatePickWhereAssert(
 func validatePickWhereAssertArgs(
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 	assert assertPlan,
 	descriptor MatcherDescriptor,
 ) error {
@@ -789,7 +930,7 @@ func validatePickWhereAssertArgs(
 			return fmt.Errorf("%q does not support arg %q", assert.Ref, key)
 		}
 
-		if err := validateBindingContractWithResolver(resolver, matchers, assert.Args[key], arg.Accepts); err != nil {
+		if err := validateBindingContractWithResolver(resolver, matchers, decorators, assert.Args[key], arg.Accepts); err != nil {
 			return fmt.Errorf("%q arg %q %w", assert.Ref, key, err)
 		}
 	}
@@ -812,6 +953,7 @@ func validatePickWhereAssertArgs(
 func validateGeneratorBindingArgs(
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 	binding bindingPlan,
 	contract GeneratorContract,
 ) error {
@@ -827,7 +969,7 @@ func validateGeneratorBindingArgs(
 			return fmt.Errorf("generator %q does not support arg %q", binding.Generator, key)
 		}
 
-		if err := validateBindingContractWithResolver(resolver, matchers, child, spec.Accepts); err != nil {
+		if err := validateBindingContractWithResolver(resolver, matchers, decorators, child, spec.Accepts); err != nil {
 			return fmt.Errorf("generator %q arg %q %w", binding.Generator, key, err)
 		}
 	}

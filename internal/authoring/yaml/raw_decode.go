@@ -128,9 +128,10 @@ type rawRefSpec struct {
 }
 
 type rawThroughStepSpec struct {
-	Path   string             `yaml:"path,omitempty"`
-	Pick   *rawPickStepSpec   `yaml:"pick,omitempty"`
-	Regexp *rawRegexpStepSpec `yaml:"regexp,omitempty"`
+	Path      string                 `yaml:"path,omitempty"`
+	Pick      *rawPickStepSpec       `yaml:"pick,omitempty"`
+	Regexp    *rawRegexpStepSpec     `yaml:"regexp,omitempty"`
+	Transform *theater.DecoratorSpec `yaml:"transform,omitempty"`
 }
 
 type rawPickStepSpec struct {

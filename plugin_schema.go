@@ -343,9 +343,15 @@ func redactorForJSONPointers(value any, pointers []string) pluginredact.Redactor
 	return pluginredact.FromStrings(values)
 }
 
-func redactorForPluginValueInput(properties map[string]any, value any, pointers []string) pluginredact.Redactor {
+func redactorForPluginValueInput(
+	properties map[string]any,
+	value any,
+	runtimeValue any,
+	pointers []string,
+) pluginredact.Redactor {
+	redactor := redactorForRuntimeSecrets(runtimeValue)
 	if len(pointers) == 0 {
-		return pluginredact.Redactor{}
+		return redactor
 	}
 
 	propertyPointers := make([]string, 0, len(pointers))
@@ -358,8 +364,30 @@ func redactorForPluginValueInput(properties map[string]any, value any, pointers 
 		propertyPointers = append(propertyPointers, pointers[i])
 	}
 
-	return redactorForJSONPointers(properties, propertyPointers).
+	return redactor.
+		Merge(redactorForJSONPointers(properties, propertyPointers)).
 		Merge(redactorForJSONPointers(value, valuePointers))
+}
+
+func redactorForRuntimeSecrets(value any) pluginredact.Redactor {
+	switch typed := value.(type) {
+	case secretvalue.Value:
+		return pluginredact.New(typed)
+	case map[string]any:
+		redactor := pluginredact.Redactor{}
+		for key := range typed {
+			redactor = redactor.Merge(redactorForRuntimeSecrets(typed[key]))
+		}
+		return redactor
+	case []any:
+		redactor := pluginredact.Redactor{}
+		for i := range typed {
+			redactor = redactor.Merge(redactorForRuntimeSecrets(typed[i]))
+		}
+		return redactor
+	default:
+		return pluginredact.Redactor{}
+	}
 }
 
 func containsRootJSONPointer(pointers []string) bool {

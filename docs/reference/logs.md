@@ -109,7 +109,7 @@ A log must provide either `value` or `message`. `fields` requires `message`.
 | `list` | Build a list from nested log values |
 | `decode` | Decode a selected `field` or `ref` before traversal |
 | `path` | Traverse a selected value with an RFC 6901 JSON Pointer |
-| `through` | Apply selector steps such as regexp extraction |
+| `through` | Apply selector steps such as regexp extraction or pure transforms |
 
 Checked YAML example:
 

@@ -102,6 +102,7 @@ control-flow inputs.
 | `field(body) | decode(json)` | Decode selected value as JSON |
 | `path("/data/id")` | RFC 6901 JSON Pointer traversal |
 | `regexp(pattern: r"...", group: 1)` | Regex extraction |
+| `transform.jwt.claims() | path("/uid")` | Apply a plugin transform in a selector |
 
 Selectors are exact. Missing roots, missing paths, decode failures, and
 wrong-type traversals are selector failures rather than matcher mismatches.
@@ -141,8 +142,11 @@ Use [Expectations](../expectations.md) for the matcher table.
 | Form | Meaning |
 | --- | --- |
 | `export id = field(body) | decode(json) | path("/id")` | Export selected action output |
+| `export id = $profile | path("/id")` | Export selected value from current act scope |
 | `export id = field(body) | decode(json) | path("/id") matches r"^[0-9]+$"` | Add a same-id expectation before export |
 | `call run = scenario() ... export shared = $id` | Export a scenario result to stage scope |
 
 An assertion-backed act export creates a canonical expectation with the export
-name as its id. Do not reuse that id for another expectation in the same act.
+name as its id and must start from `field(...)`. Do not reuse that id for
+another expectation in the same act. Scenario-call exports must be direct
+`$ref` exports without selector steps or assertion tails.

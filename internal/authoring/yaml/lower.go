@@ -1004,6 +1004,10 @@ func lowerThroughStep(raw rawThroughStepSpec, sourceFile string) (theater.Throug
 			Group:   raw.Regexp.Group,
 		}
 	}
+	if raw.Transform != nil {
+		transform := *raw.Transform
+		step.Transform = &transform
+	}
 
 	return step, nil
 }

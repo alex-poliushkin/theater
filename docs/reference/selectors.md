@@ -16,7 +16,9 @@ The common shape is:
 `field` selects a named output from the current action. Examples from the
 checked docs use `field(stdout)`, `field(exit_code)`, and `field(values)` in
 Theater DSL. YAML writes current-action roots as `subject.field` for
-expectations or `exports.field` for act exports.
+expectations or `exports.field` for act exports. Act exports can also use
+`exports.ref` when the exported value comes from an already-available scope
+value instead of the action output map.
 
 The built-in action output fields are:
 
@@ -54,10 +56,29 @@ with `/`.
 ## Through
 
 Longer selectors can continue with `through` steps after the first root,
-`decode`, and `path`. This initial reference page names the boundary only:
-current shipped `through` steps include additional `path`, exact-one `pick`, and
-`regexp` extraction. Use the YAML source-of-truth reference when you need those
-forms exactly.
+`decode`, and `path`. Shipped `through` steps include additional `path`,
+exact-one `pick`, `regexp` extraction, and pure transform calls.
+
+YAML writes a transform selector step explicitly:
+
+```
+through:
+  - transform:
+      use: transform.jwt.claims
+      with:
+        audience: mobile
+  - path: /uid
+```
+
+Theater DSL writes the same selector as a normal pipeline call:
+
+```
+field(body) | decode(json) | path("/token") | transform.jwt.claims(audience: "mobile") | path("/uid")
+```
+
+Transform selector steps do not publish values into scope. They only convert the
+selected value before the next selector step, expectation, export, log, or
+binding use.
 
 For a runnable selector example, use
 [Check Values](../tutorial/05-check-values.md).

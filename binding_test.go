@@ -304,6 +304,114 @@ func TestResolveBindingsSupportsStringAndThroughPipeline(t *testing.T) {
 	}
 }
 
+func TestResolveBindingsSupportsDecoratorThroughPipeline(t *testing.T) {
+	t.Parallel()
+
+	catalog := NewCatalog()
+	if err := catalog.RegisterDecorator("transform.test.wrap", DecoratorDef{
+		Contract: DecoratorContract{
+			Accepts: ValueContract{Kind: ValueKindString},
+			Produces: ValueContract{
+				Kind: ValueKindObject,
+				Fields: map[string]ValueContract{
+					"wrapped": {Kind: ValueKindString},
+				},
+			},
+			Params: []ParamSpec{
+				{Name: "prefix", Accepts: ValueContract{Kind: ValueKindString}, Required: true},
+				{Name: "suffix", Accepts: ValueContract{Kind: ValueKindString}, Required: true},
+			},
+		},
+		Compile: func(args Values) (DecoratorFunc, error) {
+			prefix, _ := args["prefix"].(string)
+			suffix, _ := args["suffix"].(string)
+			return func(value any) (any, error) {
+				return map[string]any{"wrapped": prefix + value.(string) + suffix}, nil
+			}, nil
+		},
+	}); err != nil {
+		t.Fatalf("register decorator failed: %v", err)
+	}
+
+	values, err := newReferenceResolver(Values{
+		"token": "issued",
+	}).withDecorators(catalog).ResolveBindings(map[string]bindingPlan{
+		"wrapped": {
+			Kind: BindingKindRef,
+			Ref: &refPlan{
+				Name: "token",
+				selectorPlan: selectorPlan{
+					Through: []throughStepPlan{
+						{
+							Transform: &decoratorPlan{
+								Use: "transform.test.wrap",
+								With: Values{
+									"prefix": "<<",
+									"suffix": ">>",
+								},
+							},
+						},
+						{Path: JSONPointer("/wrapped")},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolve bindings failed: %v", err)
+	}
+
+	if got, want := values["wrapped"], "<<issued>>"; got != want {
+		t.Fatalf("wrapped mismatch: got %v want %v", got, want)
+	}
+}
+
+func TestResolveBindingsPreservesSecretAcrossDecoratorThroughPipeline(t *testing.T) {
+	t.Parallel()
+
+	catalog := NewCatalog()
+	if err := catalog.RegisterDecorator("transform.test.derive", DecoratorDef{
+		Contract: DecoratorContract{
+			Accepts:  ValueContract{Kind: ValueKindString},
+			Produces: ValueContract{Kind: ValueKindString},
+		},
+		Compile: func(Values) (DecoratorFunc, error) {
+			return func(any) (any, error) {
+				return "derived-token", nil
+			}, nil
+		},
+	}); err != nil {
+		t.Fatalf("register decorator failed: %v", err)
+	}
+
+	values, err := newReferenceResolver(Values{
+		"token": NewSecret("issued-token"),
+	}).withDecorators(catalog).ResolveBindings(map[string]bindingPlan{
+		"derived": {
+			Kind: BindingKindRef,
+			Ref: &refPlan{
+				Name: "token",
+				selectorPlan: selectorPlan{
+					Through: []throughStepPlan{{
+						Transform: &decoratorPlan{Use: "transform.test.derive"},
+					}},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolve bindings failed: %v", err)
+	}
+
+	secret, ok := values["derived"].(Secret)
+	if !ok {
+		t.Fatalf("derived value must remain secret, got %T", values["derived"])
+	}
+	if got, want := secret.Reveal(), any("derived-token"); got != want {
+		t.Fatalf("secret payload mismatch: got %v want %v", got, want)
+	}
+}
+
 func TestResolveBindingsSupportsPickWhereThroughPipeline(t *testing.T) {
 	t.Parallel()
 

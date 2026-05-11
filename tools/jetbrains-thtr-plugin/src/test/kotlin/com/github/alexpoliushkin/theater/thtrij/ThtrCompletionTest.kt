@@ -191,6 +191,16 @@ class ThtrCompletionTest : BasePlatformTestCase() {
 				"""
 				stage smoke
 				scenario plugin
+				  act load
+				    expect wrapped: field(body) | transform.sm<caret>
+				""",
+			).contains("transform.smoke.wrap"),
+		)
+		assertTrue(
+			completionLabels(
+				"""
+				stage smoke
+				scenario plugin
 				  act echo
 				    expect echoed: field(echo) assert matcher.sm<caret>
 				""",
@@ -240,6 +250,16 @@ class ThtrCompletionTest : BasePlatformTestCase() {
 			""",
 		)
 		assertTrue(transformLabels.contains("prefix"))
+
+		val selectorTransformLabels = completionLabels(
+			"""
+			stage smoke
+			scenario plugin
+			  act load
+			    expect wrapped: field(body) | transform.smoke.wrap(p<caret>
+			""",
+		)
+		assertTrue(selectorTransformLabels.contains("prefix"))
 	}
 
 	private fun completionLabels(source: String): Set<String> {

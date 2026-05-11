@@ -40,6 +40,7 @@ type MatcherSugarResolver interface {
 
 type runtimeCatalog interface {
 	ActionResolver
+	DecoratorResolver
 	GeneratorResolver
 	InventoryResolver
 }

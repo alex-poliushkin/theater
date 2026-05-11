@@ -321,12 +321,14 @@ func (e actExecution) reportLogRecord(log logPlan, record logEvaluationRecord) *
 func (e actExecution) logFieldResolver(actionOutputs Values, actScope *valueScope) referenceResolver {
 	return newReferenceResolver(mapValueLookup(actionOutputs)).
 		withBindingSource(actScope).
+		withDecorators(e.catalog).
 		withGeneration(e.catalog, e.generation, e.identity).
 		withMatchers(e.matchers)
 }
 
 func (e actExecution) logRefResolver(actScope *valueScope) referenceResolver {
 	return newReferenceResolver(actScope).
+		withDecorators(e.catalog).
 		withGeneration(e.catalog, e.generation, e.identity).
 		withMatchers(e.matchers)
 }

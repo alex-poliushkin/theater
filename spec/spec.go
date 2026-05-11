@@ -95,7 +95,9 @@ type LogValueSpec struct {
 	SourceSpan *SourceRef              `yaml:"-" json:"-"`
 }
 
-// ExportSpec declares a named export from action outputs or scenario scope.
+// ExportSpec declares a named export. Act exports can select current action
+// outputs with Field or available act-scope values with Ref. Scenario-call
+// exports use Ref to select from the completed scenario scope.
 type ExportSpec struct {
 	As      string
 	Ref     *RefSpec

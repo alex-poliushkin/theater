@@ -18,11 +18,13 @@ type RefSpec struct {
 	Through []ThroughStepSpec
 }
 
-// ThroughStepSpec declares one pure post-selection value transform.
+// ThroughStepSpec declares one selector through step. Exactly one of Path,
+// Pick, Regexp, or Transform should be set.
 type ThroughStepSpec struct {
-	Path   JSONPointer     `yaml:"path,omitempty" json:"path,omitempty"`
-	Pick   *PickStepSpec   `yaml:"pick,omitempty" json:"pick,omitempty"`
-	Regexp *RegexpStepSpec `yaml:"regexp,omitempty" json:"regexp,omitempty"`
+	Path      JSONPointer     `yaml:"path,omitempty" json:"path,omitempty"`
+	Pick      *PickStepSpec   `yaml:"pick,omitempty" json:"pick,omitempty"`
+	Regexp    *RegexpStepSpec `yaml:"regexp,omitempty" json:"regexp,omitempty"`
+	Transform *DecoratorSpec  `yaml:"transform,omitempty" json:"transform,omitempty"`
 }
 
 // PickStepSpec selects exactly one list item. The compact at/equals form

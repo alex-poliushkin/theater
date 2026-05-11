@@ -32,11 +32,12 @@ func (v *stageContractValidator) Validate() []Diagnostic {
 	for i := range v.stage.Scenarios {
 		scenario := &v.stage.Scenarios[i]
 		scopeAnalysis := analyzeScenarioScope(*scenario)
+		contractAnalysis := analyzeScenarioContracts(*scenario, scopeAnalysis, v.catalog, v.catalog)
 		stateHandles := analyzeScenarioStateHandles(*scenario, scopeAnalysis)
 		finalRootsByScenario[scenario.ID] = finalScenarioRoots(*scenario, scopeAnalysis)
 		v.diagnostics.addAll(validateScenarioScopeCollisions(*scenario, scopeAnalysis))
 		for j := range scenario.Acts {
-			v.validateAct(&scenario.Acts[j], scopeAnalysis, stateHandles, stateDescriptors)
+			v.validateAct(&scenario.Acts[j], scopeAnalysis, contractAnalysis, stateHandles, stateDescriptors)
 		}
 	}
 
@@ -59,17 +60,19 @@ func (v *stageContractValidator) validateScenarioCallBindings(call *scenarioCall
 		return
 	}
 
-	v.diagnostics.addAll(validateScenarioCallBindings(*call, scenario.Inputs, v.catalog, v.matchers))
+	v.diagnostics.addAll(validateScenarioCallBindings(*call, scenario.Inputs, v.catalog, v.matchers, v.catalog))
 }
 
 func (v *stageContractValidator) validateAct(
 	act *actPlan,
 	scopeAnalysis scenarioScopeAnalysis,
+	contractAnalysis scenarioContractAnalysis,
 	stateHandles scenarioStateHandleAnalysis,
 	stateDescriptors map[string]StateDescriptor,
 ) {
 	actionOutputs := map[string]ValueContract(nil)
 	actEntryRoots := scopeAnalysis.actRoots(act.ID)
+	actEntryContracts := contractAnalysis.actContracts(act.ID)
 
 	if dependencyMissing(v.catalog) {
 		if !dependencyMissing(v.matchers) {
@@ -78,7 +81,7 @@ func (v *stageContractValidator) validateAct(
 		return
 	}
 
-	actionOutputs = v.validateActActionContracts(act, scopeAnalysis, actEntryRoots)
+	actionOutputs = v.validateActActionContracts(act, scopeAnalysis, actEntryRoots, actEntryContracts)
 	v.diagnostics.addAll(validateStateActContracts(act, stateHandles.actEntry[act.ID], stateDescriptors))
 	if !dependencyMissing(v.matchers) {
 		v.validateMatchers(act, actionOutputs)
@@ -89,6 +92,7 @@ func (v *stageContractValidator) validateActActionContracts(
 	act *actPlan,
 	scopeAnalysis scenarioScopeAnalysis,
 	actEntryRoots map[string]struct{},
+	actEntryContracts map[string]ValueContract,
 ) map[string]ValueContract {
 	actionPath := act.Path + "/action"
 	v.diagnostics.addAll(validatePropertyContracts(act, v.catalog, v.matchers))
@@ -101,10 +105,11 @@ func (v *stageContractValidator) validateActActionContracts(
 	}
 
 	contract := runner.Contract()
-	v.diagnostics.addAll(validateActionBindings(actionPath, act.Action.With, contract.Inputs, v.catalog, v.matchers))
-	v.diagnostics.addAll(validateActionOutputs(act, contract.Outputs, v.catalog, v.matchers))
-	v.diagnostics.addAll(validateLogActionOutputs(act, contract.Outputs, v.catalog, v.matchers))
-	v.diagnostics.addAll(validatePropertyExpectationSubjects(act, propertyOutputs, v.catalog, v.matchers))
+	v.diagnostics.addAll(validateActionBindings(actionPath, act.Action.With, contract.Inputs, v.catalog, v.matchers, v.catalog))
+	v.diagnostics.addAll(validateActionOutputs(act, contract.Outputs, v.catalog, v.matchers, v.catalog))
+	v.diagnostics.addAll(validateActRefExports(act, actEntryContracts, propertyOutputs, v.catalog, v.matchers, v.catalog))
+	v.diagnostics.addAll(validateLogActionOutputs(act, contract.Outputs, v.catalog, v.matchers, v.catalog))
+	v.diagnostics.addAll(validatePropertyExpectationSubjects(act, propertyOutputs, v.catalog, v.matchers, v.catalog))
 	if scopeAnalysis.isReachable(act.ID) {
 		v.diagnostics.addAll(validateExpectationOutputRootCollisions(act, actEntryRoots, contract.Outputs))
 		v.diagnostics.addAll(validateExpectationArgRefs(act, actEntryRoots, contract.Outputs))
@@ -130,11 +135,18 @@ func (v *stageContractValidator) validateMatchers(
 			continue
 		}
 
-		argDiagnostics := validateExpectationArgs(path, expectation, descriptor, v.catalog, v.matchers)
-		nestedDiagnostics := validateNestedMatcherArgs(path+"/assert", expectation.Assert.Ref, expectation.Assert.Args, v.catalog, v.matchers)
+		argDiagnostics := validateExpectationArgs(path, expectation, descriptor, v.catalog, v.matchers, v.catalog)
+		nestedDiagnostics := validateNestedMatcherArgs(
+			path+"/assert",
+			expectation.Assert.Ref,
+			expectation.Assert.Args,
+			v.catalog,
+			v.matchers,
+			v.catalog,
+		)
 		v.diagnostics.addAll(argDiagnostics)
 		v.diagnostics.addAll(nestedDiagnostics)
-		v.diagnostics.addAll(validateExpectationSubjectKind(path, expectation, actionOutputs, propertyOutputs, descriptor))
+		v.diagnostics.addAll(validateExpectationSubjectKind(path, expectation, actionOutputs, propertyOutputs, descriptor, v.catalog))
 		if len(argDiagnostics) == 0 && len(nestedDiagnostics) == 0 {
 			v.diagnostics.addAll(validateExpectationCompile(path, expectation, descriptor, v.matchers))
 		}
@@ -154,7 +166,7 @@ func (v *stageContractValidator) validateScenarioCallExports(
 		export := call.Exports[i]
 		path := exportPath(call.Path, exportAlias(export))
 		if export.Ref == nil || export.Ref.Name == "" {
-			if err := validateSelectorBindingContracts(export.selectorPlan, v.catalog, v.matchers); err != nil {
+			if _, _, err := validateSelectorBindingContracts(export.selectorPlan, v.catalog, v.matchers, v.catalog); err != nil {
 				v.diagnostics.add(path, "incompatible_scenario_call_export_transform", err.Error())
 			}
 			continue
@@ -179,7 +191,7 @@ func (v *stageContractValidator) validateScenarioCallExports(
 			),
 		)
 
-		if err := validateSelectorBindingContracts(export.Ref.selectorPlan, v.catalog, v.matchers); err != nil {
+		if _, _, err := validateSelectorBindingContracts(export.Ref.selectorPlan, v.catalog, v.matchers, v.catalog); err != nil {
 			v.diagnostics.add(path, "incompatible_scenario_call_export_transform", err.Error())
 		}
 	}
@@ -205,6 +217,19 @@ func validateActExportRefs(
 	diagnostics := make([]Diagnostic, 0)
 	for i := range act.Exports {
 		path := exportPath(act.Path, exportAlias(act.Exports[i]))
+		if act.Exports[i].Ref != nil {
+			diagnostics = append(
+				diagnostics,
+				validateSelectorBindingRefAvailability(
+					path,
+					act.Exports[i].Ref.selectorPlan,
+					availableRoots,
+					func(name string) string {
+						return fmt.Sprintf("binding ref %q is not available in scenario scope at this point", name)
+					},
+				)...,
+			)
+		}
 		diagnostics = append(
 			diagnostics,
 			validateSelectorBindingRefAvailability(
@@ -235,6 +260,7 @@ func validateExpectationArgs(
 	descriptor MatcherDescriptor,
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 ) []Diagnostic {
 	diagnostics := make([]Diagnostic, 0)
 	argSpecs := make(map[string]MatcherArg, len(descriptor.Args))
@@ -256,7 +282,7 @@ func validateExpectationArgs(
 			continue
 		}
 
-		if err := validateBindingContractWithResolver(resolver, matchers, binding, arg.Accepts); err != nil {
+		if err := validateBindingContractWithResolver(resolver, matchers, decorators, binding, arg.Accepts); err != nil {
 			diagnostics = append(diagnostics, Diagnostic{
 				Code:     "incompatible_expectation_assert_arg",
 				Path:     bindingPath(path+"/assert", key),
@@ -293,6 +319,7 @@ func validateNestedMatcherArgs(
 	args map[string]bindingPlan,
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 ) []Diagnostic {
 	switch ref {
 	case nestedMatcherNotRef, nestedMatcherHasEntryRef:
@@ -304,13 +331,13 @@ func validateNestedMatcherArgs(
 		if !ok {
 			return nil
 		}
-		return validateNestedMatcherAssert(bindingPath(assertPath, "assert"), nested, resolver, matchers)
+		return validateNestedMatcherAssert(bindingPath(assertPath, "assert"), nested, resolver, matchers, decorators)
 	case nestedMatcherHasItemRef, nestedMatcherAllItemsRef:
 		binding, ok := args["where"]
 		if !ok {
 			return nil
 		}
-		return validateWhereMatcherArgs(bindingPath(assertPath, "where"), binding, resolver, matchers)
+		return validateWhereMatcherArgs(bindingPath(assertPath, "where"), binding, resolver, matchers, decorators)
 	default:
 		return nil
 	}
@@ -321,6 +348,7 @@ func validateWhereMatcherArgs(
 	where bindingPlan,
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 ) []Diagnostic {
 	if where.Kind != BindingKindList {
 		return nil
@@ -343,7 +371,7 @@ func validateWhereMatcherArgs(
 		itemPath := bindingPath(wherePath, listBindingKey(i))
 		diagnostics = append(
 			diagnostics,
-			validateNestedMatcherAssert(bindingPath(itemPath, "assert"), nested, resolver, matchers)...,
+			validateNestedMatcherAssert(bindingPath(itemPath, "assert"), nested, resolver, matchers, decorators)...,
 		)
 	}
 	return diagnostics
@@ -354,6 +382,7 @@ func validateNestedMatcherAssert(
 	assert assertPlan,
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 ) []Diagnostic {
 	descriptor, err := matchers.Resolve(assert.Ref)
 	if err != nil {
@@ -365,8 +394,8 @@ func validateNestedMatcherAssert(
 		}}
 	}
 
-	diagnostics := validateAssertArgs(assertPath, assert.Ref, assert.Args, descriptor, resolver, matchers)
-	nestedDiagnostics := validateNestedMatcherArgs(assertPath, assert.Ref, assert.Args, resolver, matchers)
+	diagnostics := validateAssertArgs(assertPath, assert.Ref, assert.Args, descriptor, resolver, matchers, decorators)
+	nestedDiagnostics := validateNestedMatcherArgs(assertPath, assert.Ref, assert.Args, resolver, matchers, decorators)
 	diagnostics = append(diagnostics, nestedDiagnostics...)
 	if len(diagnostics) != 0 {
 		return diagnostics
@@ -382,6 +411,7 @@ func validateAssertArgs(
 	descriptor MatcherDescriptor,
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 ) []Diagnostic {
 	diagnostics := make([]Diagnostic, 0)
 	argSpecs := make(map[string]MatcherArg, len(descriptor.Args))
@@ -403,7 +433,7 @@ func validateAssertArgs(
 			continue
 		}
 
-		if err := validateBindingContractWithResolver(resolver, matchers, binding, arg.Accepts); err != nil {
+		if err := validateBindingContractWithResolver(resolver, matchers, decorators, binding, arg.Accepts); err != nil {
 			diagnostics = append(diagnostics, Diagnostic{
 				Code:     "incompatible_expectation_assert_arg",
 				Path:     bindingPath(assertPath, key),
@@ -505,8 +535,9 @@ func validateExpectationSubjectKind(
 	actionOutputs map[string]ValueContract,
 	propertyOutputs map[string]ValueContract,
 	descriptor MatcherDescriptor,
+	decorators DecoratorResolver,
 ) []Diagnostic {
-	contract, ok, known := selectedExpectationSubjectContract(expectation, actionOutputs, propertyOutputs)
+	contract, ok, known := selectedExpectationSubjectContract(expectation, actionOutputs, propertyOutputs, decorators)
 	if !ok || !known {
 		return nil
 	}
@@ -564,6 +595,7 @@ func selectedExpectationSubjectContract(
 	expectation *expectationPlan,
 	actionOutputs map[string]ValueContract,
 	propertyOutputs map[string]ValueContract,
+	decorators DecoratorResolver,
 ) (selected ValueContract, ok, known bool) {
 	switch expectation.Subject.From {
 	case SubjectFromProperty:
@@ -572,7 +604,7 @@ func selectedExpectationSubjectContract(
 			return ValueContract{}, false, false
 		}
 
-		selected, known, err := selectedSelectorContract(expectation.Subject.selectorPlan, contract)
+		selected, known, err := selectedSelectorContract(expectation.Subject.selectorPlan, contract, decorators)
 		if err != nil {
 			return ValueContract{}, false, false
 		}
@@ -584,7 +616,7 @@ func selectedExpectationSubjectContract(
 			return ValueContract{}, false, false
 		}
 
-		selected, known, err := selectedSelectorContract(expectation.Subject.selectorPlan, contract)
+		selected, known, err := selectedSelectorContract(expectation.Subject.selectorPlan, contract, decorators)
 		if err != nil {
 			return ValueContract{}, false, false
 		}

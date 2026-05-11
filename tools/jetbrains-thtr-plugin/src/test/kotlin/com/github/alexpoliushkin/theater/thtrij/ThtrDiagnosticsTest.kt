@@ -60,7 +60,7 @@ class ThtrDiagnosticsTest : BasePlatformTestCase() {
 			    do action.http
 			    log with_modifier required = field(status_code)
 			    log bad_root = "status"
-			    log bad_pipe = field(body) | transform.vendor.redact()
+			    log bad_pipe = field(body) | action.vendor.redact()
 			    expect ok: field(status_code) == 200
 			    log after = field(status_code)
 			""".trimIndent(),
@@ -77,8 +77,8 @@ class ThtrDiagnosticsTest : BasePlatformTestCase() {
 		assertDiagnostic(diagnostics, "\"status\"", ".thtr log value must start with field(...), ${'$'}ref, object, or list")
 		assertDiagnostic(
 			diagnostics,
-			"transform.vendor.redact",
-			".thtr log pipelines support selector steps only: decode, path, pick or regexp",
+			"action.vendor.redact",
+			".thtr log pipelines support selector steps only: decode, path, pick, regexp or transform",
 		)
 		assertDiagnostic(diagnostics, "log after = field(status_code)", ".thtr logs must appear after do or capture_auth and before expect, export or on")
 	}

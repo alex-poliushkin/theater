@@ -44,7 +44,7 @@ func validatePropertyContracts(act *actPlan, catalog propertyCatalog, matchers M
 
 		diagnostics = append(
 			diagnostics,
-			validateInventoryBindings(path+"/inventory/with", property.Inventory.With, inventory.Contract().Args, catalog, matchers)...,
+			validateInventoryBindings(path+"/inventory/with", property.Inventory.With, inventory.Contract().Args, catalog, matchers, catalog)...,
 		)
 
 		for j := range property.Decorators {
@@ -219,6 +219,7 @@ func validateInventoryBindings(
 	specs []ArgSpec,
 	resolver GeneratorResolver,
 	matchers MatcherResolver,
+	decorators DecoratorResolver,
 ) []Diagnostic {
 	diagnostics := make([]Diagnostic, 0)
 	specIndex := make(map[string]ArgSpec, len(specs))
@@ -240,7 +241,7 @@ func validateInventoryBindings(
 			continue
 		}
 
-		if err := validateBindingContractWithResolver(resolver, matchers, binding, spec.Accepts); err != nil {
+		if err := validateBindingContractWithResolver(resolver, matchers, decorators, binding, spec.Accepts); err != nil {
 			diagnostics = append(diagnostics, Diagnostic{
 				Code:     "incompatible_inventory_arg",
 				Path:     bindingPath(path, key),

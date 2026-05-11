@@ -19,6 +19,7 @@ type actOutcome struct {
 	status                Status
 	failure               *Failure
 	values                Values
+	properties            Values
 	logs                  []logEvaluationRecord
 	eventually            *EventuallyReport
 	debugTerminalBoundary *debugBoundaryState

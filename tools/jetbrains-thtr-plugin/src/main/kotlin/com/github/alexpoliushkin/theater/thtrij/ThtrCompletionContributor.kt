@@ -187,7 +187,7 @@ private fun capabilityItems(capabilities: List<ThtrCapability>, vararg kinds: Th
 }
 
 private fun selectorCompletions(): List<ThtrCompletionItem> {
-	return listOf("field", "decode", "path", "pick", "regexp").map { ThtrCompletionItem(it, "selector") }
+	return listOf("field", "decode", "path", "pick", "regexp", "transform").map { ThtrCompletionItem(it, "selector") }
 }
 
 private fun logValueCompletions(prefix: String): List<ThtrCompletionItem> {

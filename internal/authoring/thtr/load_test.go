@@ -497,7 +497,7 @@ scenario register
       outputs:
         profile_id: $response_json | path("/id")
     expect has-profile-id: field(profile_id) matches r"^[A-Za-z0-9-]+$"
-    export issued_profile_id = field(profile_id)
+    export issued_profile_id = $response_json | path("/id")
 
 call register-user = register()
   export final_profile_id = $issued_profile_id
@@ -559,6 +559,20 @@ call register-user = register()
 	}
 	if got, want := expectation.Assert.Args["pattern"].Value, "^[A-Za-z0-9-]+$"; got != want {
 		t.Fatalf("matches pattern mismatch: got %#v want %#v", got, want)
+	}
+
+	actExport := spec.Scenarios[0].Acts[0].Exports[0]
+	if actExport.Ref == nil {
+		t.Fatal("act export ref must be present")
+	}
+	if got, want := actExport.Ref.Name, "response_json"; got != want {
+		t.Fatalf("act export ref name mismatch: got %q want %q", got, want)
+	}
+	if got, want := actExport.Ref.Path, theater.JSONPointer("/id"); got != want {
+		t.Fatalf("act export ref path mismatch: got %q want %q", got, want)
+	}
+	if !actExport.Path.IsZero() {
+		t.Fatalf("act export top-level path must be empty for ref export, got %q", actExport.Path)
 	}
 
 	export := spec.ScenarioCalls[0].Exports[0]
@@ -2290,6 +2304,51 @@ scenario verify-email(flow_id: string!, email: string!)
 	}
 	if got, want := len(export.Through), 3; got != want {
 		t.Fatalf("export through length mismatch: got %d want %d", got, want)
+	}
+}
+
+func TestParseLowersPluginTransformSelectorStep(t *testing.T) {
+	t.Parallel()
+
+	spec, err := Parse([]byte(`stage jwt-smoke
+scenario inspect-token
+  act request
+    do action.http
+      method: "GET"
+      url: "/token"
+    expect uid: field(body) | decode(json) | path("/token") | transform.jwt.claims() | path("/uid") == "user-123"
+    export uid = field(body) | decode(json) | path("/token") | transform.jwt.claims(audience: "mobile") | path("/uid")
+`), nil)
+	if err != nil {
+		failWithSpan(t, "parse", err)
+	}
+
+	subject := spec.Scenarios[0].Acts[0].Expectations[0].Subject
+	if got, want := len(subject.Through), 2; got != want {
+		t.Fatalf("subject through length mismatch: got %d want %d", got, want)
+	}
+	if subject.Through[0].Transform == nil {
+		t.Fatal("subject first through step must be transform")
+	}
+	if got, want := subject.Through[0].Transform.Use, "transform.jwt.claims"; got != want {
+		t.Fatalf("subject transform use mismatch: got %q want %q", got, want)
+	}
+	if got, want := subject.Through[1].Path, theater.JSONPointer("/uid"); got != want {
+		t.Fatalf("subject path mismatch: got %q want %q", got, want)
+	}
+
+	export := spec.Scenarios[0].Acts[0].Exports[0]
+	if got, want := len(export.Through), 2; got != want {
+		t.Fatalf("export through length mismatch: got %d want %d", got, want)
+	}
+	if export.Through[0].Transform == nil {
+		t.Fatal("export first through step must be transform")
+	}
+	if got, want := export.Through[0].Transform.Use, "transform.jwt.claims"; got != want {
+		t.Fatalf("export transform use mismatch: got %q want %q", got, want)
+	}
+	if got, want := export.Through[0].Transform.With["audience"], "mobile"; got != want {
+		t.Fatalf("export transform arg mismatch: got %#v want %#v", got, want)
 	}
 }
 

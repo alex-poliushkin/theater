@@ -7,9 +7,10 @@ import (
 )
 
 const (
-	selectorContractCodeDecode = "decode"
-	selectorContractCodePath   = "path"
-	selectorContractCodeRegexp = "regexp"
+	selectorContractCodeDecode    = "decode"
+	selectorContractCodePath      = "path"
+	selectorContractCodeRegexp    = "regexp"
+	selectorContractCodeTransform = "transform"
 )
 
 type selectorContractError struct {
@@ -26,14 +27,15 @@ func (e selectorContractError) Unwrap() error {
 	return e.cause
 }
 
-func validateSelectorContract(selector selectorPlan, contract ValueContract) error {
-	_, _, err := selectedSelectorContract(selector, contract)
+func validateSelectorContract(selector selectorPlan, contract ValueContract, decorators DecoratorResolver) error {
+	_, _, err := selectedSelectorContract(selector, contract, decorators)
 	return err
 }
 
 func selectedSelectorContract(
 	selector selectorPlan,
 	contract ValueContract,
+	decorators DecoratorResolver,
 ) (selected ValueContract, known bool, err error) {
 	if selector.Decode == DecodeJSON {
 		if !contractSupportsOnly(contract, ValueKindString, ValueKindBytes) {
@@ -57,7 +59,7 @@ func selectedSelectorContract(
 
 	current := selected
 	for i := range selector.Through {
-		current, known, err = selectedThroughContract(selector.Through[i], current)
+		current, known, err = selectedThroughContract(selector.Through[i], current, decorators)
 		if err != nil {
 			return ValueContract{}, false, err
 		}
@@ -180,10 +182,14 @@ func validateSelectorIndexToken(token string) error {
 	return nil
 }
 
-func selectedThroughContract(step throughStepPlan, contract ValueContract) (selected ValueContract, known bool, err error) {
+func selectedThroughContract(
+	step throughStepPlan,
+	contract ValueContract,
+	decorators DecoratorResolver,
+) (selected ValueContract, known bool, err error) {
 	switch {
 	case !step.Path.IsRoot():
-		return selectedSelectorContract(selectorPlan{Path: step.Path}, contract)
+		return selectedSelectorContract(selectorPlan{Path: step.Path}, contract, decorators)
 	case step.Pick != nil:
 		return selectedPickContract(*step.Pick, contract)
 	case step.Regexp != nil:
@@ -195,12 +201,71 @@ func selectedThroughContract(step throughStepPlan, contract ValueContract) (sele
 		}
 
 		return ValueContract{Kind: ValueKindString}, true, nil
+	case step.Transform != nil:
+		return selectedDecoratorContract(*step.Transform, contract, decorators)
 	default:
 		return ValueContract{}, false, selectorContractError{
 			code:    selectorContractCodePath,
 			summary: "through step is invalid",
 		}
 	}
+}
+
+func selectedDecoratorContract(
+	step decoratorPlan,
+	contract ValueContract,
+	decorators DecoratorResolver,
+) (selected ValueContract, known bool, err error) {
+	def, ok, err := resolveSelectorDecorator(step, decorators)
+	if !ok || err != nil {
+		return ValueContract{}, false, err
+	}
+
+	if err := contractCompatibilityError(contract, def.Contract.Accepts); err != nil {
+		return ValueContract{}, false, selectorContractError{
+			code:    selectorContractCodeTransform,
+			summary: fmt.Sprintf("transform %q input is incompatible with contract %s: %v", step.Use, contractKindString(def.Contract.Accepts), err),
+			cause:   err,
+		}
+	}
+
+	return def.Contract.Produces.Clone(), true, nil
+}
+
+func resolveSelectorDecorator(
+	step decoratorPlan,
+	decorators DecoratorResolver,
+) (def DecoratorDef, ok bool, err error) {
+	if dependencyMissing(decorators) {
+		return DecoratorDef{}, false, nil
+	}
+
+	def, err = decorators.ResolveDecorator(step.Use)
+	if err != nil {
+		return DecoratorDef{}, false, selectorContractError{
+			code:    selectorContractCodeTransform,
+			summary: err.Error(),
+			cause:   err,
+		}
+	}
+
+	if err := validateDecoratorContract(def.Contract); err != nil {
+		return DecoratorDef{}, false, selectorContractError{
+			code:    selectorContractCodeTransform,
+			summary: fmt.Sprintf("transform %q contract is invalid: %v", step.Use, err),
+			cause:   err,
+		}
+	}
+
+	if _, err := resolveDecoratorArgs(step.With, def.Contract.Params); err != nil {
+		return DecoratorDef{}, false, selectorContractError{
+			code:    selectorContractCodeTransform,
+			summary: fmt.Sprintf("transform %q config is invalid: %v", step.Use, err),
+			cause:   err,
+		}
+	}
+
+	return def, true, nil
 }
 
 func selectedPickContract(_ pickStepPlan, contract ValueContract) (selected ValueContract, known bool, err error) {

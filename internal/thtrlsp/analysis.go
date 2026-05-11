@@ -351,7 +351,7 @@ func keywordSet() []string {
 		"not", "has", "item", "all", "items", "where", "key",
 		"export", "call", "dependency", "when", "on", "http", "state", "backend",
 		"record", "pool", "read", "update", "claim", "renew", "release", "consume", "object",
-		"list", "string", "field", "decode", "path", "pick", "regexp", "generate",
+		"list", "string", "field", "decode", "path", "pick", "regexp", "generate", "transform",
 	}
 }
 
@@ -433,6 +433,9 @@ func completionItemsForDocumentWithCapabilities(
 
 	if strings.HasPrefix(fragment, "generate.") {
 		candidates = append(candidates, generatorCapabilityCompletions(capabilities)...)
+	}
+	if strings.HasPrefix(fragment, "transform.") {
+		candidates = append(candidates, transformCapabilityCompletions(capabilities)...)
 	}
 
 	if len(candidates) == 0 && strings.TrimSpace(statementPrefix) == "" {

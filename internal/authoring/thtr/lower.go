@@ -12,17 +12,18 @@ import (
 )
 
 const (
-	sectionHTTPAuth     = "auth"
-	sectionHTTPIdentity = "identity"
-	sectionHTTPSession  = "session"
-	sectionStateBackend = "backend"
-	sectionStateRecord  = "record"
-	sectionStatePool    = "pool"
-	selectorRootField   = "field"
-	selectorStepDecode  = "decode"
-	selectorStepPath    = "path"
-	selectorStepPick    = "pick"
-	selectorStepRegexp  = "regexp"
+	sectionHTTPAuth             = "auth"
+	sectionHTTPIdentity         = "identity"
+	sectionHTTPSession          = "session"
+	sectionStateBackend         = "backend"
+	sectionStateRecord          = "record"
+	sectionStatePool            = "pool"
+	selectorRootField           = "field"
+	selectorStepDecode          = "decode"
+	selectorStepPath            = "path"
+	selectorStepPick            = "pick"
+	selectorStepRegexp          = "regexp"
+	selectorStepTransformPrefix = "transform."
 
 	stateRecordAliasCall     = "state.record"
 	statePoolAliasCall       = "state.pool"
@@ -922,6 +923,9 @@ func lowerActExport(export exportSyntax) (theater.ExportSpec, error) {
 	}
 	if root.ref != nil {
 		result.Ref = root.ref
+		result.Decode = ""
+		result.Path = ""
+		result.Through = nil
 		return result, nil
 	}
 	if root.field != "" {
@@ -1619,6 +1623,20 @@ func lowerSelectionSteps(
 			}
 			through = append(through, theater.ThroughStepSpec{Regexp: regexp})
 		default:
+			if strings.HasPrefix(step.Name, selectorStepTransformPrefix) {
+				args, err := lowerNamedStaticArgs(step.Args, "transform call")
+				if err != nil {
+					return "", "", nil, err
+				}
+				through = append(through, theater.ThroughStepSpec{
+					Transform: &theater.DecoratorSpec{
+						Use:  step.Name,
+						With: args,
+					},
+				})
+				continue
+			}
+
 			return "", "", nil, &lowerError{
 				span:    step.Span,
 				message: fmt.Sprintf("selector step %q is not supported", step.Name),
