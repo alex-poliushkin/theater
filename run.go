@@ -227,8 +227,10 @@ func preflightCatalog(stage *stagePlan, catalog CatalogResolver) *Failure {
 			for k := range act.Properties {
 				property := &act.Properties[k]
 				propPath := property.Path
-				if _, err := catalog.ResolveInventory(property.Inventory.Use); err != nil {
-					return setupFailure(propPath, err)
+				if property.Inventory.Present {
+					if _, err := catalog.ResolveInventory(property.Inventory.Use); err != nil {
+						return setupFailure(propPath, err)
+					}
 				}
 
 				for m := range property.Decorators {

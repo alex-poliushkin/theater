@@ -13,6 +13,8 @@ const (
 	BindingKindList     BindingKind = specmodel.BindingKindList
 	BindingKindString   BindingKind = specmodel.BindingKindString
 	BindingKindGenerate BindingKind = specmodel.BindingKindGenerate
+	BindingKindCoalesce BindingKind = specmodel.BindingKindCoalesce
+	BindingKindEnv      BindingKind = specmodel.BindingKindEnv
 
 	LogFormatText LogFormat = specmodel.LogFormatText
 	LogFormatJSON LogFormat = specmodel.LogFormatJSON
@@ -55,7 +57,8 @@ type TriggerPredicate = specmodel.TriggerPredicate
 // TransitionOutcome identifies which act outcome triggers a transition.
 type TransitionOutcome = specmodel.TransitionOutcome
 
-// BindingSpec describes a literal, ref, object, or list binding.
+// BindingSpec describes a literal, ref, object, list, string, generator,
+// coalesce, or environment binding.
 type BindingSpec = specmodel.BindingSpec
 
 // LogSpec declares one act-local scenario-authored log record.
@@ -122,8 +125,8 @@ type ExportSpec = specmodel.ExportSpec
 // InventoryCall configures one inventory use+with call-site.
 type InventoryCall = specmodel.InventoryCall
 
-// PropertySpec describes an act property resolved through an inventory and
-// optional decorator chain.
+// PropertySpec describes an act property resolved through either a value
+// binding or an inventory call, then an optional decorator chain.
 type PropertySpec = specmodel.PropertySpec
 
 // DecoratorSpec selects a decorator and its static configuration.

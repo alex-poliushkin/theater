@@ -135,6 +135,9 @@ func (b debugSnapshotBuilder) scopeSection(scope *valueScope) debugSnapshotSecti
 		}
 
 		for key, value := range frames[depth].values {
+			if isMissingValue(value) {
+				continue
+			}
 			if _, ok := visible[key]; ok {
 				continue
 			}

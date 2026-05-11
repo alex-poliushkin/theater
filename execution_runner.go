@@ -346,6 +346,7 @@ func (r *scenarioRunner) applyBindings(ctx context.Context) (scenarioState, bool
 
 	protectedBindings := protectValues(bindings, r.scenario.Inputs)
 	r.scope.writeAll(protectedBindings)
+	r.scope.writeAll(missingOptionalScenarioInputs(r.scenario.Inputs, protectedBindings))
 	r.inputSection = r.snapshot.valuesSectionWithSources(
 		protectedBindings,
 		r.scenario.Inputs,
@@ -353,6 +354,25 @@ func (r *scenarioRunner) applyBindings(ctx context.Context) (scenarioState, bool
 		bindingSourceSpans(r.call.Bindings),
 	)
 	return scenarioState{}, false, nil
+}
+
+func missingOptionalScenarioInputs(inputs map[string]ValueContract, bindings Values) Values {
+	missing := make(Values)
+	for name, contract := range inputs {
+		if contract.Required {
+			continue
+		}
+		if _, ok := bindings[name]; ok {
+			continue
+		}
+
+		missing[name] = newMissingValue("optional scenario input " + name)
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+
+	return missing
 }
 
 func (r *scenarioRunner) scenarioResult(

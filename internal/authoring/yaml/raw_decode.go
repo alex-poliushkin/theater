@@ -61,6 +61,7 @@ type rawActionSpec struct {
 }
 
 type rawPropertySpec struct {
+	Value      rawBindingNode          `yaml:"value,omitempty"`
 	Inventory  *rawInventoryCall       `yaml:"inventory,omitempty"`
 	Decorators []theater.DecoratorSpec `yaml:"decorators,omitempty"`
 }
@@ -102,13 +103,15 @@ type rawBindingNode struct {
 }
 
 type rawBindingSpec struct {
-	Kind      theater.BindingKind       `yaml:"kind"`
-	Value     any                       `yaml:"value,omitempty"`
-	Ref       *rawRefSpec               `yaml:"ref,omitempty"`
-	Object    map[string]rawBindingNode `yaml:"object,omitempty"`
-	List      []rawBindingNode          `yaml:"list,omitempty"`
-	Parts     []rawBindingNode          `yaml:"parts,omitempty"`
-	Generator string                    `yaml:"generator,omitempty"`
+	Kind       theater.BindingKind       `yaml:"kind"`
+	Value      any                       `yaml:"value,omitempty"`
+	Ref        *rawRefSpec               `yaml:"ref,omitempty"`
+	Object     map[string]rawBindingNode `yaml:"object,omitempty"`
+	List       []rawBindingNode          `yaml:"list,omitempty"`
+	Parts      []rawBindingNode          `yaml:"parts,omitempty"`
+	Generator  string                    `yaml:"generator,omitempty"`
+	Env        string                    `yaml:"name,omitempty"`
+	Candidates []rawBindingNode          `yaml:"candidates,omitempty"`
 }
 
 type rawExportSpec struct {

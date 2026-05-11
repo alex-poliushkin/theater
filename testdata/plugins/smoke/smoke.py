@@ -9,7 +9,7 @@ import time
 
 PLUGIN = {"id": "smoke-plugin", "version": "0.2.0"}
 PROTOCOL = {"name": "theater-jsonrpc", "major": 1, "minor": 0}
-DIGEST = "sha256:b613b0132363b27a38d1e7d99980695df6e1af5929493e75845e6a38173f507c"
+DIGEST = "sha256:d2c6374b4ca0fb89c0dfe6c5bce0a90fe5388a0259819df808eb3427ac1f0d20"
 PREPARED = set()
 SUPPORTED = {
     "inventory.smoke.echo",
@@ -63,8 +63,15 @@ def plugin_error(message, theater_code="plugin_failed", partial=None):
 def validate_probe_shape(params):
     properties = params.get("properties") or {}
     dynamic_paths = set(params.get("dynamic_paths") or [])
-    expected_paths = {"/dynamic", "/object/dynamic", "/items/1", "/items"}
-    expected_keys = {"mode", "literal", "secret", "object"}
+    expected_paths = {
+        "/dynamic",
+        "/object/dynamic",
+        "/items/1",
+        "/items",
+        "/coalesce_dynamic",
+        "/coalesce_wrapped",
+    }
+    expected_keys = {"mode", "literal", "secret", "object", "coalesce_static"}
     errors = []
     if set(properties.keys()) != expected_keys:
         errors.append(f"properties keys mismatch: got {sorted(properties.keys())}")
@@ -74,8 +81,14 @@ def validate_probe_shape(params):
         errors.append("literal property missing")
     if properties.get("secret") != "validate-secret":
         errors.append("secret property missing")
+    if properties.get("coalesce_static") != "coalesced-static":
+        errors.append("coalesce static property missing")
     if "dynamic" in properties:
         errors.append("dynamic property was resolved too early")
+    if "coalesce_dynamic" in properties:
+        errors.append("coalesce dynamic property was resolved too early")
+    if "coalesce_wrapped" in properties:
+        errors.append("coalesce wrapped property was resolved too early")
     if "missing" in properties or "/missing" in dynamic_paths:
         errors.append("absent property was reported as present")
     nested = properties.get("object") or {}
@@ -437,7 +450,7 @@ def main():
                     if errors:
                         diagnostics.append({"path": "/mode", "message": "shape wrong: " + ", ".join(errors)})
                     else:
-                        diagnostics.append({"path": "/mode", "message": "shape ok: static, nested dynamic, list dynamic, missing absent"})
+                        diagnostics.append({"path": "/mode", "message": "shape ok: static, nested dynamic, list dynamic, coalesce static and dynamic, missing absent"})
                 if capability == "action.smoke.validate_probe" and properties.get("mode") == "leak-validate-secret":
                     diagnostics.append({"path": f"/{properties.get('secret')}", "message": f"validate secret leak {properties.get('secret')}"})
                 if capability == "action.smoke.validate_probe" and properties.get("mode") == "leak-validate-error-secret":

@@ -130,6 +130,12 @@ func (c stageCompiler) compileProperties(actPath string, specs map[string]Proper
 			Decorators:   make([]decoratorPlan, 0, len(spec.Decorators)),
 		}
 
+		if spec.Value != nil {
+			value := c.fragments.compileBinding(property.Path+"/value", *spec.Value)
+			property.Value = &value
+			property.Dependencies = bindingPropertyDependencies(*spec.Value, names)
+		}
+
 		if spec.Inventory != nil {
 			property.Inventory = inventoryPlan{
 				Present: true,

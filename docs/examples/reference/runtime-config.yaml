@@ -1,0 +1,35 @@
+id: reference-runtime-config
+scenarios:
+  - id: configure-runtime
+    acts:
+      - id: configure
+        properties:
+          email:
+            value:
+              kind: coalesce
+              candidates:
+                - kind: env
+                  name: THEATER_DOC_REFERENCE_RUNTIME_CONFIG_EMAIL_UNSET
+                - guest@example.test
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                email:
+                  kind: ref
+                  ref:
+                    name: email
+        expectations:
+          - id: fallback-email
+            subject:
+              field: values
+              path: /email
+            assert:
+              ref: expectation.equal
+              args:
+                expected: guest@example.test
+scenario_calls:
+  - id: run
+    scenario_id: configure-runtime

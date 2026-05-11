@@ -109,6 +109,51 @@ func TestLowerStageBindsSourceFileAndMatcherSugar(t *testing.T) {
 	}
 }
 
+func TestLowerStageLowersPropertyValueBinding(t *testing.T) {
+	t.Parallel()
+
+	raw := rawStageSpec{
+		ID: "main",
+		Scenarios: []rawScenarioSpec{{
+			ID: "login",
+			Acts: []rawActSpec{{
+				ID: "submit",
+				Properties: map[string]rawPropertySpec{
+					"email": {
+						Value: rawBindingNode{Node: mustParseYAMLNode(t, `
+kind: coalesce
+candidates:
+  - kind: env
+    name: THEATER_EMAIL
+  - generated@example.test
+`)},
+					},
+				},
+				Action: rawActionSpec{Use: "action.generate"},
+			}},
+		}},
+	}
+
+	spec, err := lowerStage(raw, nil, "")
+	if err != nil {
+		t.Fatalf("lower stage failed: %v", err)
+	}
+
+	property := spec.Scenarios[0].Acts[0].Properties["email"]
+	if property.Inventory != nil {
+		t.Fatal("property inventory must be empty")
+	}
+	if property.Value == nil {
+		t.Fatal("property value must be present")
+	}
+	if got, want := property.Value.Kind, theater.BindingKindCoalesce; got != want {
+		t.Fatalf("property value kind mismatch: got %q want %q", got, want)
+	}
+	if got, want := property.Value.Candidates[0].Kind, theater.BindingKindEnv; got != want {
+		t.Fatalf("first candidate kind mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestLowerBindingNodeBindsNestedYAMLSourceSpans(t *testing.T) {
 	t.Parallel()
 
@@ -313,6 +358,57 @@ stem:
 
 	if got, want := binding.Args["stem"].Kind, theater.BindingKindRef; got != want {
 		t.Fatalf("stem arg kind mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestDecodeBindingSpecOrLiteralLowersCoalesceBinding(t *testing.T) {
+	t.Parallel()
+
+	binding, err := decodeBindingSpecOrLiteralWithSource(mustParseYAMLNode(t, `
+kind: coalesce
+candidates:
+  - kind: ref
+    ref:
+      name: email
+  - generated@example.test
+`), "")
+	if err != nil {
+		t.Fatalf("decode coalesce binding failed: %v", err)
+	}
+
+	if got, want := binding.Kind, theater.BindingKindCoalesce; got != want {
+		t.Fatalf("binding kind mismatch: got %q want %q", got, want)
+	}
+
+	if got, want := len(binding.Candidates), 2; got != want {
+		t.Fatalf("candidate count mismatch: got %d want %d", got, want)
+	}
+
+	if got, want := binding.Candidates[0].Kind, theater.BindingKindRef; got != want {
+		t.Fatalf("first candidate kind mismatch: got %q want %q", got, want)
+	}
+
+	if got, want := binding.Candidates[1].Kind, theater.BindingKindLiteral; got != want {
+		t.Fatalf("second candidate kind mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestDecodeBindingSpecOrLiteralLowersEnvBinding(t *testing.T) {
+	t.Parallel()
+
+	binding, err := decodeBindingSpecOrLiteralWithSource(mustParseYAMLNode(t, `
+kind: env
+name: THEATER_EMAIL
+`), "")
+	if err != nil {
+		t.Fatalf("decode env binding failed: %v", err)
+	}
+
+	if got, want := binding.Kind, theater.BindingKindEnv; got != want {
+		t.Fatalf("binding kind mismatch: got %q want %q", got, want)
+	}
+	if got, want := binding.Env, "THEATER_EMAIL"; got != want {
+		t.Fatalf("env name mismatch: got %q want %q", got, want)
 	}
 }
 

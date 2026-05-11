@@ -149,6 +149,12 @@ func validateScenarioLocalBindingRefs(scenario scenarioPlan, analysis scenarioSc
 
 		for j := range act.Properties {
 			property := &act.Properties[j]
+			if property.Value != nil {
+				diagnostics = append(
+					diagnostics,
+					validateLocalBindingRefResolution(property.Path+"/value", *property.Value, availableRoots)...,
+				)
+			}
 			if property.Inventory.Present {
 				for key := range property.Inventory.With {
 					diagnostics = append(
@@ -404,6 +410,13 @@ func validateExpectationOutputRootCollisionBinding(
 				validateExpectationOutputRootCollisionBinding(bindingChildPath(path, key), binding.Args[key], ambiguousRefs)...,
 			)
 		}
+	case BindingKindCoalesce:
+		for i := range binding.Candidates {
+			diagnostics = append(
+				diagnostics,
+				validateExpectationOutputRootCollisionBinding(coalesceCandidatePath(path, i), binding.Candidates[i], ambiguousRefs)...,
+			)
+		}
 	}
 
 	return diagnostics
@@ -472,6 +485,13 @@ func validateBindingRefAvailability(
 			diagnostics = append(
 				diagnostics,
 				validateBindingRefAvailability(bindingChildPath(path, key), binding.Args[key], allowedRoots, summary)...,
+			)
+		}
+	case BindingKindCoalesce:
+		for i := range binding.Candidates {
+			diagnostics = append(
+				diagnostics,
+				validateBindingRefAvailability(coalesceCandidatePath(path, i), binding.Candidates[i], allowedRoots, summary)...,
 			)
 		}
 	}

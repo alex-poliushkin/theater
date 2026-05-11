@@ -29,9 +29,10 @@ go run ./cmd/theater explain transform json.decode
 | `json.decode` | `string\|bytes` | `string\|number\|bool\|object\|list\|null` |
 | `csv.decode` | `string\|bytes` | list of row objects keyed by header |
 
-Use `decorators[]` to transform inventory property values. Plugin transforms can
-also be used as selector steps before later `path`, `pick`, regexp, matcher,
-log, or export handling. See [Selectors](../selectors.md).
+Use `decorators[]` to transform property values, whether the property starts
+from `value` or `inventory`. Plugin transforms can also be used as selector
+steps before later `path`, `pick`, regexp, matcher, log, or export handling.
+See [Selectors](../selectors.md).
 
 Plugin transforms declare the same contracts in their manifest metadata.
 Single-shape contracts use `type`; union contracts use `kinds`, such as

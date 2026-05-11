@@ -1,0 +1,11 @@
+stage reference-runtime-config
+
+scenario configure-runtime
+  act configure
+    prop email = coalesce(env("THEATER_DOC_REFERENCE_RUNTIME_CONFIG_EMAIL_UNSET"), "guest@example.test")
+    do action.generate
+      outputs:
+        email: $email
+    expect fallback-email: field(values) | path("/email") == "guest@example.test"
+
+call run = configure-runtime()

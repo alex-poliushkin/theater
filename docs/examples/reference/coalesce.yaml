@@ -1,0 +1,33 @@
+id: reference-coalesce
+scenarios:
+  - id: greet
+    inputs:
+      nickname:
+        type: string
+    acts:
+      - id: choose-name
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                name:
+                  kind: coalesce
+                  candidates:
+                    - kind: ref
+                      ref:
+                        name: nickname
+                    - guest
+        expectations:
+          - id: uses-fallback
+            subject:
+              field: values
+              path: /name
+            assert:
+              ref: expectation.equal
+              args:
+                expected: guest
+scenario_calls:
+  - id: run
+    scenario_id: greet

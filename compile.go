@@ -151,7 +151,9 @@ type bindingPlan struct {
 	List       []bindingPlan
 	Parts      []bindingPlan
 	Generator  string
+	Env        string
 	Args       map[string]bindingPlan
+	Candidates []bindingPlan
 	SourceSpan *SourceRef
 }
 
@@ -203,6 +205,7 @@ type propertyPlan struct {
 	ID           string
 	Path         string
 	Dependencies []string
+	Value        *bindingPlan
 	Inventory    inventoryPlan
 	Decorators   []decoratorPlan
 }
@@ -882,18 +885,20 @@ func validateFieldName(field string) error {
 }
 
 func validateBinding(path string, binding bindingPlan) []Diagnostic {
-	diagnostics := make([]Diagnostic, 0)
-
 	if !binding.Kind.Valid() {
-		diagnostics = append(diagnostics, Diagnostic{
+		return []Diagnostic{{
 			Code:     "invalid_binding_kind",
 			Path:     path,
 			Severity: SeverityError,
 			Summary:  fmt.Sprintf("binding kind %q is invalid", binding.Kind),
-		})
-
-		return diagnostics
+		}}
 	}
+
+	return validateKnownBinding(path, binding)
+}
+
+func validateKnownBinding(path string, binding bindingPlan) []Diagnostic {
+	diagnostics := make([]Diagnostic, 0)
 
 	switch binding.Kind {
 	case BindingKindRef:
@@ -950,6 +955,30 @@ func validateBinding(path string, binding bindingPlan) []Diagnostic {
 
 		for key := range binding.Args {
 			diagnostics = append(diagnostics, validateBinding(bindingChildPath(path, key), binding.Args[key])...)
+		}
+	case BindingKindEnv:
+		if binding.Env == "" {
+			diagnostics = append(diagnostics, Diagnostic{
+				Code:     "missing_binding_env_name",
+				Path:     path,
+				Severity: SeverityError,
+				Summary:  "env binding name is required",
+			})
+			return diagnostics
+		}
+	case BindingKindCoalesce:
+		if len(binding.Candidates) == 0 {
+			diagnostics = append(diagnostics, Diagnostic{
+				Code:     "missing_coalesce_candidates",
+				Path:     path,
+				Severity: SeverityError,
+				Summary:  "coalesce binding candidates are required",
+			})
+			return diagnostics
+		}
+
+		for i := range binding.Candidates {
+			diagnostics = append(diagnostics, validateBinding(coalesceCandidatePath(path, i), binding.Candidates[i])...)
 		}
 	}
 

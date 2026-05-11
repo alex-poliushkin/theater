@@ -108,7 +108,7 @@ func TestValidatorPassesDynamicBindingShapeToPluginValidateHook(t *testing.T) {
 	if got, want := diagnostics[0].Code, "plugin_validate_diagnostic"; got != want {
 		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
 	}
-	if got := diagnostics[0].Summary; got != "shape ok: static, nested dynamic, list dynamic, missing absent" {
+	if got := diagnostics[0].Summary; got != "shape ok: static, nested dynamic, list dynamic, coalesce static and dynamic, missing absent" {
 		t.Fatalf("diagnostic summary mismatch: got %q", got)
 	}
 }
@@ -634,6 +634,21 @@ func pluginValidateProbeSpec(mode string, expectPrepared bool) theater.StageSpec
 							literalBinding("first"),
 							refBinding("runtime_value"),
 						),
+						"coalesce_static": coalesceBinding(
+							literalBinding("coalesced-static"),
+							literalBinding("coalesced-fallback"),
+						),
+						"coalesce_dynamic": coalesceBinding(
+							refBinding("runtime_value"),
+							literalBinding("coalesced-fallback"),
+						),
+						"coalesce_wrapped": coalesceBinding(
+							refTransformBinding("runtime_value", "transform.smoke.wrap", map[string]any{
+								"prefix": "<<",
+								"suffix": ">>",
+							}),
+							literalBinding("coalesced-fallback"),
+						),
 					},
 				},
 				Expectations: expectations,
@@ -687,5 +702,27 @@ func refBinding(name string) theater.BindingSpec {
 		Ref: &theater.RefSpec{
 			Name: name,
 		},
+	}
+}
+
+func refTransformBinding(name string, transform string, args map[string]any) theater.BindingSpec {
+	return theater.BindingSpec{
+		Kind: theater.BindingKindRef,
+		Ref: &theater.RefSpec{
+			Name: name,
+			Through: []theater.ThroughStepSpec{{
+				Transform: &theater.DecoratorSpec{
+					Use:  transform,
+					With: args,
+				},
+			}},
+		},
+	}
+}
+
+func coalesceBinding(candidates ...theater.BindingSpec) theater.BindingSpec {
+	return theater.BindingSpec{
+		Kind:       theater.BindingKindCoalesce,
+		Candidates: candidates,
 	}
 }

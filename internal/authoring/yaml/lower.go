@@ -10,18 +10,20 @@ import (
 )
 
 const (
-	yamlFieldArgs      = "args"
-	yamlFieldField     = "field"
-	yamlFieldGenerator = "generator"
-	yamlFieldKind      = "kind"
-	yamlFieldList      = "list"
-	yamlFieldObject    = "object"
-	yamlFieldParts     = "parts"
-	yamlFieldPath      = "path"
-	yamlFieldRef       = "ref"
-	yamlFieldThrough   = "through"
-	yamlFieldValue     = "value"
-	yamlFieldDecode    = "decode"
+	yamlFieldArgs       = "args"
+	yamlFieldCandidates = "candidates"
+	yamlFieldField      = "field"
+	yamlFieldGenerator  = "generator"
+	yamlFieldKind       = "kind"
+	yamlFieldList       = "list"
+	yamlFieldName       = "name"
+	yamlFieldObject     = "object"
+	yamlFieldParts      = "parts"
+	yamlFieldPath       = "path"
+	yamlFieldRef        = "ref"
+	yamlFieldThrough    = "through"
+	yamlFieldValue      = "value"
+	yamlFieldDecode     = "decode"
 )
 
 func lowerStage(raw rawStageSpec, matchers theater.MatcherSugarResolver, sourceFile string) (theater.StageSpec, error) {
@@ -500,7 +502,7 @@ func looksLikeBindingSpec(node *goyaml.Node) (bool, error) {
 	for _, pair := range pairs {
 		key := pair.key.Value
 		switch key {
-		case yamlFieldKind, yamlFieldValue, yamlFieldRef, yamlFieldObject, yamlFieldList, yamlFieldParts, yamlFieldGenerator:
+		case yamlFieldKind, yamlFieldValue, yamlFieldRef, yamlFieldObject, yamlFieldList, yamlFieldParts, yamlFieldGenerator, yamlFieldCandidates:
 			return true, nil
 		}
 	}
@@ -533,8 +535,16 @@ func lowerPropertyMap(rawProperties map[string]rawPropertySpec, sourceFile strin
 	for key, property := range rawProperties {
 		var (
 			inventory *theater.InventoryCall
+			value     *theater.BindingSpec
 			err       error
 		)
+		if property.Value.Node != nil {
+			lowered, err := lowerBindingNodeWithSource(property.Value, sourceFile)
+			if err != nil {
+				return nil, err
+			}
+			value = &lowered
+		}
 		if property.Inventory != nil {
 			inventory, err = lowerInventoryCall(property.Inventory, sourceFile)
 			if err != nil {
@@ -543,6 +553,7 @@ func lowerPropertyMap(rawProperties map[string]rawPropertySpec, sourceFile strin
 		}
 
 		properties[key] = theater.PropertySpec{
+			Value:      value,
 			Inventory:  inventory,
 			Decorators: property.Decorators,
 		}
@@ -842,15 +853,21 @@ func lowerBindingWithSource(raw rawBindingSpec, sourceFile string) (theater.Bind
 	if err != nil {
 		return theater.BindingSpec{}, err
 	}
+	candidates, err := lowerBindingNodeListWithSource(raw.Candidates, sourceFile)
+	if err != nil {
+		return theater.BindingSpec{}, err
+	}
 
 	return theater.BindingSpec{
-		Kind:      raw.Kind,
-		Value:     raw.Value,
-		Ref:       ref,
-		Object:    object,
-		List:      list,
-		Parts:     parts,
-		Generator: raw.Generator,
+		Kind:       raw.Kind,
+		Value:      raw.Value,
+		Ref:        ref,
+		Object:     object,
+		List:       list,
+		Parts:      parts,
+		Generator:  raw.Generator,
+		Env:        raw.Env,
+		Candidates: candidates,
 	}, nil
 }
 

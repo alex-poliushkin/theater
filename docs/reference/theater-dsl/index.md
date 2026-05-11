@@ -113,6 +113,7 @@ in `eventually`.
 
 | Purpose | Theater DSL form | YAML equivalent |
 | --- | --- | --- |
+| Property value | `prop email = coalesce(env("EMAIL"), "guest@example.test")` | `properties.<name>.value` |
 | Inventory property | `prop token = inventory.env(name: "TOKEN")` | `properties.<name>.inventory` |
 | Action | `do action.http(method: "GET", url: $url)` | `action.use` plus `action.with` |
 | Repeatable action | `do repeatable action.http(...)` | `action.repeatable: true` |

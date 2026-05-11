@@ -167,6 +167,15 @@
             "items": {
               "type": "string"
             }
+          },
+          "coalesce_static": {
+            "type": "string"
+          },
+          "coalesce_dynamic": {
+            "type": "string"
+          },
+          "coalesce_wrapped": {
+            "type": "string"
           }
         }
       },
@@ -305,5 +314,5 @@
       }
     }
   ],
-  "descriptor_digest": "sha256:b613b0132363b27a38d1e7d99980695df6e1af5929493e75845e6a38173f507c"
+  "descriptor_digest": "sha256:d2c6374b4ca0fb89c0dfe6c5bce0a90fe5388a0259819df808eb3427ac1f0d20"
 }

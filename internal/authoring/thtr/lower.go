@@ -47,6 +47,9 @@ const (
 	stateClaimArgFields      = "fields"
 	stateClaimArgLease       = "lease"
 	stateClaimLeaseOnExpiry  = "on_expiry"
+
+	bindingCallCoalesce = "coalesce"
+	bindingCallEnv      = "env"
 )
 
 type lowerError struct {
@@ -412,21 +415,7 @@ func lowerProperties(properties []propertySyntax) (map[string]theater.PropertySp
 }
 
 func lowerProperty(property propertySyntax) (theater.PropertySpec, error) {
-	base, decorators, err := splitPropertyPipeline(property.Value)
-	if err != nil {
-		return theater.PropertySpec{}, err
-	}
-	if !strings.HasPrefix(base.Name, "inventory.") {
-		return theater.PropertySpec{}, &lowerError{
-			span:    base.Span,
-			message: "property must start with inventory call",
-		}
-	}
-
-	with, err := lowerNamedBindingArgs(base.Args, "inventory call")
-	if err != nil {
-		return theater.PropertySpec{}, err
-	}
+	base, decorators := splitPropertyPipeline(property.Value)
 
 	loweredDecorators := make([]theater.DecoratorSpec, 0, len(decorators))
 	for i := range decorators {
@@ -440,33 +429,37 @@ func lowerProperty(property propertySyntax) (theater.PropertySpec, error) {
 		})
 	}
 
-	return theater.PropertySpec{
-		Inventory: &theater.InventoryCall{
-			Use:  base.Name,
-			With: with,
-		},
+	spec := theater.PropertySpec{
 		Decorators: loweredDecorators,
-	}, nil
+	}
+	if baseCall, ok := ungroupExpression(base).(callExpressionSyntax); ok && strings.HasPrefix(baseCall.Name, "inventory.") {
+		with, err := lowerNamedBindingArgs(baseCall.Args, "inventory call")
+		if err != nil {
+			return theater.PropertySpec{}, err
+		}
+		spec.Inventory = &theater.InventoryCall{
+			Use:  baseCall.Name,
+			With: with,
+		}
+		return spec, nil
+	}
+
+	value, err := lowerBindingExpression(base)
+	if err != nil {
+		return theater.PropertySpec{}, err
+	}
+	spec.Value = &value
+	return spec, nil
 }
 
-func splitPropertyPipeline(expr expressionSyntax) (base callExpressionSyntax, decorators []callExpressionSyntax, err error) {
+func splitPropertyPipeline(expr expressionSyntax) (base expressionSyntax, decorators []callExpressionSyntax) {
 	switch value := ungroupExpression(expr).(type) {
 	case callExpressionSyntax:
-		return value, nil, nil
+		return value, nil
 	case pipelineExpressionSyntax:
-		base, ok := ungroupExpression(value.Base).(callExpressionSyntax)
-		if !ok {
-			return callExpressionSyntax{}, nil, &lowerError{
-				span:    value.Base.ExpressionSpan(),
-				message: "property must start with inventory call",
-			}
-		}
-		return base, value.Steps, nil
+		return value.Base, value.Steps
 	default:
-		return callExpressionSyntax{}, nil, &lowerError{
-			span:    expr.ExpressionSpan(),
-			message: "property must start with inventory call",
-		}
+		return value, nil
 	}
 }
 
@@ -2131,6 +2124,10 @@ func lowerBindingExpression(expr expressionSyntax) (theater.BindingSpec, error) 
 		switch {
 		case value.Name == string(tokenString):
 			return lowerStringCall(value)
+		case value.Name == bindingCallCoalesce:
+			return lowerCoalesceCall(value)
+		case value.Name == bindingCallEnv:
+			return lowerEnvCall(value)
 		case strings.HasPrefix(value.Name, "generate."):
 			return lowerGenerateCall(value)
 		default:
@@ -2165,6 +2162,59 @@ func lowerBindingExpression(expr expressionSyntax) (theater.BindingSpec, error) 
 			message: "binding expression is not supported",
 		}
 	}
+}
+
+func lowerCoalesceCall(call callExpressionSyntax) (theater.BindingSpec, error) {
+	if len(call.Args) == 0 {
+		return theater.BindingSpec{}, &lowerError{
+			span:    call.Span,
+			message: "coalesce(...) requires at least one candidate",
+		}
+	}
+
+	candidates := make([]theater.BindingSpec, 0, len(call.Args))
+	for i := range call.Args {
+		if call.Args[i].Name != "" {
+			return theater.BindingSpec{}, &lowerError{
+				span:    call.Args[i].Span,
+				message: "coalesce(...) accepts positional candidates only",
+			}
+		}
+
+		candidate, err := lowerBindingExpression(call.Args[i].Value)
+		if err != nil {
+			return theater.BindingSpec{}, err
+		}
+		candidates = append(candidates, candidate)
+	}
+
+	return theater.BindingSpec{
+		Kind:       theater.BindingKindCoalesce,
+		Candidates: candidates,
+	}, nil
+}
+
+func lowerEnvCall(call callExpressionSyntax) (theater.BindingSpec, error) {
+	arg, err := expectSinglePositionalArg(call, "env")
+	if err != nil {
+		return theater.BindingSpec{}, err
+	}
+
+	name, err := lowerStringValue(arg)
+	if err != nil {
+		return theater.BindingSpec{}, err
+	}
+	if name == "" {
+		return theater.BindingSpec{}, &lowerError{
+			span:    call.Span,
+			message: "env(...) name must be non-empty",
+		}
+	}
+
+	return theater.BindingSpec{
+		Kind: theater.BindingKindEnv,
+		Env:  name,
+	}, nil
 }
 
 func lowerInlineObject(entries []mappingEntrySyntax) (map[string]theater.BindingSpec, error) {
@@ -2868,6 +2918,12 @@ func cloneBindingSpec(spec theater.BindingSpec) theater.BindingSpec {
 	}
 	if len(spec.Args) != 0 {
 		cloned.Args = cloneBindingMap(spec.Args)
+	}
+	if len(spec.Candidates) != 0 {
+		cloned.Candidates = make([]theater.BindingSpec, len(spec.Candidates))
+		for i := range spec.Candidates {
+			cloned.Candidates[i] = cloneBindingSpec(spec.Candidates[i])
+		}
 	}
 	return cloned
 }

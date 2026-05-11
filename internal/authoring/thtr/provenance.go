@@ -383,15 +383,19 @@ func buildPropertySourceMap(
 	propertyLocator := appendYAMLPath(propertiesLocator, yamlKey(property.Name))
 	builder.record(propertyPath, property.Span, propertyLocator)
 
-	base, decorators, err := splitPropertyPipeline(property.Value)
-	if err != nil {
-		return err
-	}
+	base, decorators := splitPropertyPipeline(property.Value)
 
-	inventoryPath := propertyPath + "/inventory"
-	inventoryLocator := appendYAMLPath(propertyLocator, yamlKey("inventory"))
-	builder.record(inventoryPath, base.Span, inventoryLocator)
-	recordCallBindingArgs(builder, inventoryPath+"/with", appendYAMLPath(inventoryLocator, yamlKey("with")), base.Args)
+	if baseCall, ok := ungroupExpression(base).(callExpressionSyntax); ok && strings.HasPrefix(baseCall.Name, "inventory.") {
+		inventoryPath := propertyPath + "/inventory"
+		inventoryLocator := appendYAMLPath(propertyLocator, yamlKey("inventory"))
+		builder.record(inventoryPath, baseCall.Span, inventoryLocator)
+		recordCallBindingArgs(builder, inventoryPath+"/with", appendYAMLPath(inventoryLocator, yamlKey("with")), baseCall.Args)
+	} else {
+		valuePath := propertyPath + "/value"
+		valueLocator := appendYAMLPath(propertyLocator, yamlKey("value"))
+		builder.record(valuePath, base.ExpressionSpan(), valueLocator)
+		recordBindingExpressionChildren(builder, valuePath, valueLocator, base)
+	}
 
 	for i := range decorators {
 		decoratorPath := joinChildPath(propertyPath, "decorator", decoratorKey(decorators[i].Name, i))
@@ -976,6 +980,13 @@ func recordBindingExpressionChildren(
 				childLocator := appendYAMLPath(locator, yamlKey("args"), yamlKey(arg.Name))
 				builder.record(childPath, arg.Span, childLocator)
 				recordArgumentBindingChildren(builder, childPath, childLocator, arg)
+			}
+		case value.Name == "coalesce":
+			for i := range value.Args {
+				candidatePath := fmt.Sprintf("%s.candidates[%d]", path, i)
+				candidateLocator := appendYAMLPath(locator, yamlKey("candidates"), yamlIndex(i))
+				builder.record(candidatePath, value.Args[i].Span, candidateLocator)
+				recordBindingExpressionChildren(builder, candidatePath, candidateLocator, value.Args[i].Value)
 			}
 		}
 	case pipelineExpressionSyntax:

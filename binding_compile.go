@@ -19,7 +19,9 @@ func (c planFragmentCompiler) compileBinding(path string, spec BindingSpec) bind
 		List:       make([]bindingPlan, 0, len(spec.List)),
 		Parts:      make([]bindingPlan, 0, len(spec.Parts)),
 		Generator:  spec.Generator,
+		Env:        spec.Env,
 		Args:       make(map[string]bindingPlan, len(spec.Args)),
+		Candidates: make([]bindingPlan, 0, len(spec.Candidates)),
 		SourceSpan: cloneSourceRef(spec.SourceSpan),
 	}
 
@@ -37,6 +39,10 @@ func (c planFragmentCompiler) compileBinding(path string, spec BindingSpec) bind
 
 	for key := range spec.Args {
 		plan.Args[key] = c.compileBinding(bindingPath(path, key), spec.Args[key])
+	}
+
+	for i := range spec.Candidates {
+		plan.Candidates = append(plan.Candidates, c.compileBinding(coalesceCandidatePath(path, i), spec.Candidates[i]))
 	}
 
 	return plan
@@ -224,4 +230,8 @@ func listBindingKey(index int) string {
 
 func partBindingKey(index int) string {
 	return "part-" + strconv.Itoa(index)
+}
+
+func coalesceCandidatePath(path string, index int) string {
+	return fmt.Sprintf("%s.candidates[%d]", path, index)
 }

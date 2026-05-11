@@ -3,6 +3,7 @@ package theater
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -75,6 +76,183 @@ func TestResolveBindingsSupportsLiteralRefObjectAndList(t *testing.T) {
 
 	if got, want := len(flags), 2; got != want {
 		t.Fatalf("flags count mismatch: got %d want %d", got, want)
+	}
+}
+
+func TestResolveBindingsSupportsCoalesce(t *testing.T) {
+	t.Parallel()
+
+	values, err := newReferenceResolver(Values{
+		"primary": newMissingValue("optional scenario input"),
+		"profile": map[string]any{
+			"name": "Ada",
+		},
+	}).ResolveBindings(map[string]bindingPlan{
+		"name": {
+			Kind: BindingKindCoalesce,
+			Candidates: []bindingPlan{
+				{Kind: BindingKindRef, Ref: &refPlan{Name: "primary"}},
+				{
+					Kind: BindingKindRef,
+					Ref: &refPlan{
+						Name: "profile",
+						selectorPlan: selectorPlan{
+							Path: JSONPointer("/name"),
+						},
+					},
+				},
+				{Kind: BindingKindLiteral, Value: "fallback"},
+			},
+		},
+		"empty": {
+			Kind: BindingKindCoalesce,
+			Candidates: []bindingPlan{
+				{Kind: BindingKindLiteral, Value: ""},
+				{Kind: BindingKindLiteral, Value: "fallback"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolve bindings failed: %v", err)
+	}
+
+	if got, want := values["name"], "Ada"; got != want {
+		t.Fatalf("coalesce selected value mismatch: got %v want %v", got, want)
+	}
+
+	if got, want := values["empty"], ""; got != want {
+		t.Fatalf("coalesce empty string mismatch: got %v want %v", got, want)
+	}
+}
+
+func TestResolveBindingsSupportsEnvSource(t *testing.T) {
+	envName := "THEATER_TEST_BINDING_ENV_SOURCE"
+	t.Setenv(envName, "from-env")
+
+	value, err := newReferenceResolver(nil).ResolveBinding(bindingPlan{
+		Kind: BindingKindEnv,
+		Env:  envName,
+	})
+	if err != nil {
+		t.Fatalf("resolve env binding failed: %v", err)
+	}
+	if got, want := value, "from-env"; got != want {
+		t.Fatalf("env value mismatch: got %v want %v", got, want)
+	}
+}
+
+func TestResolveCoalesceSkipsUnsetEnvSourceButNotEmptyEnv(t *testing.T) {
+	unsetName := "THEATER_TEST_BINDING_ENV_UNSET"
+	emptyName := "THEATER_TEST_BINDING_ENV_EMPTY"
+	_ = os.Unsetenv(unsetName)
+	t.Setenv(emptyName, "")
+
+	values, err := newReferenceResolver(nil).ResolveBindings(map[string]bindingPlan{
+		"fallback": {
+			Kind: BindingKindCoalesce,
+			Candidates: []bindingPlan{
+				{Kind: BindingKindEnv, Env: unsetName},
+				{Kind: BindingKindLiteral, Value: "fallback"},
+			},
+		},
+		"empty": {
+			Kind: BindingKindCoalesce,
+			Candidates: []bindingPlan{
+				{Kind: BindingKindEnv, Env: emptyName},
+				{Kind: BindingKindLiteral, Value: "fallback"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolve env coalesce bindings failed: %v", err)
+	}
+	if got, want := values["fallback"], "fallback"; got != want {
+		t.Fatalf("env fallback mismatch: got %v want %v", got, want)
+	}
+	if got, want := values["empty"], ""; got != want {
+		t.Fatalf("empty env mismatch: got %v want %v", got, want)
+	}
+}
+
+func TestInferredBindingContractTreatsEnvAsSecret(t *testing.T) {
+	t.Parallel()
+
+	contract := inferredBindingContract(nil, &bindingPlan{
+		Kind: BindingKindEnv,
+		Env:  "THEATER_SECRET_TOKEN",
+	})
+
+	if got, want := contract.Kind, ValueKindString; got != want {
+		t.Fatalf("env contract kind mismatch: got %q want %q", got, want)
+	}
+	if got, want := contract.Sensitivity, SensitivitySecret; got != want {
+		t.Fatalf("env contract sensitivity mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestInferredCoalesceContractPreservesMostSensitiveCandidate(t *testing.T) {
+	t.Parallel()
+
+	contract := inferredBindingContract(nil, &bindingPlan{
+		Kind: BindingKindCoalesce,
+		Candidates: []bindingPlan{
+			{Kind: BindingKindLiteral, Value: "fallback"},
+			{Kind: BindingKindEnv, Env: "THEATER_SECRET_TOKEN"},
+		},
+	})
+
+	if got, want := contract.Kind, ValueKindString; got != want {
+		t.Fatalf("coalesce contract kind mismatch: got %q want %q", got, want)
+	}
+	if got, want := contract.Sensitivity, SensitivitySecret; got != want {
+		t.Fatalf("coalesce contract sensitivity mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestResolveCoalesceDoesNotSkipSelectorFailures(t *testing.T) {
+	t.Parallel()
+
+	_, err := newReferenceResolver(Values{
+		"profile": map[string]any{"name": "Ada"},
+	}).ResolveBinding(bindingPlan{
+		Kind: BindingKindCoalesce,
+		Candidates: []bindingPlan{
+			{
+				Kind: BindingKindRef,
+				Ref: &refPlan{
+					Name: "profile",
+					selectorPlan: selectorPlan{
+						Path: JSONPointer("/missing"),
+					},
+				},
+			},
+			{Kind: BindingKindLiteral, Value: "fallback"},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected selector failure")
+	}
+	if got := err.Error(); !strings.Contains(got, "/missing") {
+		t.Fatalf("selector failure mismatch: got %q", got)
+	}
+}
+
+func TestResolveCoalesceRejectsAllMissingCandidates(t *testing.T) {
+	t.Parallel()
+
+	_, err := newReferenceResolver(Values{
+		"primary": newMissingValue("optional scenario input"),
+	}).ResolveBinding(bindingPlan{
+		Kind: BindingKindCoalesce,
+		Candidates: []bindingPlan{
+			{Kind: BindingKindRef, Ref: &refPlan{Name: "primary"}},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected all-missing coalesce failure")
+	}
+	if got := err.Error(); !strings.Contains(got, "coalesce candidates are missing") {
+		t.Fatalf("all-missing failure mismatch: got %q", got)
 	}
 }
 

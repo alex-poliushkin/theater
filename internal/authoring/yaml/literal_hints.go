@@ -578,21 +578,23 @@ func sortDiagnostics(diagnostics []theater.Diagnostic) {
 }
 
 var yamlBindingReservedKeys = map[string]bool{
-	yamlFieldKind:      true,
-	yamlFieldValue:     true,
-	yamlFieldRef:       true,
-	yamlFieldObject:    true,
-	yamlFieldList:      true,
-	yamlFieldGenerator: true,
-	yamlFieldParts:     true,
+	yamlFieldKind:       true,
+	yamlFieldValue:      true,
+	yamlFieldRef:        true,
+	yamlFieldObject:     true,
+	yamlFieldList:       true,
+	yamlFieldGenerator:  true,
+	yamlFieldParts:      true,
+	yamlFieldCandidates: true,
 }
 
 var yamlBindingShapeKeys = map[string]bool{
-	yamlFieldKind:      true,
-	yamlFieldValue:     true,
-	yamlFieldRef:       true,
-	yamlFieldObject:    true,
-	yamlFieldList:      true,
-	yamlFieldGenerator: true,
-	yamlFieldParts:     true,
+	yamlFieldKind:       true,
+	yamlFieldValue:      true,
+	yamlFieldRef:        true,
+	yamlFieldObject:     true,
+	yamlFieldList:       true,
+	yamlFieldGenerator:  true,
+	yamlFieldParts:      true,
+	yamlFieldCandidates: true,
 }

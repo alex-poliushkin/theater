@@ -29,7 +29,7 @@ func validateHTTPAuthoring(stage *stagePlan) []Diagnostic {
 
 			for k := range act.Properties {
 				property := &act.Properties[k]
-				if property.Inventory.Use != httpInventoryGetRef {
+				if !property.Inventory.Present || property.Inventory.Use != httpInventoryGetRef {
 					continue
 				}
 

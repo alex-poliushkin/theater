@@ -37,7 +37,8 @@ Input type shorthand supports the existing value-kind surface: `string`,
 | --- | --- |
 | `act <id>` | Executable step inside a scenario |
 | `eventually 3s every 100ms` | Whole-act polling window |
-| `prop <name> = inventory.env(...)` | Current-act property |
+| `prop <name> = coalesce(env("NAME"), "fallback")` | Current-act property value |
+| `prop <name> = inventory.env(...)` | Current-act property from inventory |
 | `do action.command(...)` | Required action call |
 | `do repeatable action.http(...)` | Action call that may be retried by `eventually` |
 | `log response = object { status: field(status_code) }` | Scenario-authored report log |
@@ -54,9 +55,38 @@ Supported transition events are `pass`, `fail`, `timeout`, and `cancel`.
 | `list [ "a", $b ]` | Dynamic list binding |
 | `"prefix-${id}"` | String interpolation |
 | `generate.uuid()` | Generator binding |
+| `env("NAME")` | Named host environment variable source |
+| `coalesce($name, "fallback")` | First concrete value from ordered candidates |
 
 `generate.<name>(...)` lowers to canonical YAML `kind: generate` with the
 `generate.` prefix removed from the generator ref.
+
+`env("NAME")` is explicit and environment-agnostic at validation time. At
+runtime an unset variable is typed missing, so `coalesce` may select a later
+candidate. A set-but-empty variable is the concrete empty string. `coalesce`
+does not skip `""`, `0`, `false`, `null`, empty objects, empty lists, selector
+errors, generator errors, validation failures, cancellation, or arbitrary
+runtime errors. When candidates have different sensitivity, Theater uses the
+most conservative candidate visibility for the resolved value. Env values are
+treated as secret for diagnostics, debug snapshots, and report previews
+because the variable name alone does not prove the value is safe to show.
+
+Checked runtime configuration example:
+
+<!-- theater-doc: source id=reference-dsl-runtime-config kind=thtr path=../../examples/reference/runtime-config.thtr pair=reference-runtime-config checks=fmt,lower,validate,run -->
+```thtr
+stage reference-runtime-config
+
+scenario configure-runtime
+  act configure
+    prop email = coalesce(env("THEATER_DOC_REFERENCE_RUNTIME_CONFIG_EMAIL_UNSET"), "guest@example.test")
+    do action.generate
+      outputs:
+        email: $email
+    expect fallback-email: field(values) | path("/email") == "guest@example.test"
+
+call run = configure-runtime()
+```
 
 ## Logs
 

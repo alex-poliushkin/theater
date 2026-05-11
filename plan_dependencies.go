@@ -76,6 +76,18 @@ func propertyDependencies(bindings map[string]BindingSpec, names map[string]stru
 	return ordered
 }
 
+func bindingPropertyDependencies(binding BindingSpec, names map[string]struct{}) []string {
+	dependencies := make(map[string]struct{})
+	collectPropertyDependencies(dependencies, binding, names)
+
+	ordered := make([]string, 0, len(dependencies))
+	for name := range dependencies {
+		ordered = append(ordered, name)
+	}
+	sort.Strings(ordered)
+	return ordered
+}
+
 func collectPropertyDependencies(
 	dependencies map[string]struct{},
 	binding BindingSpec,
@@ -106,6 +118,10 @@ func collectPropertyDependencies(
 	case BindingKindGenerate:
 		for key := range binding.Args {
 			collectPropertyDependencies(dependencies, binding.Args[key], names)
+		}
+	case BindingKindCoalesce:
+		for i := range binding.Candidates {
+			collectPropertyDependencies(dependencies, binding.Candidates[i], names)
 		}
 	}
 }

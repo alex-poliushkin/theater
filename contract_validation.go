@@ -442,6 +442,16 @@ func bindingStatic(binding bindingPlan) bool {
 		return true
 	case BindingKindGenerate:
 		return false
+	case BindingKindEnv:
+		return false
+	case BindingKindCoalesce:
+		for i := range binding.Candidates {
+			if !bindingStatic(binding.Candidates[i]) {
+				return false
+			}
+		}
+
+		return true
 	default:
 		return false
 	}
@@ -576,6 +586,10 @@ func validateBindingContractWithResolver(
 		return validateStringBindingContract(resolver, matchers, decorators, binding, spec)
 	case BindingKindGenerate:
 		return validateGenerateBindingContract(resolver, matchers, decorators, binding, spec)
+	case BindingKindEnv:
+		return validateEnvBindingContract(binding, spec)
+	case BindingKindCoalesce:
+		return validateCoalesceBindingContract(resolver, matchers, decorators, binding, spec)
 	default:
 		return nil
 	}
@@ -714,6 +728,33 @@ func validateGenerateBindingContract(
 	return nil
 }
 
+func validateEnvBindingContract(binding bindingPlan, spec ValueContract) error {
+	if binding.Env == "" {
+		return nil
+	}
+	if spec.Supports(ValueKindAny) || spec.Supports(ValueKindString) {
+		return nil
+	}
+
+	return fmt.Errorf("expects %s, got string", contractKindString(spec))
+}
+
+func validateCoalesceBindingContract(
+	resolver GeneratorResolver,
+	matchers MatcherResolver,
+	decorators DecoratorResolver,
+	binding bindingPlan,
+	spec ValueContract,
+) error {
+	for i := range binding.Candidates {
+		if err := validateBindingContractWithResolver(resolver, matchers, decorators, binding.Candidates[i], spec); err != nil {
+			return fmt.Errorf("candidate %d: %w", i, err)
+		}
+	}
+
+	return nil
+}
+
 func validateStaticGenerateBindingArgs(def GeneratorDef, args map[string]bindingPlan) error {
 	if !bindingsStatic(args) {
 		return nil
@@ -797,6 +838,17 @@ func resolveStaticBinding(binding bindingPlan) (any, error) {
 		}
 
 		return builder.String(), nil
+	case BindingKindCoalesce:
+		if len(binding.Candidates) == 0 {
+			return nil, errors.New("coalesce candidates are required")
+		}
+
+		value, err := resolveStaticBinding(binding.Candidates[0])
+		if err != nil {
+			return nil, fmt.Errorf("candidate 0: %w", err)
+		}
+
+		return value, nil
 	default:
 		return nil, fmt.Errorf("binding kind %q is not static", binding.Kind)
 	}

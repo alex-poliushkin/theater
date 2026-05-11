@@ -13,6 +13,8 @@ const (
 	BindingKindList     BindingKind = "list"
 	BindingKindString   BindingKind = "string"
 	BindingKindGenerate BindingKind = "generate"
+	BindingKindCoalesce BindingKind = "coalesce"
+	BindingKindEnv      BindingKind = "env"
 
 	LogFormatText LogFormat = "text"
 	LogFormatJSON LogFormat = "json"
@@ -56,7 +58,8 @@ type TriggerPredicate string
 // TransitionOutcome identifies which act outcome triggers a transition.
 type TransitionOutcome string
 
-// BindingSpec describes a literal, ref, object, list, string, or generator binding.
+// BindingSpec describes a literal, ref, object, list, string, generator,
+// coalesce, or environment binding.
 type BindingSpec struct {
 	Kind       BindingKind            `yaml:"kind"`
 	Value      any                    `yaml:"value,omitempty"`
@@ -65,7 +68,9 @@ type BindingSpec struct {
 	List       []BindingSpec          `yaml:"list,omitempty"`
 	Parts      []BindingSpec          `yaml:"parts,omitempty"`
 	Generator  string                 `yaml:"generator,omitempty" json:"generator,omitempty"`
+	Env        string                 `yaml:"name,omitempty" json:"name,omitempty"`
 	Args       map[string]BindingSpec `yaml:"args,omitempty" json:"args,omitempty"`
+	Candidates []BindingSpec          `yaml:"candidates,omitempty" json:"candidates,omitempty"`
 	SourceSpan *SourceRef             `yaml:"-" json:"-"`
 }
 
@@ -113,9 +118,10 @@ type InventoryCall struct {
 	With map[string]BindingSpec `yaml:"with,omitempty" json:"with,omitempty"`
 }
 
-// PropertySpec describes an act property resolved through an inventory and
-// optional decorator chain.
+// PropertySpec describes an act property resolved through either a value
+// binding or an inventory call, then an optional decorator chain.
 type PropertySpec struct {
+	Value      *BindingSpec    `yaml:"value,omitempty" json:"value,omitempty"`
 	Inventory  *InventoryCall  `yaml:"inventory,omitempty" json:"inventory,omitempty"`
 	Decorators []DecoratorSpec `yaml:"decorators,omitempty" json:"decorators,omitempty"`
 }
@@ -225,7 +231,14 @@ type TransitionSpec struct {
 
 func (k BindingKind) Valid() bool {
 	switch k {
-	case BindingKindLiteral, BindingKindRef, BindingKindObject, BindingKindList, BindingKindString, BindingKindGenerate:
+	case BindingKindLiteral,
+		BindingKindRef,
+		BindingKindObject,
+		BindingKindList,
+		BindingKindString,
+		BindingKindGenerate,
+		BindingKindCoalesce,
+		BindingKindEnv:
 		return true
 	default:
 		return false

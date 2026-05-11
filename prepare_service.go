@@ -96,19 +96,23 @@ func (p planPreparer) prepareScenarioCall(call *scenarioCallPlan) error {
 func (p planPreparer) prepareProperties(act *actPlan) error {
 	for i := range act.Properties {
 		property := &act.Properties[i]
-		if !property.Inventory.Present || property.Inventory.Use == "" {
-			continue
-		}
-
-		if _, err := p.catalog.ResolveInventory(property.Inventory.Use); err != nil {
-			return newPlanPreparationError(property.Path, err)
-		}
-		for key := range property.Inventory.With {
-			binding := property.Inventory.With[key]
-			if err := p.prepareBindingSelectors(&binding); err != nil {
+		if property.Value != nil {
+			if err := p.prepareBindingSelectors(property.Value); err != nil {
 				return err
 			}
-			property.Inventory.With[key] = binding
+		}
+
+		if property.Inventory.Present && property.Inventory.Use != "" {
+			if _, err := p.catalog.ResolveInventory(property.Inventory.Use); err != nil {
+				return newPlanPreparationError(property.Path, err)
+			}
+			for key := range property.Inventory.With {
+				binding := property.Inventory.With[key]
+				if err := p.prepareBindingSelectors(&binding); err != nil {
+					return err
+				}
+				property.Inventory.With[key] = binding
+			}
 		}
 
 		for j := range property.Decorators {
@@ -245,6 +249,11 @@ func (p planPreparer) prepareBindingSelectors(binding *bindingPlan) error {
 			return err
 		}
 		binding.Args[key] = child
+	}
+	for i := range binding.Candidates {
+		if err := p.prepareBindingSelectors(&binding.Candidates[i]); err != nil {
+			return err
+		}
 	}
 	return nil
 }

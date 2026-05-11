@@ -132,39 +132,7 @@ func (e actExecution) resolveProperties(ctx context.Context, actScope *valueScop
 		property := e.act.Properties[i]
 		path := property.Path
 
-		args, err := newReferenceResolver(actScope).
-			withDecorators(e.catalog).
-			withGeneration(e.catalog, e.generation, e.identity).
-			withMatchers(e.matchers).
-			ResolveBindingsContext(ctx, property.Inventory.With)
-		if err != nil {
-			return setupFailure(path, err)
-		}
-
-		inventory, err := e.catalog.ResolveInventory(property.Inventory.Use)
-		if err != nil {
-			return setupFailure(path, err)
-		}
-
-		contract := inventory.Contract()
-		protectedArgs := protectInventoryArgs(Args(args), contract.Args)
-		request := InventoryRequest{
-			Args:  protectedArgs,
-			HTTP:  e.http,
-			State: e.state,
-			Paths: PathContext{
-				StagePath:    e.identity.stagePath,
-				ScenarioPath: e.identity.scenarioPath,
-				ActPath:      e.actPath,
-				PropertyPath: path,
-			},
-			Attempt:   attempt,
-			Resources: e.resources,
-		}
-
-		value, err := invokeBoundary("inventory", property.Inventory.Use, func() (any, error) {
-			return inventory.Acquire(ctx, request)
-		})
+		value, outputContract, err := e.resolvePropertyValue(ctx, actScope, property, attempt)
 		if err != nil {
 			var panicErr boundaryPanicError
 			if errors.As(err, &panicErr) {
@@ -174,11 +142,11 @@ func (e actExecution) resolveProperties(ctx context.Context, actScope *valueScop
 			return setupFailure(path, err)
 		}
 
-		if err := validateResolvedContract(path, contract.Produces, value); err != nil {
-			return internalFailure(path, "inventory output failed contract validation", err)
+		if err := validateResolvedContract(path, outputContract, value); err != nil {
+			return internalFailure(path, "property value failed contract validation", err)
 		}
 
-		value = protectValue(value, contract.Produces)
+		value = protectValue(value, outputContract)
 
 		for j := range property.Decorators {
 			decorator := property.Decorators[j]
@@ -209,6 +177,54 @@ func (e actExecution) resolveProperties(ctx context.Context, actScope *valueScop
 	}
 
 	return nil
+}
+
+func (e actExecution) resolvePropertyValue(
+	ctx context.Context,
+	actScope *valueScope,
+	property propertyPlan,
+	attempt int,
+) (value any, outputContract ValueContract, err error) {
+	resolver := newReferenceResolver(actScope).
+		withDecorators(e.catalog).
+		withGeneration(e.catalog, e.generation, e.identity).
+		withMatchers(e.matchers)
+
+	if property.Value != nil {
+		value, err := resolver.ResolveBindingContext(ctx, *property.Value)
+		return value, inferredBindingContract(e.catalog, property.Value), err
+	}
+
+	args, err := resolver.ResolveBindingsContext(ctx, property.Inventory.With)
+	if err != nil {
+		return nil, ValueContract{}, err
+	}
+
+	inventory, err := e.catalog.ResolveInventory(property.Inventory.Use)
+	if err != nil {
+		return nil, ValueContract{}, err
+	}
+
+	contract := inventory.Contract()
+	protectedArgs := protectInventoryArgs(Args(args), contract.Args)
+	request := InventoryRequest{
+		Args:  protectedArgs,
+		HTTP:  e.http,
+		State: e.state,
+		Paths: PathContext{
+			StagePath:    e.identity.stagePath,
+			ScenarioPath: e.identity.scenarioPath,
+			ActPath:      e.actPath,
+			PropertyPath: property.Path,
+		},
+		Attempt:   attempt,
+		Resources: e.resources,
+	}
+
+	value, err = invokeBoundary("inventory", property.Inventory.Use, func() (any, error) {
+		return inventory.Acquire(ctx, request)
+	})
+	return value, contract.Produces, err
 }
 
 func (e actExecution) prepareActionExecution(

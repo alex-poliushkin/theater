@@ -163,6 +163,24 @@ func TestDebugSnapshotBuilderScopeSectionPrefersNearestFrame(t *testing.T) {
 	}
 }
 
+func TestDebugSnapshotBuilderScopeSectionHidesMissingValues(t *testing.T) {
+	t.Parallel()
+
+	scope := newValueScope(nil)
+	scope.writeAll(Values{
+		"optional": newMissingValue("optional scenario input optional"),
+		"visible":  "value",
+	})
+
+	section := newDebugSnapshotBuilder().scopeSection(scope)
+	if got, want := len(section.Fields), 1; got != want {
+		t.Fatalf("scope field count mismatch: got %d want %d", got, want)
+	}
+	if got, want := section.Fields[0].Key, "visible"; got != want {
+		t.Fatalf("field key mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestDebugSnapshotBuilderActionSectionsDropUndeclaredFieldsWithoutContracts(t *testing.T) {
 	t.Parallel()
 

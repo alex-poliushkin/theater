@@ -1113,6 +1113,142 @@ func TestValidateStageSpecReportsInvalidBindings(t *testing.T) {
 	}
 }
 
+func TestValidateStageSpecReportsInvalidCoalesceBinding(t *testing.T) {
+	t.Parallel()
+
+	spec := StageSpec{
+		ID: "main",
+		Scenarios: []ScenarioSpec{
+			{
+				ID: "login",
+				Inputs: map[string]ValueContract{
+					"token": {Kind: ValueKindString},
+				},
+				Acts: []ActSpec{
+					{
+						ID:     "submit",
+						Action: ActionSpec{Use: "action.submit"},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []ScenarioCallSpec{
+			{
+				ID:         "login-user",
+				ScenarioID: "login",
+				Bindings: map[string]BindingSpec{
+					"token": {
+						Kind: BindingKindCoalesce,
+					},
+				},
+			},
+		},
+	}
+
+	stage := compileStageSpec(spec)
+	diagnostics := validateStage(stage)
+
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d", got, want)
+	}
+
+	if got, want := diagnostics[0].Code, "missing_coalesce_candidates"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+
+	if got, want := diagnostics[0].Path, "stage.main/call.login-user/binding.token"; got != want {
+		t.Fatalf("diagnostic path mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestValidateStageSpecReportsInvalidEnvBinding(t *testing.T) {
+	t.Parallel()
+
+	spec := StageSpec{
+		ID: "main",
+		Scenarios: []ScenarioSpec{{
+			ID: "login",
+			Inputs: map[string]ValueContract{
+				"token": {Kind: ValueKindString},
+			},
+			Acts: []ActSpec{{
+				ID:     "submit",
+				Action: ActionSpec{Use: "action.submit"},
+			}},
+		}},
+		ScenarioCalls: []ScenarioCallSpec{{
+			ID:         "login-user",
+			ScenarioID: "login",
+			Bindings: map[string]BindingSpec{
+				"token": {Kind: BindingKindEnv},
+			},
+		}},
+	}
+
+	diagnostics := validateStage(compileStageSpec(spec))
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d", got, want)
+	}
+	if got, want := diagnostics[0].Code, "missing_binding_env_name"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+	if got, want := diagnostics[0].Path, "stage.main/call.login-user/binding.token"; got != want {
+		t.Fatalf("diagnostic path mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestValidateStageSpecReportsUnresolvedCoalesceCandidateRef(t *testing.T) {
+	t.Parallel()
+
+	spec := StageSpec{
+		ID: "main",
+		Scenarios: []ScenarioSpec{
+			{
+				ID: "login",
+				Inputs: map[string]ValueContract{
+					"token": {Kind: ValueKindString},
+				},
+				Acts: []ActSpec{
+					{
+						ID:     "submit",
+						Action: ActionSpec{Use: "action.submit"},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []ScenarioCallSpec{
+			{
+				ID:         "login-user",
+				ScenarioID: "login",
+				Bindings: map[string]BindingSpec{
+					"token": {
+						Kind: BindingKindCoalesce,
+						Candidates: []BindingSpec{
+							{Kind: BindingKindRef, Ref: &RefSpec{Name: "missing_token"}},
+							{Kind: BindingKindLiteral, Value: "fallback"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	stage := compileStageSpec(spec)
+	diagnostics := validateStage(stage)
+
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d", got, want)
+	}
+
+	if got, want := diagnostics[0].Code, "unresolved_binding_ref"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+
+	if got, want := diagnostics[0].Path, "stage.main/call.login-user/binding.token.candidates[0]"; got != want {
+		t.Fatalf("diagnostic path mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestValidateStageSpecReportsInvalidExports(t *testing.T) {
 	t.Parallel()
 
@@ -1464,12 +1600,54 @@ func TestValidateStageSpecReportsInvalidProperties(t *testing.T) {
 		t.Fatalf("third diagnostic code mismatch: got %q want %q", got, want)
 	}
 
-	if got, want := diagnostics[3].Code, "missing_property_inventory"; got != want {
+	if got, want := diagnostics[3].Code, "missing_property_value"; got != want {
 		t.Fatalf("fourth diagnostic code mismatch: got %q want %q", got, want)
 	}
 
 	if got, want := diagnostics[4].Code, "missing_property_decorator_use"; got != want {
 		t.Fatalf("fifth diagnostic code mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestValidateStageSpecRejectsPropertyWithValueAndInventory(t *testing.T) {
+	t.Parallel()
+
+	spec := StageSpec{
+		ID: "main",
+		Scenarios: []ScenarioSpec{
+			{
+				ID: "login",
+				Acts: []ActSpec{
+					{
+						ID: "submit",
+						Properties: map[string]PropertySpec{
+							"email": {
+								Value: &BindingSpec{
+									Kind:  BindingKindLiteral,
+									Value: "demo@example.test",
+								},
+								Inventory: &InventoryCall{Use: "inventory.env"},
+							},
+						},
+						Action: ActionSpec{Use: "action.submit"},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []ScenarioCallSpec{{ID: "login-user", ScenarioID: "login"}},
+	}
+
+	stage := compileStageSpec(spec)
+	diagnostics := validateStage(stage)
+
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d (%v)", got, want, diagnostics)
+	}
+	if got, want := diagnostics[0].Code, "multiple_property_value_sources"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+	}
+	if got, want := diagnostics[0].Path, "stage.main/scenario.login/act.submit/property.email"; got != want {
+		t.Fatalf("diagnostic path mismatch: got %q want %q", got, want)
 	}
 }
 

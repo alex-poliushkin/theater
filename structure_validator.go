@@ -307,24 +307,40 @@ func (v *structureValidator) validateProperty(property *propertyPlan) {
 		v.diagnostics.add(propertyPath, "missing_property_key", "property key is required")
 	}
 
-	if !property.Inventory.Present {
+	hasValue := property.Value != nil
+	hasInventory := property.Inventory.Present
+	if !hasValue && !hasInventory {
 		v.diagnostics.add(
 			propertyPath,
-			"missing_property_inventory",
-			fmt.Sprintf("property %q must define an inventory call", property.ID),
+			"missing_property_value",
+			fmt.Sprintf("property %q must define a value binding or inventory call", property.ID),
 		)
 		return
 	}
 
-	if property.Inventory.Use == "" {
+	if hasValue && hasInventory {
 		v.diagnostics.add(
-			propertyPath+"/inventory",
-			"missing_property_inventory_use",
-			fmt.Sprintf("property %q inventory use is required", property.ID),
+			propertyPath,
+			"multiple_property_value_sources",
+			fmt.Sprintf("property %q must define either value or inventory, not both", property.ID),
 		)
 	}
 
-	v.diagnostics.addAll(validateBindings(propertyPath+"/inventory/with", property.Inventory.With))
+	if hasValue {
+		v.diagnostics.addAll(validateBinding(propertyPath+"/value", *property.Value))
+	}
+
+	if hasInventory {
+		if property.Inventory.Use == "" {
+			v.diagnostics.add(
+				propertyPath+"/inventory",
+				"missing_property_inventory_use",
+				fmt.Sprintf("property %q inventory use is required", property.ID),
+			)
+		}
+
+		v.diagnostics.addAll(validateBindings(propertyPath+"/inventory/with", property.Inventory.With))
+	}
 
 	for i := range property.Decorators {
 		if property.Decorators[i].Use != "" {

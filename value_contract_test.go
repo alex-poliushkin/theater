@@ -3,6 +3,7 @@ package theater
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -318,6 +319,25 @@ func TestValidateBindingContractSupportsObjectFieldsAndElemTogether(t *testing.T
 
 	if err := validateBindingContractWithResolver(nil, nil, nil, binding, spec); err != nil {
 		t.Fatalf("expected object binding to satisfy fields and elem, got %v", err)
+	}
+}
+
+func TestValidateCoalesceBindingRejectsIncompatibleCandidate(t *testing.T) {
+	t.Parallel()
+
+	err := validateBindingContractWithResolver(nil, nil, nil, bindingPlan{
+		Kind: BindingKindCoalesce,
+		Candidates: []bindingPlan{
+			{Kind: BindingKindLiteral, Value: 1},
+			{Kind: BindingKindLiteral, Value: "ok"},
+		},
+	}, ValueContract{Kind: ValueKindString})
+	if err == nil {
+		t.Fatal("expected coalesce candidate contract error")
+	}
+
+	if got := err.Error(); !strings.Contains(got, "candidate 0") {
+		t.Fatalf("candidate error mismatch: got %q", got)
 	}
 }
 

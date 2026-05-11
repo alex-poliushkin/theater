@@ -187,8 +187,8 @@ scenario_calls:
 
 ## Bindings
 
-Bindings appear in `action.with`, `inventory.with`, `scenario_calls.bindings`,
-and `assert.args`.
+Bindings appear in `properties.<name>.value`, `action.with`, `inventory.with`,
+`scenario_calls.bindings`, and `assert.args`.
 
 | Binding form | Purpose |
 | --- | --- |
@@ -199,10 +199,124 @@ and `assert.args`.
 | `kind: list` | List whose items are bindings |
 | `kind: string` | Ordered string composition through `parts` |
 | `kind: generate` | Generator binding |
+| `kind: coalesce` | First concrete value from ordered `candidates` |
+| `kind: env` | Named host environment variable source |
 
 Do not wrap ordinary scalars, lists, or simple objects in `kind: literal`.
 `theater validate` keeps the stage valid but reports a non-fatal hint for
 redundant literal wrappers.
+
+`kind: coalesce` evaluates `candidates` left to right and skips only typed
+missing values such as omitted optional scenario inputs or unset `kind: env`
+sources. Empty string, zero, `false`, `null`, empty object, and empty list are
+concrete values. Selector errors, generator errors, validation failures,
+cancellation, and arbitrary runtime errors are not fallback signals.
+When `coalesce` candidates have different sensitivity, Theater uses the most
+conservative candidate visibility for the resolved value.
+
+`kind: env` reads one named host environment variable. `name` is required and
+must be a non-empty literal string. Validation does not read the environment.
+At runtime an unset variable resolves to typed missing, so `coalesce` can select
+a later candidate. A set-but-empty variable resolves to `""` and does not fall
+back. Env values are treated as secret for diagnostics, debug snapshots, and
+report previews because the variable name alone does not prove the value is
+safe to show.
+
+Checked coalesce example:
+
+<!-- theater-doc: source id=reference-yaml-coalesce kind=yaml path=../../examples/reference/coalesce.yaml checks=validate,run -->
+```yaml
+id: reference-coalesce
+scenarios:
+  - id: greet
+    inputs:
+      nickname:
+        type: string
+    acts:
+      - id: choose-name
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                name:
+                  kind: coalesce
+                  candidates:
+                    - kind: ref
+                      ref:
+                        name: nickname
+                    - guest
+        expectations:
+          - id: uses-fallback
+            subject:
+              field: values
+              path: /name
+            assert:
+              ref: expectation.equal
+              args:
+                expected: guest
+scenario_calls:
+  - id: run
+    scenario_id: greet
+```
+
+## Properties
+
+Act properties are resolved before the action and become available in the
+current act scope. A property must define exactly one value source:
+
+| Property field | Meaning |
+| --- | --- |
+| `value` | General binding value resolved before the action |
+| `inventory` | Inventory capability call retained for resource-oriented inputs |
+| `decorators` | Optional transforms applied after `value` or `inventory` resolves |
+
+Use `value` for local runtime configuration, literals, refs, objects, lists,
+strings, generators, and `coalesce`. Use `inventory` when a capability must
+acquire a resource or external value through Theater's inventory boundary.
+Decorators apply only to the selected property value.
+
+Checked runtime configuration example:
+
+<!-- theater-doc: source id=reference-yaml-runtime-config kind=yaml path=../../examples/reference/runtime-config.yaml pair=reference-runtime-config checks=validate,run -->
+```yaml
+id: reference-runtime-config
+scenarios:
+  - id: configure-runtime
+    acts:
+      - id: configure
+        properties:
+          email:
+            value:
+              kind: coalesce
+              candidates:
+                - kind: env
+                  name: THEATER_DOC_REFERENCE_RUNTIME_CONFIG_EMAIL_UNSET
+                - guest@example.test
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                email:
+                  kind: ref
+                  ref:
+                    name: email
+        expectations:
+          - id: fallback-email
+            subject:
+              field: values
+              path: /email
+            assert:
+              ref: expectation.equal
+              args:
+                expected: guest@example.test
+scenario_calls:
+  - id: run
+    scenario_id: configure-runtime
+```
 
 ## Selectors And Expectations
 

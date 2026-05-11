@@ -578,99 +578,11 @@ func (c *PluginCatalog) collectStageCapabilityRefs(stage *stagePlan) []pluginSta
 	}
 
 	refs := make([]pluginStageCapabilityRef, 0)
-	if stage.State != nil {
-		names := make([]string, 0, len(stage.State.Backends))
-		for name := range stage.State.Backends {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			backend := stage.State.Backends[name]
-			if capability, ok := c.capabilities[backend.Use]; ok {
-				refs = append(refs, pluginStageCapabilityRef{
-					pluginID:          capability.pluginID,
-					capabilityName:    backend.Use,
-					kind:              capability.capability.Manifest.Kind,
-					descriptorPath:    stateBackendPath(stage.Path, name),
-					bindingParentPath: stateBackendPath(stage.Path, name) + "/with",
-					staticProperties:  backend.With,
-				})
-			}
-		}
-	}
+	refs = c.collectStateCapabilityRefs(refs, stage)
 	for i := range stage.Scenarios {
 		scenario := stage.Scenarios[i]
 		for j := range scenario.Acts {
-			act := scenario.Acts[j]
-			if capability, ok := c.capabilities[act.Action.Use]; ok {
-				refs = append(refs, pluginStageCapabilityRef{
-					pluginID:          capability.pluginID,
-					capabilityName:    act.Action.Use,
-					kind:              capability.capability.Manifest.Kind,
-					descriptorPath:    act.Path + "/action",
-					bindingParentPath: act.Path + "/action",
-					bindingProperties: act.Action.With,
-				})
-			}
-			refs = c.collectBindingMapTransformRefs(refs, act.Path+"/action", act.Action.With)
-
-			for k := range act.Properties {
-				property := act.Properties[k]
-				if capability, ok := c.capabilities[property.Inventory.Use]; ok {
-					refs = append(refs, pluginStageCapabilityRef{
-						pluginID:          capability.pluginID,
-						capabilityName:    property.Inventory.Use,
-						kind:              capability.capability.Manifest.Kind,
-						descriptorPath:    property.Path + "/inventory",
-						bindingParentPath: property.Path + "/inventory/with",
-						bindingProperties: property.Inventory.With,
-					})
-				}
-				for m := range property.Decorators {
-					decorator := property.Decorators[m]
-					if capability, ok := c.capabilities[decorator.Use]; ok {
-						refs = append(refs, pluginStageCapabilityRef{
-							pluginID:          capability.pluginID,
-							capabilityName:    decorator.Use,
-							kind:              capability.capability.Manifest.Kind,
-							descriptorPath:    joinChildPath(property.Path, "decorator", decoratorKey(&decorator, m)),
-							bindingParentPath: joinChildPath(property.Path, "decorator", decoratorKey(&decorator, m)) + "/with",
-							staticProperties:  decorator.With,
-						})
-					}
-				}
-				refs = c.collectBindingMapTransformRefs(refs, property.Path+"/inventory/with", property.Inventory.With)
-			}
-
-			for k := range act.Expectations {
-				expectation := act.Expectations[k]
-				expectationPath := joinChildPath(act.Path, "expectation", expectation.ID)
-				refs = c.collectSelectorTransformRefs(refs, expectationPath+"/subject", expectation.Subject.selectorPlan)
-				if capability, ok := c.capabilities[expectation.Assert.Ref]; ok {
-					refs = append(refs, pluginStageCapabilityRef{
-						pluginID:          capability.pluginID,
-						capabilityName:    expectation.Assert.Ref,
-						kind:              capability.capability.Manifest.Kind,
-						descriptorPath:    expectationPath + "/assert",
-						bindingParentPath: expectationPath + "/assert/args",
-						bindingProperties: expectation.Assert.Args,
-					})
-				}
-				refs = c.collectBindingMapTransformRefs(refs, expectationPath+"/assert/args", expectation.Assert.Args)
-			}
-
-			for k := range act.Logs {
-				log := act.Logs[k]
-				refs = c.collectLogValueTransformRefs(refs, log.Value)
-				keys := sortedMapKeys(log.Fields)
-				for _, key := range keys {
-					refs = c.collectLogValueTransformRefs(refs, log.Fields[key])
-				}
-			}
-
-			for k := range act.Exports {
-				refs = c.collectExportTransformRefs(refs, act.Exports[k])
-			}
+			refs = c.collectActCapabilityRefs(refs, scenario.Acts[j])
 		}
 	}
 	for i := range stage.ScenarioCalls {
@@ -681,6 +593,124 @@ func (c *PluginCatalog) collectStageCapabilityRefs(stage *stagePlan) []pluginSta
 		}
 	}
 
+	return refs
+}
+
+func (c *PluginCatalog) collectStateCapabilityRefs(
+	refs []pluginStageCapabilityRef,
+	stage *stagePlan,
+) []pluginStageCapabilityRef {
+	if stage.State == nil {
+		return refs
+	}
+
+	names := make([]string, 0, len(stage.State.Backends))
+	for name := range stage.State.Backends {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		backend := stage.State.Backends[name]
+		if capability, ok := c.capabilities[backend.Use]; ok {
+			refs = append(refs, pluginStageCapabilityRef{
+				pluginID:          capability.pluginID,
+				capabilityName:    backend.Use,
+				kind:              capability.capability.Manifest.Kind,
+				descriptorPath:    stateBackendPath(stage.Path, name),
+				bindingParentPath: stateBackendPath(stage.Path, name) + "/with",
+				staticProperties:  backend.With,
+			})
+		}
+	}
+	return refs
+}
+
+func (c *PluginCatalog) collectActCapabilityRefs(
+	refs []pluginStageCapabilityRef,
+	act actPlan,
+) []pluginStageCapabilityRef {
+	if capability, ok := c.capabilities[act.Action.Use]; ok {
+		refs = append(refs, pluginStageCapabilityRef{
+			pluginID:          capability.pluginID,
+			capabilityName:    act.Action.Use,
+			kind:              capability.capability.Manifest.Kind,
+			descriptorPath:    act.Path + "/action",
+			bindingParentPath: act.Path + "/action",
+			bindingProperties: act.Action.With,
+		})
+	}
+	refs = c.collectBindingMapTransformRefs(refs, act.Path+"/action", act.Action.With)
+
+	for k := range act.Properties {
+		refs = c.collectPropertyCapabilityRefs(refs, act.Properties[k])
+	}
+
+	for k := range act.Expectations {
+		expectation := act.Expectations[k]
+		expectationPath := joinChildPath(act.Path, "expectation", expectation.ID)
+		refs = c.collectSelectorTransformRefs(refs, expectationPath+"/subject", expectation.Subject.selectorPlan)
+		if capability, ok := c.capabilities[expectation.Assert.Ref]; ok {
+			refs = append(refs, pluginStageCapabilityRef{
+				pluginID:          capability.pluginID,
+				capabilityName:    expectation.Assert.Ref,
+				kind:              capability.capability.Manifest.Kind,
+				descriptorPath:    expectationPath + "/assert",
+				bindingParentPath: expectationPath + "/assert/args",
+				bindingProperties: expectation.Assert.Args,
+			})
+		}
+		refs = c.collectBindingMapTransformRefs(refs, expectationPath+"/assert/args", expectation.Assert.Args)
+	}
+
+	for k := range act.Logs {
+		log := act.Logs[k]
+		refs = c.collectLogValueTransformRefs(refs, log.Value)
+		keys := sortedMapKeys(log.Fields)
+		for _, key := range keys {
+			refs = c.collectLogValueTransformRefs(refs, log.Fields[key])
+		}
+	}
+
+	for k := range act.Exports {
+		refs = c.collectExportTransformRefs(refs, act.Exports[k])
+	}
+	return refs
+}
+
+func (c *PluginCatalog) collectPropertyCapabilityRefs(
+	refs []pluginStageCapabilityRef,
+	property propertyPlan,
+) []pluginStageCapabilityRef {
+	if property.Inventory.Present {
+		if capability, ok := c.capabilities[property.Inventory.Use]; ok {
+			refs = append(refs, pluginStageCapabilityRef{
+				pluginID:          capability.pluginID,
+				capabilityName:    property.Inventory.Use,
+				kind:              capability.capability.Manifest.Kind,
+				descriptorPath:    property.Path + "/inventory",
+				bindingParentPath: property.Path + "/inventory/with",
+				bindingProperties: property.Inventory.With,
+			})
+		}
+		refs = c.collectBindingMapTransformRefs(refs, property.Path+"/inventory/with", property.Inventory.With)
+	}
+	if property.Value != nil {
+		refs = c.collectBindingTransformRefs(refs, property.Path+"/value", *property.Value)
+	}
+	for m := range property.Decorators {
+		decorator := property.Decorators[m]
+		if capability, ok := c.capabilities[decorator.Use]; ok {
+			path := joinChildPath(property.Path, "decorator", decoratorKey(&decorator, m))
+			refs = append(refs, pluginStageCapabilityRef{
+				pluginID:          capability.pluginID,
+				capabilityName:    decorator.Use,
+				kind:              capability.capability.Manifest.Kind,
+				descriptorPath:    path,
+				bindingParentPath: path + "/with",
+				staticProperties:  decorator.With,
+			})
+		}
+	}
 	return refs
 }
 
@@ -737,6 +767,9 @@ func (c *PluginCatalog) collectBindingTransformRefs(
 	keys = sortedMapKeys(binding.Args)
 	for _, key := range keys {
 		refs = c.collectBindingTransformRefs(refs, bindingPath(path, key), binding.Args[key])
+	}
+	for i := range binding.Candidates {
+		refs = c.collectBindingTransformRefs(refs, coalesceCandidatePath(path, i), binding.Candidates[i])
 	}
 	return refs
 }

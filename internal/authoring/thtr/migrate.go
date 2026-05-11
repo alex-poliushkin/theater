@@ -1167,16 +1167,25 @@ func buildProperty(name string, spec theater.PropertySpec) (propertySyntax, erro
 	if err != nil {
 		return propertySyntax{}, err
 	}
-	if spec.Inventory == nil {
-		return propertySyntax{}, fmt.Errorf("property %q must declare inventory", name)
+	var base expressionSyntax
+	switch {
+	case spec.Inventory != nil:
+		call, err := buildBindingCall(spec.Inventory.Use, spec.Inventory.With, nil)
+		if err != nil {
+			return propertySyntax{}, err
+		}
+		base = call
+	case spec.Value != nil:
+		value, err := buildBindingExpression(*spec.Value)
+		if err != nil {
+			return propertySyntax{}, err
+		}
+		base = value
+	default:
+		return propertySyntax{}, fmt.Errorf("property %q must declare value or inventory", name)
 	}
 
-	base, err := buildBindingCall(spec.Inventory.Use, spec.Inventory.With, nil)
-	if err != nil {
-		return propertySyntax{}, err
-	}
-
-	value := expressionSyntax(base)
+	value := base
 	if len(spec.Decorators) != 0 {
 		steps := make([]callExpressionSyntax, 0, len(spec.Decorators))
 		for i := range spec.Decorators {
@@ -1743,6 +1752,26 @@ func buildBindingExpression(spec theater.BindingSpec) (expressionSyntax, error) 
 		}, nil
 	case theater.BindingKindGenerate:
 		return buildBindingCall(migrateGeneratorPrefix+spec.Generator, spec.Args, nil)
+	case theater.BindingKindEnv:
+		return callExpressionSyntax{
+			Name: "env",
+			Args: []callArgumentSyntax{{
+				Value: stringLiteralExpression(spec.Env),
+			}},
+		}, nil
+	case theater.BindingKindCoalesce:
+		args := make([]callArgumentSyntax, 0, len(spec.Candidates))
+		for i := range spec.Candidates {
+			value, err := buildBindingExpression(spec.Candidates[i])
+			if err != nil {
+				return nil, err
+			}
+			args = append(args, callArgumentSyntax{Value: value})
+		}
+		return callExpressionSyntax{
+			Name: "coalesce",
+			Args: args,
+		}, nil
 	default:
 		return nil, fmt.Errorf("binding kind %q is not supported by .thtr migrator", spec.Kind)
 	}

@@ -17,35 +17,11 @@ func validatePropertyContracts(act *actPlan, catalog propertyCatalog, matchers M
 	for i := range act.Properties {
 		property := &act.Properties[i]
 		path := property.Path
-		if !property.Inventory.Present || property.Inventory.Use == "" {
+		current, ok, propertyDiagnostics := validatePropertyValueContract(property, catalog, matchers)
+		diagnostics = append(diagnostics, propertyDiagnostics...)
+		if !ok {
 			continue
 		}
-
-		inventory, err := catalog.ResolveInventory(property.Inventory.Use)
-		if err != nil {
-			diagnostics = append(diagnostics, Diagnostic{
-				Code:     "unknown_property_inventory_use",
-				Path:     path,
-				Severity: SeverityError,
-				Summary:  err.Error(),
-			})
-			continue
-		}
-
-		current := inventory.Contract().Produces.Clone()
-		if err := validateInventoryContract(inventory.Contract()); err != nil {
-			diagnostics = append(diagnostics, Diagnostic{
-				Code:     "invalid_property_inventory_contract",
-				Path:     path,
-				Severity: SeverityError,
-				Summary:  err.Error(),
-			})
-		}
-
-		diagnostics = append(
-			diagnostics,
-			validateInventoryBindings(path+"/inventory/with", property.Inventory.With, inventory.Contract().Args, catalog, matchers, catalog)...,
-		)
 
 		for j := range property.Decorators {
 			decorator := &property.Decorators[j]
@@ -122,7 +98,10 @@ func propertyValueContracts(act *actPlan, catalog propertyCatalog) map[string]Va
 	contracts := make(map[string]ValueContract, len(act.Properties))
 	for i := range act.Properties {
 		property := &act.Properties[i]
-		if property.ID == "" || !property.Inventory.Present || property.Inventory.Use == "" {
+		if property.ID == "" {
+			continue
+		}
+		if property.Value == nil && (!property.Inventory.Present || property.Inventory.Use == "") {
 			continue
 		}
 
@@ -142,6 +121,11 @@ func propertyValueContracts(act *actPlan, catalog propertyCatalog) map[string]Va
 }
 
 func propertyValueContract(property *propertyPlan, catalog propertyCatalog) (ValueContract, bool) {
+	if property.Value != nil {
+		current := inferredBindingContract(catalog, property.Value)
+		return applyPropertyDecoratorContracts(property, catalog, current)
+	}
+
 	inventory, err := catalog.ResolveInventory(property.Inventory.Use)
 	if err != nil {
 		return ValueContract{}, false
@@ -152,7 +136,65 @@ func propertyValueContract(property *propertyPlan, catalog propertyCatalog) (Val
 		return ValueContract{}, false
 	}
 
-	current := inventoryContract.Produces.Clone()
+	return applyPropertyDecoratorContracts(property, catalog, inventoryContract.Produces.Clone())
+}
+
+func validatePropertyValueContract(
+	property *propertyPlan,
+	catalog propertyCatalog,
+	matchers MatcherResolver,
+) (current ValueContract, ok bool, diagnostics []Diagnostic) {
+	path := property.Path
+	if property.Value != nil {
+		current = inferredBindingContract(catalog, property.Value)
+		if err := validateBindingContractWithResolver(catalog, matchers, catalog, *property.Value, current); err != nil {
+			diagnostics = append(diagnostics, Diagnostic{
+				Code:     "incompatible_property_value",
+				Path:     path + "/value",
+				Severity: SeverityError,
+				Summary:  err.Error(),
+			})
+		}
+		return current, true, diagnostics
+	}
+
+	if !property.Inventory.Present || property.Inventory.Use == "" {
+		return ValueContract{}, false, nil
+	}
+
+	inventory, err := catalog.ResolveInventory(property.Inventory.Use)
+	if err != nil {
+		return ValueContract{}, false, []Diagnostic{{
+			Code:     "unknown_property_inventory_use",
+			Path:     path,
+			Severity: SeverityError,
+			Summary:  err.Error(),
+		}}
+	}
+
+	inventoryContract := inventory.Contract()
+	current = inventoryContract.Produces.Clone()
+	if err := validateInventoryContract(inventoryContract); err != nil {
+		diagnostics = append(diagnostics, Diagnostic{
+			Code:     "invalid_property_inventory_contract",
+			Path:     path,
+			Severity: SeverityError,
+			Summary:  err.Error(),
+		})
+	}
+
+	diagnostics = append(
+		diagnostics,
+		validateInventoryBindings(path+"/inventory/with", property.Inventory.With, inventoryContract.Args, catalog, matchers, catalog)...,
+	)
+	return current, true, diagnostics
+}
+
+func applyPropertyDecoratorContracts(
+	property *propertyPlan,
+	catalog propertyCatalog,
+	current ValueContract,
+) (ValueContract, bool) {
 	for i := range property.Decorators {
 		decorator := &property.Decorators[i]
 		if decorator.Use == "" {
@@ -185,6 +227,109 @@ func propertyValueContract(property *propertyPlan, catalog propertyCatalog) (Val
 	}
 
 	return current, true
+}
+
+func inferredBindingContract(resolver propertyCatalog, binding *bindingPlan) ValueContract {
+	if binding == nil {
+		return ValueContract{Kind: ValueKindAny}
+	}
+
+	switch binding.Kind {
+	case BindingKindLiteral:
+		return ValueContract{Kind: resolvedValueKind(binding.Value)}
+	case BindingKindEnv:
+		return ValueContract{Kind: ValueKindString, Sensitivity: SensitivitySecret}
+	case BindingKindString:
+		return ValueContract{Kind: ValueKindString}
+	case BindingKindObject:
+		fields := make(map[string]ValueContract, len(binding.Object))
+		for key := range binding.Object {
+			child := binding.Object[key]
+			fields[key] = inferredBindingContract(resolver, &child)
+		}
+		return ValueContract{Kind: ValueKindObject, Fields: fields}
+	case BindingKindList:
+		return ValueContract{Kind: ValueKindList}
+	case BindingKindGenerate:
+		if dependencyMissing(resolver) {
+			return ValueContract{Kind: ValueKindAny}
+		}
+		def, err := resolver.ResolveGenerator(binding.Generator)
+		if err != nil {
+			return ValueContract{Kind: ValueKindAny}
+		}
+		return def.Contract.Produces.Clone()
+	case BindingKindCoalesce:
+		return inferredCoalesceContract(resolver, binding.Candidates)
+	case BindingKindRef:
+		if binding.Ref == nil {
+			return ValueContract{Kind: ValueKindAny}
+		}
+		selected, known, err := validateSelectorBindingContracts(binding.Ref.selectorPlan, resolver, nil, resolver)
+		if err != nil || !known {
+			return ValueContract{Kind: ValueKindAny}
+		}
+		return selected
+	default:
+		return ValueContract{Kind: ValueKindAny}
+	}
+}
+
+func inferredCoalesceContract(resolver propertyCatalog, candidates []bindingPlan) ValueContract {
+	if len(candidates) == 0 {
+		return ValueContract{Kind: ValueKindAny}
+	}
+
+	current := inferredBindingContract(resolver, &candidates[0])
+	for i := 1; i < len(candidates); i++ {
+		next := inferredBindingContract(resolver, &candidates[i])
+		current = mergeContractVisibility(current, next)
+		if contractCompatibilityError(current, next) != nil || contractCompatibilityError(next, current) != nil {
+			return mergeContractVisibility(ValueContract{Kind: ValueKindAny}, current)
+		}
+	}
+	return current
+}
+
+func mergeContractVisibility(left, right ValueContract) ValueContract {
+	left.Sensitivity = mostSensitive(left.Sensitivity, right.Sensitivity)
+	left.Capture = mostRestrictiveCapture(left.Capture, right.Capture)
+	return left
+}
+
+func mostSensitive(left, right Sensitivity) Sensitivity {
+	if sensitivityRank(right) > sensitivityRank(left) {
+		return right
+	}
+	return left
+}
+
+func sensitivityRank(sensitivity Sensitivity) int {
+	switch sensitivity {
+	case SensitivitySecret:
+		return 4
+	case SensitivityPersonal:
+		return 3
+	case SensitivityInternal:
+		return 2
+	case SensitivityNone:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func mostRestrictiveCapture(left, right Capture) Capture {
+	if left == "" && right == "" {
+		return ""
+	}
+	if left == "" || left == CaptureOmit || right == "" || right == CaptureOmit {
+		return CaptureOmit
+	}
+	if left == CaptureArtifactRef || right == CaptureArtifactRef {
+		return CaptureArtifactRef
+	}
+	return CaptureSummary
 }
 
 func validateInventoryContract(contract InventoryContract) error {

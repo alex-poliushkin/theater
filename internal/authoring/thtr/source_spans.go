@@ -36,6 +36,10 @@ func applyScenarioSourceMapBindingSpans(scenario *theater.ScenarioSpec, scenario
 		actPath := codec.JoinChild(scenarioPath, "act", act.ID)
 		applySourceMapBindingMapSpans(act.Action.With, actPath+"/action", sourceMap)
 		for propertyID, property := range act.Properties {
+			if property.Value != nil {
+				propertyPath := codec.JoinChild(actPath, "property", propertyID)
+				applySourceMapBindingSpan(property.Value, propertyPath+"/value", sourceMap)
+			}
 			if property.Inventory != nil {
 				propertyPath := codec.JoinChild(actPath, "property", propertyID)
 				applySourceMapBindingMapSpans(property.Inventory.With, propertyPath+"/inventory/with", sourceMap)
@@ -137,6 +141,11 @@ func applySourceMapBindingSpan(binding *theater.BindingSpec, path string, source
 			child := binding.Args[key]
 			applySourceMapBindingSpan(&child, childPath, sourceMap)
 			binding.Args[key] = child
+		}
+	case theater.BindingKindCoalesce:
+		for i := range binding.Candidates {
+			childPath := fmt.Sprintf("%s.candidates[%d]", path, i)
+			applySourceMapBindingSpan(&binding.Candidates[i], childPath, sourceMap)
 		}
 	}
 }

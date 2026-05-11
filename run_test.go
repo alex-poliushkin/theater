@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -5376,6 +5377,70 @@ func TestRunFieldExportSelectorCanReferenceActionOutput(t *testing.T) {
 	}
 }
 
+func TestRunCoalesceUsesFallbackForOmittedOptionalInput(t *testing.T) {
+	t.Parallel()
+
+	verifyAction := &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Inputs: map[string]theater.ValueContract{
+				"nickname": {Kind: theater.ValueKindString, Required: true},
+			},
+		},
+		CheckFunc: func(args theater.Args) error {
+			if got, want := args["nickname"], "guest"; got != want {
+				t.Fatalf("nickname mismatch: got %v want %v", got, want)
+			}
+			return nil
+		},
+	}
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{
+			{
+				ID: "login",
+				Inputs: map[string]theater.ValueContract{
+					"nickname": {Kind: theater.ValueKindString},
+				},
+				Acts: []theater.ActSpec{
+					{
+						ID: "verify",
+						Action: theater.ActionSpec{
+							Use: "action.verify",
+							With: map[string]theater.BindingSpec{
+								"nickname": {
+									Kind: theater.BindingKindCoalesce,
+									Candidates: []theater.BindingSpec{
+										{Kind: theater.BindingKindRef, Ref: &theater.RefSpec{Name: "nickname"}},
+										{Kind: theater.BindingKindLiteral, Value: "guest"},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.verify", verifyAction); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(context.Background(), spec, catalog, matcherCatalog(t))
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+
+	if got, want := result.Report.Status, theater.StatusPassed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestRunEventuallyExportsPassingAttemptActPropertyRef(t *testing.T) {
 	t.Parallel()
 
@@ -5712,6 +5777,152 @@ func TestRunResolvesActPropertiesBeforeAction(t *testing.T) {
 		t.Fatalf("action call count mismatch: got %d want %d", got, want)
 	}
 
+	if got, want := result.Report.Status, theater.StatusPassed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestRunResolvesActPropertyValueBindingWithEnvCoalesce(t *testing.T) {
+	unsetName := "THEATER_TEST_PROPERTY_VALUE_UNSET"
+	emptyName := "THEATER_TEST_PROPERTY_VALUE_EMPTY"
+	_ = os.Unsetenv(unsetName)
+	t.Setenv(emptyName, "")
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "login",
+			Acts: []theater.ActSpec{{
+				ID: "submit",
+				Properties: map[string]theater.PropertySpec{
+					"fallback": {
+						Value: &theater.BindingSpec{
+							Kind: theater.BindingKindCoalesce,
+							Candidates: []theater.BindingSpec{
+								{Kind: theater.BindingKindEnv, Env: unsetName},
+								{Kind: theater.BindingKindLiteral, Value: "generated@example.test"},
+							},
+						},
+					},
+					"empty": {
+						Value: &theater.BindingSpec{
+							Kind: theater.BindingKindCoalesce,
+							Candidates: []theater.BindingSpec{
+								{Kind: theater.BindingKindEnv, Env: emptyName},
+								{Kind: theater.BindingKindLiteral, Value: "fallback"},
+							},
+						},
+					},
+				},
+				Action: theater.ActionSpec{
+					Use: "action.generate",
+					With: map[string]theater.BindingSpec{
+						"outputs": {
+							Kind: theater.BindingKindObject,
+							Object: map[string]theater.BindingSpec{
+								"fallback": {Kind: theater.BindingKindRef, Ref: &theater.RefSpec{Name: "fallback"}},
+								"empty":    {Kind: theater.BindingKindRef, Ref: &theater.RefSpec{Name: "empty"}},
+							},
+						},
+					},
+				},
+				Expectations: []theater.ExpectationSpec{
+					{
+						ID:      "fallback",
+						Subject: theater.SubjectSpec{Field: "values", Path: "/fallback"},
+						Assert: theater.AssertSpec{
+							Ref: builtinexpectation.EqualRef,
+							Args: map[string]theater.BindingSpec{
+								"expected": {Kind: theater.BindingKindLiteral, Value: "generated@example.test"},
+							},
+						},
+					},
+					{
+						ID:      "empty",
+						Subject: theater.SubjectSpec{Field: "values", Path: "/empty"},
+						Assert: theater.AssertSpec{
+							Ref: builtinexpectation.EqualRef,
+							Args: map[string]theater.BindingSpec{
+								"expected": {Kind: theater.BindingKindLiteral, Value: ""},
+							},
+						},
+					},
+				},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{ID: "login-user", ScenarioID: "login"}},
+	}
+
+	catalog, matchers, err := newBuiltins()
+	if err != nil {
+		t.Fatalf("new builtins failed: %v", err)
+	}
+
+	result, err := runStage(context.Background(), spec, catalog, matchers)
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+	if got, want := result.Report.Status, theater.StatusPassed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestRunTreatsEnvPropertyValueAsSecret(t *testing.T) {
+	t.Setenv("THEATER_TEST_SECRET_TOKEN", "issued-token")
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "login",
+			Acts: []theater.ActSpec{{
+				ID: "submit",
+				Properties: map[string]theater.PropertySpec{
+					"token": {
+						Value: &theater.BindingSpec{
+							Kind: theater.BindingKindEnv,
+							Env:  "THEATER_TEST_SECRET_TOKEN",
+						},
+					},
+				},
+				Action: theater.ActionSpec{
+					Use: "action.submit",
+					With: map[string]theater.BindingSpec{
+						"token": {
+							Kind: theater.BindingKindRef,
+							Ref:  &theater.RefSpec{Name: "token"},
+						},
+					},
+				},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{ID: "login-user", ScenarioID: "login"}},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Inputs: map[string]theater.ValueContract{
+				"token": {Kind: theater.ValueKindString},
+			},
+		},
+		RunFunc: func(args theater.Args) (theater.Outputs, error) {
+			secret, ok := args["token"].(theater.Secret)
+			if !ok {
+				t.Fatalf("token arg must be protected as secret, got %T", args["token"])
+			}
+			if got, want := secret.Reveal(), any("issued-token"); got != want {
+				t.Fatalf("secret token reveal mismatch: got %#v want %#v", got, want)
+			}
+			return theater.Outputs{}, nil
+		},
+	}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(context.Background(), spec, catalog, matcherCatalog(t))
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
 	if got, want := result.Report.Status, theater.StatusPassed; got != want {
 		t.Fatalf("report status mismatch: got %q want %q", got, want)
 	}

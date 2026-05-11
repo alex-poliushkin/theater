@@ -584,6 +584,45 @@ call register-user = register()
 	}
 }
 
+func TestParseLowersPropertyValueCoalesceEnvBinding(t *testing.T) {
+	t.Parallel()
+
+	spec, err := Parse([]byte(`stage smoke
+scenario login
+  act submit
+    prop email = coalesce(env("THEATER_EMAIL"), generate.email(domain: "example.test"))
+    do action.generate
+      outputs:
+        email: $email
+`), nil)
+	if err != nil {
+		failWithSpan(t, "parse", err)
+	}
+
+	property := spec.Scenarios[0].Acts[0].Properties["email"]
+	if property.Inventory != nil {
+		t.Fatal("property inventory must be empty for value binding")
+	}
+	if property.Value == nil {
+		t.Fatal("property value binding must be present")
+	}
+	if got, want := property.Value.Kind, theater.BindingKindCoalesce; got != want {
+		t.Fatalf("property value kind mismatch: got %q want %q", got, want)
+	}
+	if got, want := len(property.Value.Candidates), 2; got != want {
+		t.Fatalf("candidate count mismatch: got %d want %d", got, want)
+	}
+	if got, want := property.Value.Candidates[0].Kind, theater.BindingKindEnv; got != want {
+		t.Fatalf("first candidate kind mismatch: got %q want %q", got, want)
+	}
+	if got, want := property.Value.Candidates[0].Env, "THEATER_EMAIL"; got != want {
+		t.Fatalf("env name mismatch: got %q want %q", got, want)
+	}
+	if got, want := property.Value.Candidates[1].Kind, theater.BindingKindGenerate; got != want {
+		t.Fatalf("second candidate kind mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestParseLowersStateAliasesToHiddenHandleProperties(t *testing.T) {
 	t.Parallel()
 
@@ -2568,17 +2607,17 @@ scenario login
 	errtest.RequireContains(t, err, `relative clause subject may start only with decode(...) or path(...)`)
 }
 
-func TestParseRejectsNonInventoryPropertyPipeline(t *testing.T) {
+func TestParseRejectsInvalidPropertyValueExpression(t *testing.T) {
 	t.Parallel()
 
 	_, err := Parse([]byte(`stage smoke
 scenario login
   act submit
-    prop bad = json.decode
+    prop bad = literal
     do action.http(method: "GET")
 `), nil)
 
-	errtest.RequireContains(t, err, "property must start with inventory call")
+	errtest.RequireContains(t, err, "bare symbol is not valid binding value")
 }
 
 func TestParseRejectsScenarioCallSelectorExport(t *testing.T) {

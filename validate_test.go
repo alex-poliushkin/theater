@@ -1,6 +1,7 @@
 package theater_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -1197,6 +1198,103 @@ func TestValidateReportsDecoratorContractDiagnostics(t *testing.T) {
 
 	if got, want := diagnostics[0].Path, "stage.main/scenario.probe/act.request/property.payload/decorator.csv~2decode"; got != want {
 		t.Fatalf("diagnostic path mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestValidateAllowsPropertyValueDecorator(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{
+			{
+				ID: "probe",
+				Acts: []theater.ActSpec{
+					{
+						ID:     "request",
+						Action: theater.ActionSpec{Use: "action.submit"},
+						Properties: map[string]theater.PropertySpec{
+							"payload": {
+								Value: &theater.BindingSpec{
+									Kind:  theater.BindingKindLiteral,
+									Value: `{"items":[]}`,
+								},
+								Decorators: []theater.DecoratorSpec{
+									{Use: builtindecorator.JSONRef},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "probe-server", ScenarioID: "probe"},
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	if err := builtindecorator.Register(catalog); err != nil {
+		t.Fatalf("register decorators failed: %v", err)
+	}
+
+	diagnostics := validateStage(spec, catalog, matcherCatalog(t))
+	if got, want := len(diagnostics), 0; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d (%v)", got, want, diagnostics)
+	}
+}
+
+func TestValidateReportsPropertyValueDecoratorContractDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{
+			{
+				ID: "probe",
+				Acts: []theater.ActSpec{
+					{
+						ID:     "request",
+						Action: theater.ActionSpec{Use: "action.submit"},
+						Properties: map[string]theater.PropertySpec{
+							"payload": {
+								Value: &theater.BindingSpec{
+									Kind: theater.BindingKindObject,
+									Object: map[string]theater.BindingSpec{
+										"id": {Kind: theater.BindingKindLiteral, Value: "user-123"},
+									},
+								},
+								Decorators: []theater.DecoratorSpec{
+									{Use: builtindecorator.CSVRef},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "probe-server", ScenarioID: "probe"},
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	if err := builtindecorator.Register(catalog); err != nil {
+		t.Fatalf("register decorators failed: %v", err)
+	}
+
+	diagnostics := validateStage(spec, catalog, matcherCatalog(t))
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d (%v)", got, want, diagnostics)
+	}
+	if got, want := diagnostics[0].Code, "incompatible_property_decorator_input_kind"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
 	}
 }
 
@@ -2468,6 +2566,43 @@ func TestValidateRejectsUnknownPropertySubjectRef(t *testing.T) {
 	}
 }
 
+func TestValidateAllowsUnsetNamedEnvPropertyValue(t *testing.T) {
+	envName := "THEATER_TEST_VALIDATE_ENV_UNSET"
+	if err := os.Unsetenv(envName); err != nil {
+		t.Fatalf("unset env failed: %v", err)
+	}
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "login",
+			Acts: []theater.ActSpec{{
+				ID: "submit",
+				Properties: map[string]theater.PropertySpec{
+					"email": {
+						Value: &theater.BindingSpec{
+							Kind: theater.BindingKindEnv,
+							Env:  envName,
+						},
+					},
+				},
+				Action: theater.ActionSpec{Use: "action.submit"},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{ID: "login-user", ScenarioID: "login"}},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	diagnostics := validateStage(spec, catalog, matcherCatalog(t))
+	if got, want := len(diagnostics), 0; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d (%v)", got, want, diagnostics)
+	}
+}
+
 func TestValidateAllowsPropertySubjectTraversalOverJSONDecodedProperty(t *testing.T) {
 	t.Parallel()
 
@@ -2771,6 +2906,56 @@ func TestValidateRejectsActExportPathThatConflictsWithScalarPropertyContract(t *
 
 	if got, want := diagnostics[0].Path, "stage.main/scenario.login/act.submit/export.issued_token"; got != want {
 		t.Fatalf("diagnostic path mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestValidateRejectsActExportPathThatConflictsWithScalarPropertyValueContract(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{
+			{
+				ID: "login",
+				Acts: []theater.ActSpec{
+					{
+						ID: "submit",
+						Properties: map[string]theater.PropertySpec{
+							"payload": {
+								Value: &theater.BindingSpec{
+									Kind:  theater.BindingKindLiteral,
+									Value: "token",
+								},
+							},
+						},
+						Action: theater.ActionSpec{Use: "action.submit"},
+						Exports: []theater.ExportSpec{
+							{
+								As:  "issued_token",
+								Ref: &theater.RefSpec{Name: "payload", Path: theater.JSONPointer("/token")},
+							},
+						},
+					},
+				},
+			},
+		},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "login-user", ScenarioID: "login"},
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.submit", &testkit.ScriptedAction{}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	diagnostics := validateStage(spec, catalog, matcherCatalog(t))
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("diagnostic count mismatch: got %d want %d (%v)", got, want, diagnostics)
+	}
+
+	if got, want := diagnostics[0].Code, "incompatible_act_export_path"; got != want {
+		t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
 	}
 }
 

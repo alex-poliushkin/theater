@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"regexp"
 	"strings"
@@ -179,45 +180,67 @@ func (r referenceResolver) ResolveBinding(binding bindingPlan) (any, error) {
 }
 
 func (r referenceResolver) ResolveBindingContext(ctx context.Context, binding bindingPlan) (any, error) {
-	switch binding.Kind {
-	case BindingKindLiteral:
-		return runtimevalue.Clone(binding.Value), nil
-	case BindingKindRef:
-		if binding.Ref == nil {
-			return nil, errors.New("binding ref is missing")
+	value, missing, err := r.resolveBindingContext(ctx, binding)
+	if err != nil {
+		return nil, err
+	}
+	if missing {
+		if binding.Kind == BindingKindCoalesce {
+			return nil, errors.New("coalesce candidates are missing")
 		}
 
-		return r.resolveNamedValueFromContext(ctx, r.bindingSource, binding.Ref.Name, binding.Ref.selectorPlan, "ref %q is missing")
+		return nil, errors.New("binding value is missing")
+	}
+
+	return value, nil
+}
+
+func (r referenceResolver) resolveBindingContext(ctx context.Context, binding bindingPlan) (value any, missing bool, err error) {
+	switch binding.Kind {
+	case BindingKindLiteral:
+		return runtimevalue.Clone(binding.Value), false, nil
+	case BindingKindRef:
+		if binding.Ref == nil {
+			return nil, false, errors.New("binding ref is missing")
+		}
+
+		return r.resolveBindingRefContext(ctx, binding.Ref)
 	case BindingKindObject:
 		object := make(map[string]any, len(binding.Object))
 		for key := range binding.Object {
 			value, err := r.ResolveBindingContext(ctx, binding.Object[key])
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 
 			object[key] = value
 		}
 
-		return object, nil
+		return object, false, nil
 	case BindingKindList:
 		list := make([]any, 0, len(binding.List))
 		for i := range binding.List {
 			value, err := r.ResolveBindingContext(ctx, binding.List[i])
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 
 			list = append(list, value)
 		}
 
-		return list, nil
+		return list, false, nil
 	case BindingKindString:
-		return r.resolveStringBindingContext(ctx, binding)
+		value, err := r.resolveStringBindingContext(ctx, binding)
+		return value, false, err
 	case BindingKindGenerate:
-		return r.resolveGenerateBindingContext(ctx, binding)
+		value, err := r.resolveGenerateBindingContext(ctx, binding)
+		return value, false, err
+	case BindingKindCoalesce:
+		return r.resolveCoalesceBindingContext(ctx, binding)
+	case BindingKindEnv:
+		return resolveEnvBinding(binding)
 	default:
-		return nil, fmt.Errorf("binding kind %q is invalid", binding.Kind)
+		return nil, false, fmt.Errorf("binding kind %q is invalid", binding.Kind)
 	}
 }
 
@@ -290,8 +313,28 @@ func (r referenceResolver) resolveNamedValueFromContext(
 	if !ok {
 		return nil, fmt.Errorf(missingFormat, name)
 	}
+	if isMissingValue(value) {
+		return nil, missingValueError(value)
+	}
 
 	return r.resolveSelectedValueContext(ctx, value, selector)
+}
+
+func (r referenceResolver) resolveBindingRefContext(ctx context.Context, ref *refPlan) (value any, missing bool, err error) {
+	if r.bindingSource == nil {
+		return nil, false, fmt.Errorf("ref %q is missing", ref.Name)
+	}
+
+	value, ok := r.bindingSource.lookupValue(ref.Name)
+	if !ok {
+		return nil, false, fmt.Errorf("ref %q is missing", ref.Name)
+	}
+	if isMissingValue(value) {
+		return nil, true, nil
+	}
+
+	selected, err := r.resolveSelectedValueContext(ctx, value, ref.selectorPlan)
+	return selected, false, err
 }
 
 func (r referenceResolver) resolveSelectedValueContext(ctx context.Context, value any, selector selectorPlan) (any, error) {
@@ -346,6 +389,39 @@ func (r referenceResolver) resolveGenerateBindingContext(ctx context.Context, bi
 	}
 
 	return r.generation.Resolve(ctx, r.generators, binding, r.identity, r)
+}
+
+func (r referenceResolver) resolveCoalesceBindingContext(ctx context.Context, binding bindingPlan) (value any, missing bool, err error) {
+	if len(binding.Candidates) == 0 {
+		return nil, false, errors.New("coalesce candidates are required")
+	}
+
+	for i := range binding.Candidates {
+		value, missing, err := r.resolveBindingContext(ctx, binding.Candidates[i])
+		if err != nil {
+			return nil, false, err
+		}
+		if missing {
+			continue
+		}
+
+		return value, false, nil
+	}
+
+	return nil, true, nil
+}
+
+func resolveEnvBinding(binding bindingPlan) (value any, missing bool, err error) {
+	if binding.Env == "" {
+		return nil, false, errors.New("env binding name is required")
+	}
+
+	value, ok := os.LookupEnv(binding.Env)
+	if !ok {
+		return nil, true, nil
+	}
+
+	return value, false, nil
 }
 
 func (r referenceResolver) applyThroughStepContext(ctx context.Context, value any, step throughStepPlan) (any, error) {

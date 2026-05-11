@@ -431,8 +431,10 @@ func bindingPartialJSON(binding bindingPlan, path string) (value any, dynamic []
 	case BindingKindLiteral:
 		value, err = jsonCompatibleValue(binding.Value)
 		return value, nil, err == nil, err
-	case BindingKindRef, BindingKindGenerate:
+	case BindingKindRef, BindingKindGenerate, BindingKindEnv:
 		return nil, []string{path}, false, nil
+	case BindingKindCoalesce:
+		return coalesceBindingPartialJSON(binding, path)
 	case BindingKindString:
 		if !bindingStatic(binding) {
 			return nil, []string{path}, false, nil
@@ -492,6 +494,20 @@ func bindingPartialJSON(binding bindingPlan, path string) (value any, dynamic []
 	default:
 		return nil, []string{path}, false, nil
 	}
+}
+
+func coalesceBindingPartialJSON(binding bindingPlan, path string) (value any, dynamic []string, static bool, err error) {
+	if !bindingStatic(binding) {
+		return nil, []string{path}, false, nil
+	}
+
+	resolved, err := resolveStaticBinding(binding)
+	if err != nil {
+		return nil, nil, false, err
+	}
+
+	value, err = jsonCompatibleValue(resolved)
+	return value, nil, err == nil, err
 }
 
 func escapeJSONPointerToken(value string) string {
