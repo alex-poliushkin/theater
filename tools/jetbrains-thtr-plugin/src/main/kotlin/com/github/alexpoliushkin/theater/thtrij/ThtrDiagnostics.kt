@@ -58,6 +58,9 @@ object ThtrDiagnostics {
 		if (element is ThtrLogStatement) {
 			diagnostics += logDiagnostics(element)
 		}
+		if (element is ThtrPropStatement) {
+			diagnostics += propertyValueDiagnostics(element)
+		}
 		selectorDiagnostic(element)?.let { diagnostics += it }
 		capabilityDiagnostics(element).let { diagnostics += it }
 		return diagnostics
@@ -67,6 +70,11 @@ object ThtrDiagnostics {
 data class ThtrDiagnostic(
 	val element: PsiElement,
 	val message: String,
+)
+
+private data class PropertyValueCall(
+	val callee: PsiElement,
+	val args: List<PsiElement>,
 )
 
 private fun logDiagnostics(log: ThtrLogStatement): List<ThtrDiagnostic> {
@@ -110,6 +118,28 @@ private fun logDiagnostics(log: ThtrLogStatement): List<ThtrDiagnostic> {
 		}
 	}
 
+	return diagnostics
+}
+
+private fun propertyValueDiagnostics(property: ThtrPropStatement): List<ThtrDiagnostic> {
+	val diagnostics = mutableListOf<ThtrDiagnostic>()
+	for (call in propertyValueCalls(property, setOf("coalesce", "env"))) {
+		when (call.callee.text) {
+			"coalesce" -> {
+				if (!call.hasValueArguments()) {
+					diagnostics += ThtrDiagnostic(call.callee, "coalesce(...) requires at least one candidate")
+				}
+				if (call.hasTopLevelNamedArgument()) {
+					diagnostics += ThtrDiagnostic(call.callee, "coalesce(...) accepts positional candidates only")
+				}
+			}
+			"env" -> {
+				if (call.hasMissingEnvName()) {
+					diagnostics += ThtrDiagnostic(call.callee, "env(...) name must be non-empty")
+				}
+			}
+		}
+	}
 	return diagnostics
 }
 
@@ -174,6 +204,91 @@ private fun significantChildren(element: PsiElement): List<PsiElement> {
 		child = child.nextSibling
 	}
 	return children
+}
+
+private fun propertyValueCalls(property: ThtrPropStatement, names: Set<String>): List<PropertyValueCall> {
+	val children = significantChildren(property)
+	val calls = mutableListOf<PropertyValueCall>()
+	for (index in children.indices) {
+		val callee = children[index]
+		if (callee.text !in names) {
+			continue
+		}
+		if (children.getOrNull(index + 1)?.node?.elementType != ThtrTypes.L_PAREN) {
+			continue
+		}
+		callArguments(children, index + 1)?.let { args ->
+			calls += PropertyValueCall(callee, args)
+		}
+	}
+	return calls
+}
+
+private fun callArguments(children: List<PsiElement>, openIndex: Int): List<PsiElement>? {
+	var depth = 0
+	val args = mutableListOf<PsiElement>()
+	for (index in openIndex + 1 until children.size) {
+		val child = children[index]
+		when (child.node?.elementType) {
+			ThtrTypes.L_PAREN, ThtrTypes.L_BRACE, ThtrTypes.L_BRACKET -> {
+				depth++
+				args += child
+			}
+			ThtrTypes.R_PAREN -> {
+				if (depth == 0) {
+					return args
+				}
+				depth--
+				args += child
+			}
+			ThtrTypes.R_BRACE, ThtrTypes.R_BRACKET -> {
+				depth--
+				args += child
+			}
+			else -> args += child
+		}
+	}
+	return null
+}
+
+private fun PropertyValueCall.hasValueArguments(): Boolean {
+	return args.any { it.node?.elementType != ThtrTypes.COMMA }
+}
+
+private fun PropertyValueCall.hasTopLevelNamedArgument(): Boolean {
+	var depth = 0
+	for (arg in args) {
+		when (arg.node?.elementType) {
+			ThtrTypes.L_PAREN, ThtrTypes.L_BRACE, ThtrTypes.L_BRACKET -> depth++
+			ThtrTypes.R_PAREN, ThtrTypes.R_BRACE, ThtrTypes.R_BRACKET -> depth--
+			ThtrTypes.COLON -> if (depth == 0) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+private fun PropertyValueCall.hasMissingEnvName(): Boolean {
+	val values = args.filter { it.node?.elementType != ThtrTypes.COMMA }
+	if (values.isEmpty()) {
+		return true
+	}
+	return values.size == 1 && values.single().stringLiteralValue() == ""
+}
+
+private fun PsiElement.stringLiteralValue(): String? {
+	if (node?.elementType != ThtrTypes.STRING) {
+		return null
+	}
+	val text = text
+	return when {
+		text.startsWith("\"\"\"") && text.endsWith("\"\"\"") && text.length >= 6 ->
+			text.removePrefix("\"\"\"").removeSuffix("\"\"\"")
+		text.startsWith("\"") && text.endsWith("\"") && text.length >= 2 ->
+			text.substring(1, text.length - 1)
+		else -> null
+	}
 }
 
 private fun selectorDiagnostic(element: PsiElement): ThtrDiagnostic? {

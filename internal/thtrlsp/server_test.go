@@ -168,6 +168,28 @@ scenario pipeline
 			want:      "json.decode",
 		},
 		{
+			name: "property coalesce value binding",
+			text: `stage smoke
+scenario config
+  act choose
+    prop email = c
+`,
+			line:      3,
+			character: len("    prop email = c"),
+			want:      "coalesce",
+		},
+		{
+			name: "property env value binding inside coalesce",
+			text: `stage smoke
+scenario config
+  act choose
+    prop email = coalesce(e
+`,
+			line:      3,
+			character: len("    prop email = coalesce(e"),
+			want:      "env",
+		},
+		{
 			name: "required action argument",
 			text: `stage smoke
 scenario login
@@ -314,6 +336,63 @@ scenario login
 	}
 	if got, want := diagnostics[0].Range.Start.Line, 4; got != want {
 		t.Fatalf("diagnostic line mismatch: got %d want %d", got, want)
+	}
+}
+
+func TestAnalyzeDocumentReportsCoalesceEnvLowerDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "flow.thtr")
+	tests := []struct {
+		name        string
+		text        string
+		wantMessage string
+	}{
+		{
+			name: "empty coalesce",
+			text: `stage main
+scenario config
+  act choose
+    prop email = coalesce()
+    do action.generate
+`,
+			wantMessage: "coalesce(...) requires at least one candidate",
+		},
+		{
+			name: "empty env",
+			text: `stage main
+scenario config
+  act choose
+    prop email = env("")
+    do action.generate
+`,
+			wantMessage: "env(...) name must be non-empty",
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			grouped := testAnalyzeDocument(t, path, test.text)
+			diagnostics := grouped[path]
+			if got, want := len(diagnostics), 1; got != want {
+				t.Fatalf("diagnostic count mismatch: got %d want %d", got, want)
+			}
+			if got, want := diagnostics[0].Code, "thtr_lower_error"; got != want {
+				t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+			}
+			if got, want := diagnostics[0].Message, test.wantMessage; got != want {
+				t.Fatalf("diagnostic message mismatch: got %q want %q", got, want)
+			}
+			if got, want := diagnostics[0].Range.Start.Line, 3; got != want {
+				t.Fatalf("diagnostic line mismatch: got %d want %d", got, want)
+			}
+			if !lspPositionAfter(diagnostics[0].Range.End, diagnostics[0].Range.Start) {
+				t.Fatalf("diagnostic range must be non-empty: %#v", diagnostics[0].Range)
+			}
+		})
 	}
 }
 

@@ -174,6 +174,58 @@ func TestExample(t *testing.T) {}
 	}
 }
 
+func TestCheckPassesUnsetEnvToSourceAndCommandChecks(t *testing.T) {
+	root := t.TempDir()
+	docsDir := filepath.Join(root, "docs")
+	writeDocCheckFile(t, filepath.Join(docsDir, "examples", "stage.thtr"), minimalTHTRSource())
+	writeDocCheckFile(t, filepath.Join(docsDir, "tutorial", "page.md"), `<!-- theater-doc: source id=stage kind=thtr path=../examples/stage.thtr checks=validate,run unset-env=THEATER_DOC_EMAIL unset-env-2=THEATER_DOC_GENERATED_EMAIL -->
+`+"```thtr\n"+strings.TrimSpace(minimalTHTRSource())+"\n```\n\n"+`<!-- theater-doc: command id=validate unset-env=THEATER_DOC_COMMAND_ENV -->
+`+"```sh\ntheater validate stage.thtr\n```\n")
+
+	runner := &fakeRunner{result: CommandResult{ExitCode: 0}}
+
+	err := Check(Options{
+		RepoRoot: root,
+		DocsDir:  docsDir,
+		Runner:   runner,
+	})
+	if err != nil {
+		t.Fatalf("check unset-env fixture failed: %v", err)
+	}
+	if got, want := len(runner.commands), 3; got != want {
+		t.Fatalf("command count mismatch: got %d want %d", got, want)
+	}
+	for _, command := range runner.commands[:2] {
+		assertStringSlicesEqual(t, command.UnsetEnv, []string{"THEATER_DOC_EMAIL", "THEATER_DOC_GENERATED_EMAIL"})
+	}
+	assertStringSlicesEqual(t, runner.commands[2].UnsetEnv, []string{"THEATER_DOC_COMMAND_ENV"})
+}
+
+func TestEnvironmentWithoutVariablesAndRestore(t *testing.T) {
+	filtered := environmentWithoutVariables(
+		[]string{"KEEP=value", "DROP=secret", "DROP_AGAIN=secret"},
+		[]string{"DROP", "DROP_AGAIN"},
+	)
+	assertStringSlicesEqual(t, filtered, []string{"KEEP=value"})
+
+	t.Setenv("THEATER_DOC_ENV_RESTORE_PRESENT", "value")
+	restore := temporarilyUnsetEnvironment([]string{"THEATER_DOC_ENV_RESTORE_PRESENT", "THEATER_DOC_ENV_RESTORE_ABSENT"})
+	if _, ok := os.LookupEnv("THEATER_DOC_ENV_RESTORE_PRESENT"); ok {
+		t.Fatal("present env variable was not unset")
+	}
+	if _, ok := os.LookupEnv("THEATER_DOC_ENV_RESTORE_ABSENT"); ok {
+		t.Fatal("absent env variable became set")
+	}
+	restore()
+
+	if got := os.Getenv("THEATER_DOC_ENV_RESTORE_PRESENT"); got != "value" {
+		t.Fatalf("present env variable was not restored: got %q", got)
+	}
+	if _, ok := os.LookupEnv("THEATER_DOC_ENV_RESTORE_ABSENT"); ok {
+		t.Fatal("absent env variable was not restored to absent")
+	}
+}
+
 func TestPublicDocsExamples(t *testing.T) {
 	root := filepath.Join("..", "..")
 	docsDir := filepath.Join(root, "docs")
@@ -204,6 +256,14 @@ func assertCheckErrorContains(t *testing.T, err error, want string) {
 	}
 	if !strings.Contains(err.Error(), want) {
 		t.Fatalf("check error mismatch:\nwant substring: %q\nerror: %v", want, err)
+	}
+}
+
+func assertStringSlicesEqual(t *testing.T, got, want []string) {
+	t.Helper()
+
+	if !slices.Equal(got, want) {
+		t.Fatalf("string slice mismatch: got %#v want %#v", got, want)
 	}
 }
 

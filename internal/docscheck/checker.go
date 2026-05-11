@@ -58,8 +58,9 @@ type CommandRunner interface {
 }
 
 type Command struct {
-	Args []string
-	Dir  string
+	Args     []string
+	Dir      string
+	UnsetEnv []string
 }
 
 type CommandResult struct {
@@ -124,6 +125,9 @@ func (r TheaterCommandRunner) Run(ctx context.Context, command Command) CommandR
 
 	cmd := exec.CommandContext(ctx, command.Args[0], command.Args[1:]...)
 	cmd.Dir = command.Dir
+	if len(command.UnsetEnv) != 0 {
+		cmd.Env = environmentWithoutVariables(os.Environ(), command.UnsetEnv)
+	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -404,8 +408,9 @@ func checkSourceFence(options checkOptions, state *checkState, markdownPath stri
 		state.registerPair(pair, kind, markdownPath, directive.line)
 	}
 
+	unsetEnv := directiveAttrValues(directive.attrs, "unset-env")
 	for _, check := range sourceChecks(kind, directive.attrs["checks"]) {
-		findings = append(findings, runSourceCheck(options, markdownPath, directive.line, resolvedSource, check)...)
+		findings = append(findings, runSourceCheck(options, markdownPath, directive.line, resolvedSource, check, unsetEnv)...)
 	}
 	return findings
 }
@@ -452,7 +457,7 @@ func checkCommandFence(options checkOptions, state *checkState, markdownPath str
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), options.commandTimeout)
 	defer cancel()
-	result := options.runner.Run(ctx, Command{Args: args, Dir: dir})
+	result := options.runner.Run(ctx, Command{Args: args, Dir: dir, UnsetEnv: directiveAttrValues(directive.attrs, "unset-env")})
 	findings = append(findings, checkCommandResult(markdownPath, directive, result)...)
 	return findings
 }
@@ -615,7 +620,7 @@ func directiveAttrValues(attrs map[string]string, base string) []string {
 	return values
 }
 
-func runSourceCheck(options checkOptions, markdownPath string, line int, sourcePath, check string) []Finding {
+func runSourceCheck(options checkOptions, markdownPath string, line int, sourcePath, check string, unsetEnv []string) []Finding {
 	args := sourceCheckArgs(sourcePath, check)
 	if len(args) == 0 {
 		return []Finding{{
@@ -627,7 +632,7 @@ func runSourceCheck(options checkOptions, markdownPath string, line int, sourceP
 
 	ctx, cancel := context.WithTimeout(context.Background(), options.commandTimeout)
 	defer cancel()
-	result := options.runner.Run(ctx, Command{Args: args, Dir: options.repoRoot})
+	result := options.runner.Run(ctx, Command{Args: args, Dir: options.repoRoot, UnsetEnv: unsetEnv})
 	if result.Err != nil {
 		return []Finding{{
 			File:    markdownPath,
@@ -910,6 +915,9 @@ func runTheaterCommand(command Command) CommandResult {
 	theaterCommandMu.Lock()
 	defer theaterCommandMu.Unlock()
 
+	restoreEnv := temporarilyUnsetEnvironment(command.UnsetEnv)
+	defer restoreEnv()
+
 	restore, err := changeWorkingDirectory(command.Dir)
 	if err != nil {
 		return CommandResult{ExitCode: -1, Err: err}
@@ -953,6 +961,64 @@ func nonExitError(err error) error {
 		return nil
 	}
 	return err
+}
+
+type envSnapshot struct {
+	name    string
+	value   string
+	present bool
+}
+
+func environmentWithoutVariables(env, names []string) []string {
+	unset := uniqueEnvNames(names)
+	if len(unset) == 0 {
+		return env
+	}
+
+	filtered := make([]string, 0, len(env))
+	for _, entry := range env {
+		name, _, _ := strings.Cut(entry, "=")
+		if _, ok := unset[name]; ok {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+func temporarilyUnsetEnvironment(names []string) func() {
+	unset := uniqueEnvNames(names)
+	if len(unset) == 0 {
+		return func() {}
+	}
+
+	snapshots := make([]envSnapshot, 0, len(unset))
+	for name := range unset {
+		value, present := os.LookupEnv(name)
+		snapshots = append(snapshots, envSnapshot{name: name, value: value, present: present})
+		_ = os.Unsetenv(name)
+	}
+
+	return func() {
+		for _, snapshot := range snapshots {
+			if snapshot.present {
+				_ = os.Setenv(snapshot.name, snapshot.value)
+				continue
+			}
+			_ = os.Unsetenv(snapshot.name)
+		}
+	}
+}
+
+func uniqueEnvNames(names []string) map[string]struct{} {
+	unique := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		if name == "" {
+			continue
+		}
+		unique[name] = struct{}{}
+	}
+	return unique
 }
 
 var _ CommandRunner = TheaterCommandRunner{}

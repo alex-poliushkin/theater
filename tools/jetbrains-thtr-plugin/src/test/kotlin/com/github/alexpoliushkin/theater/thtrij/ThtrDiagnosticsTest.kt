@@ -83,6 +83,35 @@ class ThtrDiagnosticsTest : BasePlatformTestCase() {
 		assertDiagnostic(diagnostics, "log after = field(status_code)", ".thtr logs must appear after do or capture_auth and before expect, export or on")
 	}
 
+	fun testPropertyValueDiagnosticsTrackCoalesceAndEnvContract() {
+		myFixture.configureByText(
+			ThtrFileType.INSTANCE,
+			"""
+			stage smoke
+			scenario config
+			  act choose
+			    prop empty_fallback = coalesce()
+			    prop named_fallback = coalesce(primary: "demo@example.test")
+			    prop nested_named_fallback = coalesce(env("THEATER_EMAIL"), primary: "demo@example.test")
+			    prop empty_env = env("")
+			    prop note = "coalesce() env()"
+			    do action.generate
+			""".trimIndent(),
+		)
+
+		val diagnostics = errorDiagnostics()
+
+		assertDiagnostic(diagnostics, "coalesce", "coalesce(...) requires at least one candidate")
+		assertDiagnostic(diagnostics, "coalesce", "coalesce(...) accepts positional candidates only")
+		assertDiagnostic(diagnostics, "env", "env(...) name must be non-empty")
+		assertEquals(
+			renderDiagnostics(diagnostics),
+			2,
+			diagnostics.count { it.description == "coalesce(...) accepts positional candidates only" },
+		)
+		assertEquals(renderDiagnostics(diagnostics), 4, diagnostics.size)
+	}
+
 	fun testCommandActionIndentedArgumentsTrackShippedTheaterDslContract() {
 		myFixture.configureByText(
 			ThtrFileType.INSTANCE,

@@ -344,6 +344,16 @@ func selectorCompletions() []completionCandidate {
 	}
 }
 
+func valueBindingCompletions(descriptors []theater.CapabilityDescriptor) []completionCandidate {
+	return append([]completionCandidate{
+		{Label: "coalesce", Kind: 14, Detail: "value binding"},
+		{Label: "env", Kind: 14, Detail: "value binding"},
+		{Label: "object", Kind: 14, Detail: "value binding"},
+		{Label: "list", Kind: 14, Detail: "value binding"},
+		{Label: "string", Kind: 14, Detail: "value binding"},
+	}, generatorCapabilityCompletions(descriptors)...)
+}
+
 func keywordSet() []string {
 	return []string{
 		"stage", "name", "scenario", "act", "eventually", "prop", "do",
@@ -351,7 +361,7 @@ func keywordSet() []string {
 		"not", "has", "item", "all", "items", "where", "key",
 		"export", "call", "dependency", "when", "on", "http", "state", "backend",
 		"record", "pool", "read", "update", "claim", "renew", "release", "consume", "object",
-		"list", "string", "field", "decode", "path", "pick", "regexp", "generate", "transform",
+		"list", "string", "field", "decode", "path", "pick", "regexp", "generate", "transform", "coalesce", "env",
 	}
 }
 
@@ -466,7 +476,7 @@ func completionCandidatesForPrefix(
 	case hasPropertyPipelineTransformPrefix(trimmedPrefix):
 		return transformCapabilityCompletions(capabilities)
 	case strings.HasPrefix(trimmedPrefix, "prop ") && strings.Contains(trimmedPrefix, "="):
-		return inventoryCapabilityCompletions(capabilities)
+		return append(inventoryCapabilityCompletions(capabilities), valueBindingCompletions(capabilities)...)
 	case containsAssertCallPrefix(trimmedPrefix):
 		return matcherCapabilityCompletions(capabilities)
 	case strings.HasPrefix(trimmedPrefix, blockKindCall+" ") && strings.Contains(trimmedPrefix, "="):

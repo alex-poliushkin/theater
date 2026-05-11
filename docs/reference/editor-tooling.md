@@ -34,6 +34,9 @@ go test ./thtr ./internal/thtrlsp -count=1
 
 The current server handles initialize/shutdown, full document sync,
 diagnostics, completion, hover, signature help, formatting, and semantic tokens.
+Completion and diagnostics cover the current `.thtr` property value surface,
+including `coalesce(...)`, `env("NAME")`, generator bindings and descriptor-backed
+inventory calls.
 
 Plugin-aware completion and diagnostics require readable plugin registry and
 lock file paths. Editor integrations that start `thtr-lsp` pass those paths as
@@ -55,12 +58,14 @@ Supported unresolved references produce stable editor diagnostics. Native
 completion covers syntax-valid structural keywords, including act-local
 `log <id> = <log-value>` statements, local symbols, repo-local scenarios,
 built-in capability refs, descriptor-backed plugin refs from project plugin
-manifests, and Theater DSL log-value roots such as `field(...)`, `$ref`,
-`object { ... }` and `list [ ... ]`, plus selector steps after log-value
-pipelines. Quick documentation is available for supported
-built-in and descriptor-backed capability refs. Native static diagnostics cover
+manifests, property value helpers such as `coalesce(...)` and `env("NAME")`,
+and Theater DSL log-value roots such as `field(...)`, `$ref`, `object { ... }`
+and `list [ ... ]`, plus selector steps after log-value pipelines. Quick
+documentation is available for supported built-in and descriptor-backed
+capability refs. Native static diagnostics cover
 malformed syntax, supported unresolved references, invalid selector call shapes,
-unknown capability refs and missing required capability arguments. A native
+invalid `coalesce(...)` and `env("NAME")` property value shapes, unknown
+capability refs and missing required capability arguments. A native
 inspection reports removed `state.cas` syntax and offers the bounded mechanical
 replacement to `state.update`. Native formatter support is registered through
 the IntelliJ formatter extension point and a post-format normalization pass for

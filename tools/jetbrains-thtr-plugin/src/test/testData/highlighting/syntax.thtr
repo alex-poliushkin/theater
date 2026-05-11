@@ -6,6 +6,7 @@ state
 scenario auth/register(email: string!)
   act submit
     eventually 30s every 1s
+    prop email = coalesce(env("THEATER_EMAIL"), generate.email(domain: "example.test"))
     do repeatable action.http
       method: "GET"
       ttl: 5m

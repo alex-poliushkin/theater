@@ -172,7 +172,7 @@ private fun capabilityCompletions(
 		hasTransformPrefix(context.trimmedPrefix) ->
 			capabilityItems(capabilities, ThtrCapabilityKind.TRANSFORM) + selectorCompletions()
 		context.trimmedPrefix.startsWith("prop ") && context.trimmedPrefix.contains("=") ->
-			capabilityItems(capabilities, ThtrCapabilityKind.INVENTORY, ThtrCapabilityKind.GENERATOR)
+			capabilityItems(capabilities, ThtrCapabilityKind.INVENTORY, ThtrCapabilityKind.GENERATOR) + valueBindingCompletions()
 		containsAssertPrefix(context.trimmedPrefix) ->
 			capabilityItems(capabilities, ThtrCapabilityKind.MATCHER)
 		else -> emptyList()
@@ -188,6 +188,10 @@ private fun capabilityItems(capabilities: List<ThtrCapability>, vararg kinds: Th
 
 private fun selectorCompletions(): List<ThtrCompletionItem> {
 	return listOf("field", "decode", "path", "pick", "regexp", "transform").map { ThtrCompletionItem(it, "selector") }
+}
+
+private fun valueBindingCompletions(): List<ThtrCompletionItem> {
+	return listOf("coalesce", "env", "object", "list", "string").map { ThtrCompletionItem(it, "value binding") }
 }
 
 private fun logValueCompletions(prefix: String): List<ThtrCompletionItem> {

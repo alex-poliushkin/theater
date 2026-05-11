@@ -279,40 +279,86 @@ Decorators apply only to the selected property value.
 
 Checked runtime configuration example:
 
-<!-- theater-doc: source id=reference-yaml-runtime-config kind=yaml path=../../examples/reference/runtime-config.yaml pair=reference-runtime-config checks=validate,run -->
+<!-- theater-doc: source id=reference-yaml-runtime-config kind=yaml path=../../examples/reference/runtime-config.yaml pair=reference-runtime-config checks=validate,run unset-env=THEATER_DOC_REFERENCE_RUNTIME_CONFIG_EMAIL_UNSET unset-env-2=THEATER_DOC_REFERENCE_RUNTIME_CONFIG_GENERATED_EMAIL_UNSET -->
 ```yaml
 id: reference-runtime-config
 scenarios:
   - id: configure-runtime
+    inputs:
+      email:
+        type: string
     acts:
       - id: configure
         properties:
-          email:
+          email_literal:
             value:
               kind: coalesce
               candidates:
                 - kind: env
                   name: THEATER_DOC_REFERENCE_RUNTIME_CONFIG_EMAIL_UNSET
                 - guest@example.test
+          email_generated:
+            value:
+              kind: coalesce
+              candidates:
+                - kind: env
+                  name: THEATER_DOC_REFERENCE_RUNTIME_CONFIG_GENERATED_EMAIL_UNSET
+                - kind: generate
+                  generator: email
+                  domain: example.test
+          email_input:
+            value:
+              kind: coalesce
+              candidates:
+                - kind: ref
+                  ref:
+                    name: email
+                - kind: generate
+                  generator: email
+                  domain: example.test
         action:
           use: action.generate
           with:
             outputs:
               kind: object
               object:
-                email:
+                email_literal:
                   kind: ref
                   ref:
-                    name: email
+                    name: email_literal
+                email_generated:
+                  kind: ref
+                  ref:
+                    name: email_generated
+                email_input:
+                  kind: ref
+                  ref:
+                    name: email_input
         expectations:
-          - id: fallback-email
+          - id: literal-fallback
             subject:
               field: values
-              path: /email
+              path: /email_literal
             assert:
               ref: expectation.equal
               args:
                 expected: guest@example.test
+          - id: generated-fallback
+            subject:
+              field: values
+              path: /email_generated
+            assert:
+              ref: expectation.matches
+              args:
+                pattern: ^[^@]+@example\.test$
+          - id: input-fallback
+            subject:
+              field: values
+              path: /email_input
+            assert:
+              ref: expectation.matches
+              args:
+                pattern: ^[^@]+@example\.test$
 scenario_calls:
   - id: run
     scenario_id: configure-runtime

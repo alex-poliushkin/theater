@@ -73,17 +73,23 @@ because the variable name alone does not prove the value is safe to show.
 
 Checked runtime configuration example:
 
-<!-- theater-doc: source id=reference-dsl-runtime-config kind=thtr path=../../examples/reference/runtime-config.thtr pair=reference-runtime-config checks=fmt,lower,validate,run -->
+<!-- theater-doc: source id=reference-dsl-runtime-config kind=thtr path=../../examples/reference/runtime-config.thtr pair=reference-runtime-config checks=fmt,lower,validate,run unset-env=THEATER_DOC_REFERENCE_RUNTIME_CONFIG_EMAIL_UNSET unset-env-2=THEATER_DOC_REFERENCE_RUNTIME_CONFIG_GENERATED_EMAIL_UNSET -->
 ```thtr
 stage reference-runtime-config
 
-scenario configure-runtime
+scenario configure-runtime(email: string)
   act configure
-    prop email = coalesce(env("THEATER_DOC_REFERENCE_RUNTIME_CONFIG_EMAIL_UNSET"), "guest@example.test")
+    prop email_literal = coalesce(env("THEATER_DOC_REFERENCE_RUNTIME_CONFIG_EMAIL_UNSET"), "guest@example.test")
+    prop email_generated = coalesce(env("THEATER_DOC_REFERENCE_RUNTIME_CONFIG_GENERATED_EMAIL_UNSET"), generate.email(domain: "example.test"))
+    prop email_input = coalesce($email, generate.email(domain: "example.test"))
     do action.generate
       outputs:
-        email: $email
-    expect fallback-email: field(values) | path("/email") == "guest@example.test"
+        email_literal: $email_literal
+        email_generated: $email_generated
+        email_input: $email_input
+    expect literal-fallback: field(values) | path("/email_literal") == "guest@example.test"
+    expect generated-fallback: field(values) | path("/email_generated") matches r"^[^@]+@example\.test$"
+    expect input-fallback: field(values) | path("/email_input") matches r"^[^@]+@example\.test$"
 
 call run = configure-runtime()
 ```

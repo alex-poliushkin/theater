@@ -207,6 +207,8 @@ class ThtrCompletionTest : BasePlatformTestCase() {
 			).contains("matcher.smoke.equal"),
 		)
 		assertTrue(completionLabels("stage smoke\nscenario gen\n  act create\n    prop email = generate.e<caret>").contains("generate.email"))
+		assertTrue(completionLabels("stage smoke\nscenario gen\n  act create\n    prop email = c<caret>").contains("coalesce"))
+		assertTrue(completionLabels("stage smoke\nscenario gen\n  act create\n    prop email = coalesce(e<caret>").contains("env"))
 	}
 
 	fun testKeywordCompletionReplacesTypedPrefix() {

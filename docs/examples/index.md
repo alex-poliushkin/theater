@@ -39,6 +39,9 @@ HTTP examples:
 
 Reference examples:
 
+- [Runtime configuration in Theater DSL](reference/runtime-config.thtr)
+- [Runtime configuration in YAML](reference/runtime-config.yaml)
+- [Coalesce in YAML](reference/coalesce.yaml)
 - [Generators in Theater DSL](reference/generators.thtr)
 - [Generators in YAML](reference/generators.yaml)
 - [Matcher sugar in Theater DSL](reference/matchers.thtr)
