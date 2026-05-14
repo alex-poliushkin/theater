@@ -7,13 +7,15 @@ Source of truth:
 
 - `go run ./cmd/theater help formats`
 - `internal/theatercli/renderers.go`
+- `internal/theatercli/report_command.go`
+- `internal/theatercli/report_markdown_renderer.go`
 - `internal/theatercli/debug_path_renderer.go`
 - `internal/theatercli/list_command.go`
 - [Reports](../reports.md)
 
 ## Checked Output Commands
 
-<!-- theater-doc: command id=reference-output-formats cwd=../../.. expect-stdout="Output formats:" expect-stdout-2="json  machine-readable stdout" expect-stdout-3="junit  run-only JUnit XML" -->
+<!-- theater-doc: command id=reference-output-formats cwd=../../.. expect-stdout="Output formats:" expect-stdout-2="json  machine-readable stdout" expect-stdout-3="markdown  detailed human-readable CI summary" -->
 ```sh
 go run ./cmd/theater explain formats
 ```
@@ -38,6 +40,11 @@ go run ./cmd/theater run docs/examples/first-stage/stage.thtr --live off --forma
 go run ./cmd/theater run docs/examples/first-stage/stage.thtr --live off --format junit
 ```
 
+<!-- theater-doc: command id=reference-output-report-markdown cwd=../../.. expect-stdout="# Theater Run Report" expect-stdout-2="### Scenario `run`" expect-stdout-3="- Act `check` passed" -->
+```sh
+go run ./cmd/theater report render --input docs/examples/reference/saved-run.json --format markdown
+```
+
 <!-- theater-doc: command id=reference-output-live-log-stderr cwd=../../.. expect-stdout=passed expect-stderr="log response" expect-stderr-2="log audit" reject-stdout="log response" reject-stdout-2="log audit" -->
 ```sh
 go run ./cmd/theater run docs/examples/reference/logs.thtr --live auto
@@ -49,13 +56,16 @@ go run ./cmd/theater run docs/examples/reference/logs.thtr --live auto
 | --- | --- | --- |
 | `text` | `validate`, `run`, `validate --debug-paths`, `list scenarios`, `plugins inspect` | Human-readable stdout; text output may use ANSI styling when color policy allows it |
 | `json` | `validate`, `run`, `validate --debug-paths`, `list scenarios`, `plugins inspect` | Machine-readable stdout; no ANSI styling |
-| `junit` | `run` only | JUnit XML stdout for CI test-report ingestion |
+| `junit` | `run`, `report render` | Compact scenario-call JUnit XML stdout for CI test-report ingestion |
+| `markdown` | `report render` | Bounded human-readable run summary for CI job summaries and artifacts |
 
 Live progress, scenario-authored live log lines, debug prompts, and interactive
 pause cards use stderr so redirected stdout remains safe for JSON, JUnit, or
 text summary capture. Passing text summaries do not print all scenario-authored
 report logs by default; use `run --format json` to read retained log records
-from `result.report.logs`.
+from `result.report.logs`. Use `report render` when a saved run JSON file
+should become compact JUnit or detailed Markdown without executing the stage
+again.
 
 ## JSON Wrappers
 

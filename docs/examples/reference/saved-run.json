@@ -1,0 +1,45 @@
+{
+  "file": "docs/examples/reference/saved-run.json",
+  "result": {
+    "schema_version": "v1alpha1",
+    "report": {
+      "stage_id": "docs-ci-report",
+      "stage_path": "stage.docs-ci-report",
+      "status": "passed",
+      "nodes": [
+        {
+          "kind": "scenario",
+          "path": "stage.docs-ci-report/call.run",
+          "scenario_id": "docs/report",
+          "scenario_call_id": "run",
+          "status": "passed"
+        },
+        {
+          "kind": "act",
+          "path": "stage.docs-ci-report/call.run/act.check",
+          "status": "passed",
+          "address": {
+            "scenario_call_path": "stage.docs-ci-report/call.run",
+            "act_id": "check",
+            "kind": "act"
+          }
+        },
+        {
+          "kind": "expectation",
+          "path": "stage.docs-ci-report/call.run/act.check/expectation.status",
+          "status": "passed",
+          "address": {
+            "scenario_call_path": "stage.docs-ci-report/call.run",
+            "act_id": "check",
+            "kind": "expectation",
+            "node_ref": "status"
+          }
+        }
+      ],
+      "summary": {
+        "total_scenarios": 1,
+        "passed_scenarios": 1
+      }
+    }
+  }
+}

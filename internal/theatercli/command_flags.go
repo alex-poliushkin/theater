@@ -29,6 +29,15 @@ type listScenariosFlagValues struct {
 	syntax string
 }
 
+type reportRenderOptions struct {
+	format outputFormat
+	input  string
+}
+
+type reportRenderFlagValues struct {
+	format string
+}
+
 type repeatableStringFlag struct {
 	values *[]string
 }
@@ -77,6 +86,9 @@ func (a *application) helpFlagSet(spec *commandSpec) *flag.FlagSet {
 		return flags
 	case commandFlagProfilePluginsLock:
 		flags, _, _ := a.newPluginCommandFlagSet(commandPluginsLock)
+		return flags
+	case commandFlagProfileReportRender:
+		flags, _, _ := a.newReportRenderCommandFlagSet()
 		return flags
 	default:
 		return nil
@@ -138,6 +150,14 @@ func (a *application) newMigrateFromYAMLFlagSet() (*flag.FlagSet, *migrateComman
 	return flags, &options
 }
 
+func (a *application) newReportRenderCommandFlagSet() (*flag.FlagSet, *reportRenderOptions, *reportRenderFlagValues) {
+	flags := a.newFlagSet(a.commands.Must(commandReport, commandReportRender))
+	options := &reportRenderOptions{format: outputFormatMarkdown}
+	values := &reportRenderFlagValues{format: string(outputFormatMarkdown)}
+	registerReportRenderCommandFlags(flags, options, values)
+	return flags, options, values
+}
+
 func (a *application) newPluginCommandFlagSet(command string) (*flag.FlagSet, *pluginCommandOptions, *pluginCommandFlagValues) {
 	profile := pluginCommandProfileFor(command)
 	flags := a.newFlagSet(a.commands.Must(commandPlugins, profile.command))
@@ -193,6 +213,11 @@ func registerMigrateFromYAMLFlags(flags *flag.FlagSet, options *migrateCommandOp
 
 func registerInitCommandFlags(flags *flag.FlagSet, values *initCommandFlagValues) {
 	flags.StringVar(&values.syntax, "syntax", values.syntax, "starter syntax")
+}
+
+func registerReportRenderCommandFlags(flags *flag.FlagSet, options *reportRenderOptions, values *reportRenderFlagValues) {
+	flags.StringVar(&options.input, "input", "", "path to run JSON or - for stdin")
+	flags.StringVar(&values.format, "format", values.format, "output format")
 }
 
 func registerPluginCommandFlags(

@@ -458,14 +458,16 @@ func TestHelpCommandSupportsRunRelatedTopics(t *testing.T) {
 			name: "formats",
 			args: []string{commandHelp, "formats"},
 			want: []string{
-				"Explain text, json, and junit output surfaces.",
+				"Explain CLI output surfaces.",
 				"Output formats:",
 				"text  default human-readable output for run, validate, debug-path discovery, and scenario discovery",
 				"json  machine-readable stdout for run, validate, debug-path discovery, plugins inspect, and scenario discovery",
-				"junit  run-only JUnit XML output for CI systems and test-report ingestion",
+				"junit  compact scenario-call JUnit XML for run and report render",
+				"markdown  detailed human-readable CI summary for report render",
 				"Stdout and stderr:",
-				"JSON and JUnit keep stdout structured while command-level failures still print on stderr.",
+				"JSON, JUnit, and Markdown keep stdout artifact-safe while command-level failures still print on stderr.",
 				"Related:",
+				"theater report render --input build/run.json --format markdown",
 				"theater help exit-codes",
 			},
 		},
@@ -657,7 +659,7 @@ func TestCompleteCommandUsesMetadata(t *testing.T) {
 		want []string
 	}{
 		{name: "root", args: []string{commandComplete, "pl"}, want: []string{commandPlugins}},
-		{name: "help targets", args: []string{commandComplete, commandHelp, ""}, want: []string{commandInit, commandRun, commandValidate, commandExplain, commandDoctor, commandPlugins, "environment", "exit-codes", "formats", "debug-selectors", "compatibility", "migration"}},
+		{name: "help targets", args: []string{commandComplete, commandHelp, ""}, want: []string{commandInit, commandRun, commandValidate, commandExplain, commandDoctor, commandPlugins, commandReport, "environment", "exit-codes", "formats", "debug-selectors", "compatibility", "migration"}},
 		{name: "explain targets", args: []string{commandComplete, commandExplain, ""}, want: []string{"action", "actions", "inventory", "formats", "output-format", "state-backend"}},
 		{name: "explain generator targets", args: []string{commandComplete, commandExplain, "generator", ""}, want: []string{"email", "uuid", "timestamp"}},
 		{name: "explain action targets", args: []string{commandComplete, commandExplain, "action", ""}, want: []string{"http", "generate", "action.http", "action.generate"}},

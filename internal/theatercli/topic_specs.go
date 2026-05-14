@@ -117,7 +117,7 @@ func newCompatibilityTopicSpec() cliTopicSpec {
 func newFormatsTopicSpec() cliTopicSpec {
 	return cliTopicSpec{
 		Name:    "formats",
-		Short:   "Explain text, json, and junit output surfaces.",
+		Short:   "Explain CLI output surfaces.",
 		Long:    "Use formats when you need the stable stdout and stderr contract around human and machine-readable theater output.",
 		Aliases: []string{"format", "output-formats", "output-format"},
 		Sections: []commandHelpSection{
@@ -126,7 +126,8 @@ func newFormatsTopicSpec() cliTopicSpec {
 				Lines: []string{
 					"text  default human-readable output for run, validate, debug-path discovery, and scenario discovery",
 					"json  machine-readable stdout for run, validate, debug-path discovery, plugins inspect, and scenario discovery",
-					"junit  run-only JUnit XML output for CI systems and test-report ingestion",
+					"junit  compact scenario-call JUnit XML for run and report render",
+					"markdown  detailed human-readable CI summary for report render",
 				},
 			},
 			{
@@ -134,7 +135,7 @@ func newFormatsTopicSpec() cliTopicSpec {
 				Lines: []string{
 					"Text summaries stay on stdout.",
 					"Live progress, debug prompts, and interactive pause cards stay on stderr so redirected stdout remains machine-safe.",
-					"JSON and JUnit keep stdout structured while command-level failures still print on stderr.",
+					"JSON, JUnit, and Markdown keep stdout artifact-safe while command-level failures still print on stderr.",
 				},
 			},
 			{
@@ -143,7 +144,7 @@ func newFormatsTopicSpec() cliTopicSpec {
 					"Human-oriented text output may use ANSI styling when THEATER_COLOR permits it or when common color environment conventions allow it.",
 					"When THEATER_COLOR is unset and multiple common color environment variables are set together, " +
 						"precedence is NO_COLOR, then CLICOLOR_FORCE, then CLICOLOR=0.",
-					"JSON and JUnit remain undecorated even when color is enabled for terminal text output.",
+					"JSON, JUnit, and Markdown remain undecorated even when color is enabled for terminal text output.",
 					"In auto mode, TERM=dumb disables terminal styling and live frame rendering.",
 				},
 			},
@@ -151,6 +152,7 @@ func newFormatsTopicSpec() cliTopicSpec {
 				Title: "Related",
 				Lines: []string{
 					"theater run " + stageFileArgument + " --format json  emit one machine-readable run document",
+					"theater report render --input build/run.json --format markdown  render a readable summary from saved run JSON",
 					"theater help exit-codes  inspect the process-level success and failure contract around those formats",
 				},
 			},

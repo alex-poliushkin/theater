@@ -14,6 +14,9 @@ func (d RunDocument) Validate() error {
 	if d.SchemaVersion == "" {
 		return errors.New("schema_version is required")
 	}
+	if d.SchemaVersion != RunDocumentSchemaVersion {
+		return errors.New("unsupported schema_version")
+	}
 
 	return d.Report.Validate()
 }

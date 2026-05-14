@@ -47,13 +47,18 @@ go run ./cmd/theater help list scenarios
 go run ./cmd/theater help migrate from-yaml
 ```
 
+<!-- theater-doc: command id=reference-cli-report-render-help cwd=../../.. expect-stdout="theater report render --input <run.json>" expect-stdout-2="--format <string>" expect-stdout-3="Markdown summary" -->
+```sh
+go run ./cmd/theater help report render
+```
+
 ## Command Groups
 
 | Group | Commands | Purpose |
 | --- | --- | --- |
 | Start Here | `init`, `validate`, `check`, `run` | Create, validate, and run stages |
 | Authoring | `fmt`, `lower`, `migrate` | Format `.thtr`, inspect canonical YAML, and convert YAML to `.thtr` |
-| Discover | `explain`, `doctor`, `list` | Inspect capabilities, environment readiness, and repo-aware resources |
+| Discover | `explain`, `doctor`, `list`, `report` | Inspect capabilities, environment readiness, repo-aware resources, and saved run reports |
 | Plugins | `plugins digest`, `plugins inspect`, `plugins lock`, `plugins doctor` | Inspect and lock plugin registries |
 | Environment | `help`, `version`, `completion` | Inspect CLI contracts and shell integration |
 
@@ -70,6 +75,7 @@ go run ./cmd/theater help migrate from-yaml
 | `theater explain` | `theater explain [family\|topic\|query] [ref]` | Lists families/topics, inspects `family ref`, or lists non-topic query matches |
 | `theater doctor` | `theater doctor [--plugins-config <path> --plugins-lock <path>] [--write-path <path>...]` | Checks common local workflow preconditions |
 | `theater list scenarios` | `theater list scenarios [--root <path>] [--format text\|json] [--syntax all\|yaml\|thtr] [--call-skeleton]` | Lists reusable public scenario ids from `theater/lib` |
+| `theater report render` | `theater report render --input <run.json> [--format junit\|markdown]` | Converts `run --format json` output into compact JUnit or detailed Markdown without rerunning the stage |
 | `theater plugins inspect` | `theater plugins inspect --plugins-config <path> [--plugins-lock <path>] [--format text\|json]` | Alias: `ls`; resolves the plugin set |
 | `theater plugins digest` | `theater plugins digest --manifest <path> [--write]` | Prints or updates a plugin manifest descriptor digest |
 | `theater plugins lock` | `theater plugins lock --plugins-config <path> --plugins-lock <path>` | Writes plugin checksum lock data |

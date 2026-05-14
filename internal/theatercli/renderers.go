@@ -12,9 +12,10 @@ import (
 )
 
 const (
-	outputFormatJSON  outputFormat = "json"
-	outputFormatJUnit outputFormat = "junit"
-	outputFormatText  outputFormat = "text"
+	outputFormatJSON     outputFormat = "json"
+	outputFormatJUnit    outputFormat = "junit"
+	outputFormatMarkdown outputFormat = "markdown"
+	outputFormatText     outputFormat = "text"
 )
 
 type outputFormat string
@@ -70,6 +71,13 @@ func parseValidationOutputFormat(raw string) (outputFormat, error) {
 	}.Parse(raw)
 }
 
+func parseReportOutputFormat(raw string) (outputFormat, error) {
+	return outputFormatSet{
+		outputFormatJUnit:    {},
+		outputFormatMarkdown: {},
+	}.Parse(raw)
+}
+
 func (s outputFormatSet) Parse(raw string) (outputFormat, error) {
 	format := outputFormat(raw)
 	if _, ok := s[format]; ok {
@@ -80,7 +88,7 @@ func (s outputFormatSet) Parse(raw string) (outputFormat, error) {
 }
 
 func (s outputFormatSet) supportedValues() string {
-	candidates := []outputFormat{outputFormatText, outputFormatJSON, outputFormatJUnit}
+	candidates := []outputFormat{outputFormatText, outputFormatJSON, outputFormatJUnit, outputFormatMarkdown}
 	values := make([]string, 0, len(s))
 	for _, candidate := range candidates {
 		if _, ok := s[candidate]; ok {

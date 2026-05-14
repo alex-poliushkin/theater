@@ -30,6 +30,7 @@ const (
 	commandLower      = "lower"
 	commandMigrate    = "migrate"
 	commandPlugins    = "plugins"
+	commandReport     = "report"
 	commandRun        = "run"
 	commandValidate   = "validate"
 	commandVersion    = "version"
@@ -164,6 +165,8 @@ func (a *application) runCommand(command *commandSpec, args []string) int {
 		return a.validateStage(args)
 	case commandPlugins:
 		return a.runPluginsCommand(args)
+	case commandReport:
+		return a.runReportCommand(args)
 	default:
 		fmt.Fprintf(a.stderr, "unknown subcommand %q\n", command.Name)
 		a.printUsage()

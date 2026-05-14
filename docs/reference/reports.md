@@ -1,7 +1,8 @@
 # Reports
 
-The run report is the serializable record of one stage run. Text and JUnit
-output are renderings; `run --format json` exposes the public run document.
+The run report is the serializable record of one stage run. Text, JUnit, and
+Markdown output are renderings; `run --format json` exposes the public run
+document.
 
 Source of truth:
 
@@ -10,6 +11,7 @@ Source of truth:
 - `report/outcome.go`
 - `report/observations.go`
 - `internal/theatercli/renderers.go`
+- `internal/theatercli/report_command.go`
 - [Output Formats](outputs/index.md)
 
 ## Checked Report Output
@@ -29,6 +31,11 @@ go run ./cmd/theater run docs/examples/first-stage/stage.thtr --live off
 go run ./cmd/theater run docs/examples/reference/logs.thtr --live off --format json
 ```
 
+<!-- theater-doc: command id=reference-report-render-markdown cwd=../.. expect-stdout="# Theater Run Report" expect-stdout-2="- Status: `passed`" expect-stdout-3="- Expectation `status` passed" -->
+```sh
+go run ./cmd/theater report render --input docs/examples/reference/saved-run.json --format markdown
+```
+
 ## Run Document
 
 `run --format json` wraps the run document with the file path:
@@ -37,6 +44,11 @@ go run ./cmd/theater run docs/examples/reference/logs.thtr --live off --format j
 | --- | --- |
 | `file` | Stage file path passed to the command |
 | `result` | Public run document |
+
+`theater report render --input <run.json>` reads this same wrapper. The render
+command exits `0` when artifact generation succeeds, even when the saved run
+document describes a failed Theater run. Failed outcomes are represented inside
+the rendered JUnit or Markdown artifact.
 
 The public run document has:
 
@@ -128,6 +140,18 @@ payload preview. Zero counters are omitted from JSON.
 | `preview`, `artifacts`, `contrast`, `observations`, `payload` | Report-safe observed data |
 | `eventually` | Retry summary for an act with `eventually` |
 
+## Failure Fields
+
+Failures carry the user-facing classification and message fields used by text,
+JUnit, JSON, and Markdown renderers.
+
+| Field | Meaning |
+| --- | --- |
+| `kind` | Failure category |
+| `phase` | Compile, validate, or run phase |
+| `at` | Runtime path where the failure was reported |
+| `summary` | Stable short failure summary |
+
 ## Enum Values
 
 | Enum | Values |
@@ -147,4 +171,4 @@ For a reader path through reports, use
 [Validate, Run, Report](../concepts/validate-run-report.md). For procedures,
 use [Read Run Output](../how-to/read-run-output.md) and
 [Validate And Run A Flow](../how-to/validate-and-run-a-flow.md). For machine
-output formats, use [Output Formats](outputs/index.md).
+output formats and `report render`, use [Output Formats](outputs/index.md).

@@ -18,7 +18,7 @@ func TestApplicationDoctorReportsReadyForRepoLayoutAndTTY(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	app := newApplication(stdout, stderr)
+	app := newDoctorTestApplication(stdout, stderr)
 	app.isInputTerminal = func(io.Reader) bool { return true }
 	app.isTerminal = func(io.Writer) bool { return true }
 
@@ -52,7 +52,7 @@ func TestApplicationDoctorReportsRepoLayoutFailure(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	app := newApplication(stdout, stderr)
+	app := newDoctorTestApplication(stdout, stderr)
 	app.isInputTerminal = func(io.Reader) bool { return true }
 	app.isTerminal = func(io.Writer) bool { return true }
 
@@ -80,7 +80,7 @@ func TestApplicationDoctorReportsFatalAndAdvisoryChecksTogether(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	app := newApplication(stdout, stderr)
+	app := newDoctorTestApplication(stdout, stderr)
 	app.isInputTerminal = func(io.Reader) bool { return false }
 	app.isTerminal = func(io.Writer) bool { return false }
 
@@ -109,7 +109,7 @@ func TestApplicationDoctorReportsInteractiveDebugTTYWarning(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	app := newApplication(stdout, stderr)
+	app := newDoctorTestApplication(stdout, stderr)
 	app.isInputTerminal = func(io.Reader) bool { return false }
 	app.isTerminal = func(io.Writer) bool { return false }
 
@@ -139,7 +139,7 @@ func TestApplicationDoctorReportsPluginPairAndReachability(t *testing.T) {
 	configPath, lockPath := writeSmokePluginFiles(t)
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	app := newApplication(stdout, stderr)
+	app := newDoctorTestApplication(stdout, stderr)
 	app.isInputTerminal = func(io.Reader) bool { return true }
 	app.isTerminal = func(io.Writer) bool { return true }
 
@@ -174,7 +174,7 @@ func TestApplicationDoctorUsesPluginEnvironmentDefaults(t *testing.T) {
 	configPath, lockPath := writeSmokePluginFiles(t)
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	app := newApplication(stdout, stderr)
+	app := newDoctorTestApplication(stdout, stderr)
 	app.isInputTerminal = func(io.Reader) bool { return true }
 	app.isTerminal = func(io.Writer) bool { return true }
 
@@ -210,7 +210,7 @@ func TestApplicationDoctorFlagsOverridePluginEnvironment(t *testing.T) {
 	configPath, lockPath := writeSmokePluginFiles(t)
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	app := newApplication(stdout, stderr)
+	app := newDoctorTestApplication(stdout, stderr)
 	app.isInputTerminal = func(io.Reader) bool { return true }
 	app.isTerminal = func(io.Writer) bool { return true }
 
@@ -242,7 +242,7 @@ func TestApplicationDoctorReportsPluginPairingFailure(t *testing.T) {
 	configPath, _ := writeSmokePluginFiles(t)
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	app := newApplication(stdout, stderr)
+	app := newDoctorTestApplication(stdout, stderr)
 	app.isInputTerminal = func(io.Reader) bool { return true }
 	app.isTerminal = func(io.Writer) bool { return true }
 
@@ -271,7 +271,7 @@ func TestApplicationDoctorReportsPluginLockWithoutConfig(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	app := newApplication(stdout, stderr)
+	app := newDoctorTestApplication(stdout, stderr)
 	app.isInputTerminal = func(io.Reader) bool { return true }
 	app.isTerminal = func(io.Writer) bool { return true }
 
@@ -301,7 +301,7 @@ func TestApplicationDoctorAcceptsWritePathWithMissingParentDirectory(t *testing.
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	app := newApplication(stdout, stderr)
+	app := newDoctorTestApplication(stdout, stderr)
 	app.isInputTerminal = func(io.Reader) bool { return true }
 	app.isTerminal = func(io.Writer) bool { return true }
 
@@ -338,7 +338,7 @@ func TestApplicationDoctorReportsWritePathDirectoryFailure(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	app := newApplication(stdout, stderr)
+	app := newDoctorTestApplication(stdout, stderr)
 	app.isInputTerminal = func(io.Reader) bool { return true }
 	app.isTerminal = func(io.Writer) bool { return true }
 
@@ -368,7 +368,7 @@ func TestApplicationDoctorReportsWritePathTrailingSeparatorFailure(t *testing.T)
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	app := newApplication(stdout, stderr)
+	app := newDoctorTestApplication(stdout, stderr)
 	app.isInputTerminal = func(io.Reader) bool { return true }
 	app.isTerminal = func(io.Writer) bool { return true }
 
@@ -401,7 +401,7 @@ func TestApplicationDoctorAcceptsRepeatedWritePaths(t *testing.T) {
 
 	stdout := &bytes.Buffer{}
 	stderr := &bytes.Buffer{}
-	app := newApplication(stdout, stderr)
+	app := newDoctorTestApplication(stdout, stderr)
 	app.isInputTerminal = func(io.Reader) bool { return true }
 	app.isTerminal = func(io.Writer) bool { return true }
 
@@ -451,4 +451,10 @@ scenario_calls:
 	if _, err := os.Stat(dumpPath); err != nil {
 		t.Fatalf("debug dump must create missing parent and output file: %v", err)
 	}
+}
+
+func newDoctorTestApplication(stdout, stderr io.Writer) *application {
+	app := newApplication(stdout, stderr)
+	app.outputControl = outputControl{colorMode: outputColorModeNever}
+	return app
 }

@@ -51,6 +51,27 @@ func (a *application) helpCommand(args []string) int {
 	return 0
 }
 
+func (a *application) resolveRequiredSubcommand(parent string, args []string) (*commandSpec, []string, bool) {
+	if len(args) == 0 {
+		fmt.Fprintf(a.stderr, "%s requires a subcommand\n", parent)
+		a.commands.PrintCommand(a.stderr, a.commands.Must(parent), nil, a.textStyler(a.stderr))
+		return nil, nil, false
+	}
+	if isHelpFlag(args[0]) {
+		a.commands.PrintCommand(a.stderr, a.commands.Must(parent), nil, a.textStyler(a.stderr))
+		return nil, nil, false
+	}
+
+	command := a.commands.Must(parent).subcommand(args[0])
+	if command == nil {
+		fmt.Fprintf(a.stderr, "unknown %s subcommand %q\n", parent, args[0])
+		a.commands.PrintCommand(a.stderr, a.commands.Must(parent), nil, a.textStyler(a.stderr))
+		return nil, nil, false
+	}
+
+	return command, args[1:], true
+}
+
 func (a *application) versionCommand(args []string) int {
 	spec := a.commands.Must(commandVersion)
 	flags := a.newFlagSet(spec)

@@ -37,6 +37,7 @@ const (
 	commandFlagProfilePluginsDoctor  commandFlagProfile = "plugins-doctor"
 	commandFlagProfilePluginsInspect commandFlagProfile = "plugins-inspect"
 	commandFlagProfilePluginsLock    commandFlagProfile = "plugins-lock"
+	commandFlagProfileReportRender   commandFlagProfile = "report-render"
 	commandFlagProfileRun            commandFlagProfile = "run"
 	commandFlagProfileValidate       commandFlagProfile = "validate"
 )
@@ -101,6 +102,7 @@ func newCommandCatalog() commandCatalog {
 	lower := newLowerCommandSpec()
 	migrate := newMigrateCommandSpec()
 	plugins := newPluginsCommandSpec()
+	report := newReportCommandSpec()
 	help := newHelpCommandSpec()
 	version := newVersionCommandSpec()
 	completion := newCompletionCommandSpec()
@@ -138,6 +140,7 @@ func newCommandCatalog() commandCatalog {
 			lower,
 			migrate,
 			plugins,
+			report,
 			help,
 			version,
 			completion,
@@ -146,13 +149,94 @@ func newCommandCatalog() commandCatalog {
 		Groups: []commandHelpGroup{
 			{Title: commandGroupStartHere, Commands: []*commandSpec{init, validate, run}},
 			{Title: commandGroupAuthoring, Commands: []*commandSpec{format, lower, migrate}},
-			{Title: commandGroupDiscover, Commands: []*commandSpec{explain, doctor, list}},
+			{Title: commandGroupDiscover, Commands: []*commandSpec{explain, doctor, list, report}},
 			{Title: commandGroupPlugins, Commands: []*commandSpec{plugins}},
 			{Title: commandGroupEnvironment, Commands: []*commandSpec{help, version, completion}},
 		},
 	}
 
 	return commandCatalog{root: root, topics: topics}
+}
+
+func newReportCommandSpec() *commandSpec {
+	render := newReportRenderCommandSpec()
+	return &commandSpec{
+		Name:  commandReport,
+		Path:  "theater report",
+		Args:  "<command> [options]",
+		Short: "Render CI artifacts from a saved Theater run document.",
+		Long: "Use report when a stage has already run and you need additional CI-readable artifacts " +
+			"from the canonical JSON run output without executing the stage again.",
+		Examples: []commandExample{
+			{
+				Title: "Render JUnit from a saved run",
+				Command: "theater report render --input build/example-domain.run.json " +
+					"--format junit > build/example-domain.junit.xml",
+			},
+			{
+				Title: "Render Markdown from a saved run",
+				Command: "theater report render --input build/example-domain.run.json " +
+					"--format markdown > build/example-domain.md",
+			},
+		},
+		Sections: []commandHelpSection{
+			{
+				Title: "Workflow",
+				Lines: []string{
+					"Run the live flow once with theater run " + stageFileArgument + " --format json and save stdout.",
+					"Render JUnit or Markdown from that saved JSON when CI needs test ingestion or a readable summary.",
+					"Rendering succeeds or fails based on artifact generation, not on the saved run's pass/fail status.",
+				},
+			},
+		},
+		Subcommands: []*commandSpec{render},
+		Groups: []commandHelpGroup{
+			{Title: commandGroupOperations, Commands: []*commandSpec{render}},
+		},
+	}
+}
+
+func newReportRenderCommandSpec() *commandSpec {
+	return &commandSpec{
+		Name:        commandReportRender,
+		Path:        "theater report render",
+		Args:        "--input <run.json> [--format junit|markdown]",
+		Short:       "Render one artifact from saved run JSON.",
+		Long:        "Use report render to convert the public JSON emitted by theater run --format json into a CI artifact.",
+		FlagProfile: commandFlagProfileReportRender,
+		Examples: []commandExample{
+			{
+				Title: "Compact JUnit for test-result ingestion",
+				Command: "theater report render --input build/example-domain.run.json " +
+					"--format junit > build/example-domain.junit.xml",
+			},
+			{
+				Title: "Detailed Markdown summary",
+				Command: "theater report render --input build/example-domain.run.json " +
+					"--format markdown > build/example-domain.md",
+			},
+		},
+		Sections: []commandHelpSection{
+			{
+				Title: "Input",
+				Lines: []string{
+					"--input reads the JSON wrapper produced by theater run --format json.",
+					"Use --input - to read the same JSON from stdin.",
+				},
+			},
+			{
+				Title: "Formats",
+				Lines: []string{
+					"junit keeps the compact scenario-call testcase contract used by theater run --format junit.",
+					"markdown renders a bounded human-readable summary with scenarios, acts, expectations, logs, retries, and failures.",
+				},
+			},
+		},
+		FlagGroups: []flagHelpGroup{
+			{Title: flagGroupFiles, Flags: []string{"input"}},
+			{Title: flagGroupOutput, Flags: []string{"format"}},
+		},
+	}
 }
 
 func newListCommandSpec() *commandSpec {

@@ -18,26 +18,14 @@ type migrateCommandOptions struct {
 }
 
 func (a *application) runMigrateCommand(args []string) int {
-	if len(args) == 0 {
-		fmt.Fprintln(a.stderr, "migrate requires a subcommand")
-		a.commands.PrintCommand(a.stderr, a.commands.Must(commandMigrate), nil, a.textStyler(a.stderr))
-		return exitCodeCommandError
-	}
-	if isHelpFlag(args[0]) {
-		a.commands.PrintCommand(a.stderr, a.commands.Must(commandMigrate), nil, a.textStyler(a.stderr))
-		return exitCodeCommandError
-	}
-
-	command := a.commands.Must(commandMigrate).subcommand(args[0])
-	if command == nil {
-		fmt.Fprintf(a.stderr, "unknown migrate subcommand %q\n", args[0])
-		a.commands.PrintCommand(a.stderr, a.commands.Must(commandMigrate), nil, a.textStyler(a.stderr))
+	command, rest, ok := a.resolveRequiredSubcommand(commandMigrate, args)
+	if !ok {
 		return exitCodeCommandError
 	}
 
 	switch command.Name {
 	case commandMigrateFromYAML:
-		return a.migrateFromYAML(args[1:])
+		return a.migrateFromYAML(rest)
 	default:
 		fmt.Fprintf(a.stderr, "unknown migrate subcommand %q\n", args[0])
 		a.commands.PrintCommand(a.stderr, a.commands.Must(commandMigrate), nil, a.textStyler(a.stderr))

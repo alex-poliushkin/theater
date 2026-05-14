@@ -1,6 +1,7 @@
 package report
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -38,12 +39,55 @@ type Phase string
 
 // Failure captures a user-facing failure summary and its optional underlying
 // cause.
+//
+//nolint:recvcheck // json.Unmarshal requires a pointer receiver; value methods keep immutable failure reads ergonomic.
 type Failure struct {
 	Kind    FailureKind `json:"kind"`
 	Phase   Phase       `json:"phase"`
 	At      string      `json:"at"`
 	Summary string      `json:"summary"`
 	Cause   error       `json:"cause,omitempty"`
+}
+
+func (f Failure) MarshalJSON() ([]byte, error) {
+	type failureJSON struct {
+		Kind    FailureKind `json:"kind"`
+		Phase   Phase       `json:"phase"`
+		At      string      `json:"at"`
+		Summary string      `json:"summary"`
+	}
+
+	encoded := failureJSON{
+		Kind:    f.Kind,
+		Phase:   f.Phase,
+		At:      f.At,
+		Summary: f.Summary,
+	}
+
+	return json.Marshal(encoded)
+}
+
+func (f *Failure) UnmarshalJSON(data []byte) error {
+	type failureJSON struct {
+		Kind    FailureKind     `json:"kind"`
+		Phase   Phase           `json:"phase"`
+		At      string          `json:"at"`
+		Summary string          `json:"summary"`
+		Cause   json.RawMessage `json:"cause,omitempty"` // accepted only so old saved JSON with cause keeps decoding.
+	}
+
+	var decoded failureJSON
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+
+	*f = Failure{
+		Kind:    decoded.Kind,
+		Phase:   decoded.Phase,
+		At:      decoded.At,
+		Summary: decoded.Summary,
+	}
+	return nil
 }
 
 func (s Status) IsTerminal() bool {

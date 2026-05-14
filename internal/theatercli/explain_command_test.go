@@ -301,9 +301,10 @@ func TestExplainCommandShowsTopicDetail(t *testing.T) {
 
 	for _, want := range []string{
 		"Topic: formats",
-		"Explain text, json, and junit output surfaces.",
+		"Explain CLI output surfaces.",
 		"Output formats:",
 		"text  default human-readable output",
+		"markdown  detailed human-readable CI summary",
 		"Stdout and stderr:",
 		"theater help exit-codes",
 	} {

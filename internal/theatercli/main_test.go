@@ -20,6 +20,13 @@ import (
 
 var chdirTestMu sync.Mutex
 
+func TestMain(m *testing.M) {
+	for _, name := range []string{envTheaterColor, envNoColor, envCLIColor, envCLIColorForce} {
+		_ = os.Unsetenv(name)
+	}
+	os.Exit(m.Run())
+}
+
 func TestRunValidateText(t *testing.T) {
 	t.Parallel()
 
