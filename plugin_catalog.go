@@ -20,6 +20,13 @@ import (
 	statemodel "github.com/alex-poliushkin/theater/state"
 )
 
+const (
+	pluginReadinessRuntime    pluginReadinessMode = "runtime"
+	pluginReadinessDescriptor pluginReadinessMode = "descriptor"
+)
+
+type pluginReadinessMode string
+
 // PluginCatalogOptions configures programmatic plugin overlay construction.
 type PluginCatalogOptions struct {
 	RootDir     string
@@ -40,6 +47,7 @@ type PluginCatalog struct {
 	reportExporters map[string]ReportExporterDef
 	stateBackends   map[string]StateBackendDef
 	capabilities    map[string]pluginCapabilityEntry
+	readiness       pluginReadinessMode
 	runtimeMu       sync.RWMutex
 	runtime         *pluginRuntime
 }
@@ -51,7 +59,7 @@ func LoadPluginCatalog(base *Catalog, matchers *MatcherCatalog, configPath, lock
 		return nil, err
 	}
 
-	return newPluginCatalog(base, matchers, loaded)
+	return newPluginCatalog(base, matchers, loaded, pluginReadinessRuntime)
 }
 
 // LoadPluginDescriptorCatalog loads plugin descriptors for static analysis
@@ -60,13 +68,15 @@ func LoadPluginCatalog(base *Catalog, matchers *MatcherCatalog, configPath, lock
 // The returned catalog is intended for validation, completion, hover and other
 // descriptor-only tooling. Runtime execution must use LoadPluginCatalog so the
 // executable path and lock entry are checked before a plugin process can start.
+// Validator calls against this catalog skip plugin validate hooks because no
+// plugin subprocess is launched.
 func LoadPluginDescriptorCatalog(base *Catalog, matchers *MatcherCatalog, configPath, lockPath string) (*PluginCatalog, error) {
 	loaded, err := internalpluginregistry.LoadDescriptors(configPath, lockPath)
 	if err != nil {
 		return nil, err
 	}
 
-	return newPluginCatalog(base, matchers, loaded)
+	return newPluginCatalog(base, matchers, loaded, pluginReadinessDescriptor)
 }
 
 // NewPluginCatalog overlays a programmatically provided plugin registry on top of base.
@@ -83,7 +93,7 @@ func NewPluginCatalog(base *Catalog, matchers *MatcherCatalog, options PluginCat
 		return nil, err
 	}
 
-	return newPluginCatalog(base, matchers, loaded)
+	return newPluginCatalog(base, matchers, loaded, pluginReadinessRuntime)
 }
 
 type pluginCapabilityEntry struct {
@@ -184,6 +194,10 @@ func (c *PluginCatalog) newScenarioScopeRun() *scenarioScopeRun {
 }
 
 func (c *PluginCatalog) validatePlugins(ctx context.Context, stage *stagePlan) []Diagnostic {
+	if c.readiness == pluginReadinessDescriptor {
+		return nil
+	}
+
 	references := c.collectStageCapabilityRefs(stage)
 	if len(references) == 0 {
 		return nil
@@ -259,6 +273,9 @@ func (c *PluginCatalog) preparePluginRun(ctx context.Context, stage *stagePlan) 
 	if len(references) == 0 {
 		return ctx, func(context.Context) {}, nil
 	}
+	if c.readiness == pluginReadinessDescriptor {
+		return ctx, nil, errors.New("descriptor-only plugin catalog cannot run plugin-backed stages")
+	}
 
 	sessions, closeSessions, err := c.openPluginSessions(ctx, references, pluginprotocol.SessionModeRun)
 	if err != nil {
@@ -307,7 +324,12 @@ func (c *PluginCatalog) preparePluginRun(ctx context.Context, stage *stagePlan) 
 	}, nil
 }
 
-func newPluginCatalog(base *Catalog, matchers *MatcherCatalog, loaded *internalpluginregistry.LoadedRegistry) (*PluginCatalog, error) {
+func newPluginCatalog(
+	base *Catalog,
+	matchers *MatcherCatalog,
+	loaded *internalpluginregistry.LoadedRegistry,
+	readiness pluginReadinessMode,
+) (*PluginCatalog, error) {
 	if base == nil {
 		return nil, errors.New("base catalog is required")
 	}
@@ -323,6 +345,7 @@ func newPluginCatalog(base *Catalog, matchers *MatcherCatalog, loaded *internalp
 		reportExporters: make(map[string]ReportExporterDef),
 		stateBackends:   make(map[string]StateBackendDef),
 		capabilities:    make(map[string]pluginCapabilityEntry),
+		readiness:       readiness,
 	}
 
 	pluginIDs := make([]string, 0, len(loaded.Plugins))

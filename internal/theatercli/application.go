@@ -72,6 +72,7 @@ type commandOptions struct {
 	check           bool
 	diff            bool
 	pluginExporters []string
+	pluginReadiness pluginReadinessMode
 	format          outputFormat
 	live            liveMode
 	debugMode       theater.DebugMode
@@ -392,6 +393,14 @@ func (a *application) parseCommandOptions(command string, args []string) (comman
 	}
 
 	options.format = parsedFormat
+	if command == commandValidate {
+		parsedReadiness, err := parsePluginReadiness(values.pluginReadiness)
+		if err != nil {
+			fmt.Fprintf(a.stderr, "%v\n", err)
+			return commandOptions{}, false
+		}
+		options.pluginReadiness = parsedReadiness
+	}
 	if command == commandRun {
 		parsedLive, err := parseLiveMode(values.live)
 		if err != nil {
@@ -466,7 +475,7 @@ func (a *application) parseFormatOptions(args []string) (commandOptions, bool) {
 }
 
 func (a *application) loadStage(options commandOptions) (stageLoadResult, *builtinServices, bool) {
-	services, err := a.ensureServices(options.pluginsConfig, options.pluginsLock)
+	services, err := a.ensureServices(options.pluginsConfig, options.pluginsLock, options.pluginReadiness)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "build built-in catalogs: %v\n", err)
 		return stageLoadResult{}, nil, false
@@ -488,7 +497,11 @@ func (a *application) loadStage(options commandOptions) (stageLoadResult, *built
 	return loaded, services, true
 }
 
-func (a *application) ensureServices(pluginsConfig, pluginsLock string) (*builtinServices, error) {
+func (a *application) ensureServices(
+	pluginsConfig string,
+	pluginsLock string,
+	pluginReadiness pluginReadinessMode,
+) (*builtinServices, error) {
 	if pluginsConfig == "" && pluginsLock == "" && a.services != nil {
 		return a.services, nil
 	}
@@ -508,7 +521,14 @@ func (a *application) ensureServices(pluginsConfig, pluginsLock string) (*builti
 		validator:    theater.NewValidator(catalog, matchers),
 	}
 	if pluginsConfig != "" {
-		pluginCatalog, err := theater.LoadPluginCatalog(catalog, matchers, pluginsConfig, pluginsLock)
+		var pluginCatalog *theater.PluginCatalog
+		var err error
+		switch pluginReadiness {
+		case pluginReadinessDescriptor:
+			pluginCatalog, err = theater.LoadPluginDescriptorCatalog(catalog, matchers, pluginsConfig, pluginsLock)
+		default:
+			pluginCatalog, err = theater.LoadPluginCatalog(catalog, matchers, pluginsConfig, pluginsLock)
+		}
 		if err != nil {
 			return nil, err
 		}

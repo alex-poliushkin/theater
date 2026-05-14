@@ -56,6 +56,19 @@ executable path are reachable, and copied host environment grants are available.
 When a lock file is supplied, `plugins doctor` also checks lock drift. Use
 `plugins inspect` to review allowed capability names and plugin grant shape.
 
+For static checks on a registry that declares runtime-only host secrets, use
+descriptor readiness:
+
+<!-- theater-doc: command id=howto-plugin-doctor-descriptor cwd=../.. expect-stdout="readiness: descriptor" expect-stdout-2="host environment grants: skipped in descriptor readiness" -->
+```sh
+go run ./cmd/theater plugins doctor --plugins-config docs/examples/plugin-registry/hello-world.plugins.json --plugins-readiness descriptor
+```
+
+Descriptor readiness validates registry and manifest descriptors without
+launching the plugin process or resolving `env_from_host`. Before a live run or
+runtime validate hook check, run doctor again with the default runtime
+readiness.
+
 Check that the example plugin process can start from this checkout:
 
 <!-- theater-doc: command id=howto-plugin-process-smoke cwd=../.. expect-stdout="plugin process smoke: ok" -->
@@ -70,5 +83,6 @@ and `--plugins-lock`.
 
 For source-safe registries, prefer `grants.env_from_host` over literal
 `grants.env` secret values. A registry such as
-`"env_from_host": ["AZURE_CLIENT_ID"]` copies only that named host variable into
-the plugin process. Theater does not pass through the full ambient environment.
+`"env_from_host": ["SERVICE_CLIENT_ID"]` copies only that named host variable
+into the plugin process. Theater does not pass through the full ambient
+environment.

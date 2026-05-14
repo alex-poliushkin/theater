@@ -80,6 +80,71 @@ func TestValidatorRunsPluginValidateHooks(t *testing.T) {
 	}
 }
 
+func TestValidatorDescriptorCatalogSkipsPluginValidateHooks(t *testing.T) {
+	t.Parallel()
+
+	paths := preparePluginFixtures(t)
+	configPath, lockPath := writePluginRegistryFiles(t, paths)
+	if err := os.Remove(paths.smokeScript); err != nil {
+		t.Fatalf("remove smoke plugin executable: %v", err)
+	}
+	bundle, err := builtin.NewBundle()
+	if err != nil {
+		t.Fatalf("builtins: %v", err)
+	}
+
+	plugins, err := theater.LoadPluginDescriptorCatalog(bundle.Catalog, bundle.Matchers, configPath, lockPath)
+	if err != nil {
+		t.Fatalf("load plugin descriptor catalog: %v", err)
+	}
+
+	diagnostics := theater.NewValidator(plugins, plugins).Validate(pluginValidateProbeSpec("leak-validate-error-secret", false))
+	if len(diagnostics) != 0 {
+		t.Fatalf("descriptor validation must skip plugin hooks, got %#v", diagnostics)
+	}
+}
+
+func TestRunnerRejectsDescriptorCatalogBeforeResolvingHostEnvironmentGrants(t *testing.T) {
+	t.Parallel()
+
+	envName := "THEATER_PLUGIN_MISSING_DESCRIPTOR_RUN_HOST_GRANT_FOR_TEST"
+	if _, ok := os.LookupEnv(envName); ok {
+		t.Skipf("%s is set in the host environment", envName)
+	}
+
+	paths := preparePluginFixtures(t)
+	configPath, lockPath := writePluginRegistryFilesWithGrants(t, paths, pluginregistry.Grants{
+		EnvFromHost: []string{envName},
+	})
+	bundle, err := builtin.NewBundle()
+	if err != nil {
+		t.Fatalf("builtins: %v", err)
+	}
+
+	plugins, err := theater.LoadPluginDescriptorCatalog(bundle.Catalog, bundle.Matchers, configPath, lockPath)
+	if err != nil {
+		t.Fatalf("load plugin descriptor catalog: %v", err)
+	}
+
+	result, err := theater.NewRunner(plugins, plugins).Run(context.Background(), pluginEchoSpec(), theater.RunOptions{})
+	if err != nil {
+		t.Fatalf("run with descriptor catalog: %v", err)
+	}
+	if got, want := result.Report.Status, theater.StatusFailed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+	if result.Report.Failure == nil {
+		t.Fatal("expected setup failure")
+	}
+	cause := result.Report.Failure.Cause.Error()
+	if !strings.Contains(cause, "descriptor-only plugin catalog cannot run plugin-backed stages") {
+		t.Fatalf("failure cause mismatch: %q", cause)
+	}
+	if strings.Contains(cause, envName) {
+		t.Fatalf("descriptor run failure must not resolve host env grant: %q", cause)
+	}
+}
+
 func TestValidatorPassesDynamicBindingShapeToPluginValidateHook(t *testing.T) {
 	t.Parallel()
 
@@ -521,6 +586,21 @@ func preparePluginFixtures(t *testing.T) pluginFixturePaths {
 func writePluginRegistryFiles(t *testing.T, paths pluginFixturePaths) (string, string) {
 	t.Helper()
 
+	return writePluginRegistryFilesWithGrants(t, paths, pluginregistry.Grants{
+		ObserveLog: true,
+		Env: map[string]string{
+			"PATH": os.Getenv("PATH"),
+		},
+	})
+}
+
+func writePluginRegistryFilesWithGrants(
+	t *testing.T,
+	paths pluginFixturePaths,
+	grants pluginregistry.Grants,
+) (string, string) {
+	t.Helper()
+
 	configPath := filepath.Join(t.TempDir(), "plugins.json")
 	lockPath := filepath.Join(t.TempDir(), "plugins.lock.json")
 
@@ -541,12 +621,7 @@ func writePluginRegistryFiles(t *testing.T, paths pluginFixturePaths) (string, s
 					"transform.smoke.wrap",
 					"matcher.smoke.equal",
 				},
-				Grants: pluginregistry.Grants{
-					ObserveLog: true,
-					Env: map[string]string{
-						"PATH": os.Getenv("PATH"),
-					},
-				},
+				Grants: grants,
 			},
 		},
 	}
@@ -571,6 +646,28 @@ func writePluginRegistryFiles(t *testing.T, paths pluginFixturePaths) (string, s
 	}
 
 	return configPath, lockPath
+}
+
+func pluginEchoSpec() theater.StageSpec {
+	return theater.StageSpec{
+		ID: "plugin-echo",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "echo",
+			Acts: []theater.ActSpec{{
+				ID: "echo",
+				Action: theater.ActionSpec{
+					Use: "action.smoke.echo",
+					With: map[string]theater.BindingSpec{
+						"value": literalBinding("hello"),
+					},
+				},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{
+			ID:         "echo",
+			ScenarioID: "echo",
+		}},
+	}
 }
 
 func buildBinary(t *testing.T, workdir string, target string) {

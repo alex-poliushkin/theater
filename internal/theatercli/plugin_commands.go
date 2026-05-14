@@ -15,17 +15,22 @@ import (
 )
 
 const (
-	commandPluginsDigest  = "digest"
-	commandPluginsDoctor  = "doctor"
-	commandPluginsInspect = "inspect"
-	commandPluginsLock    = "lock"
+	commandPluginsDigest                          = "digest"
+	commandPluginsDoctor                          = "doctor"
+	commandPluginsInspect                         = "inspect"
+	commandPluginsLock                            = "lock"
+	pluginReadinessRuntime    pluginReadinessMode = "runtime"
+	pluginReadinessDescriptor pluginReadinessMode = "descriptor"
 )
+
+type pluginReadinessMode string
 
 type pluginCommandOptions struct {
 	globalOptions
-	format       outputFormat
-	manifestPath string
-	write        bool
+	format          outputFormat
+	pluginReadiness pluginReadinessMode
+	manifestPath    string
+	write           bool
 }
 
 type pluginCommandProfile struct {
@@ -34,6 +39,7 @@ type pluginCommandProfile struct {
 	requireLock     bool
 	requireManifest bool
 	allowFormat     bool
+	allowReadiness  bool
 	allowWrite      bool
 }
 
@@ -68,6 +74,7 @@ type pluginInspectCapabilityView struct {
 type pluginDoctorReport struct {
 	ConfigPath string
 	LockPath   string
+	Readiness  pluginReadinessMode
 	Healthy    bool
 	Checks     []pluginDoctorCheck
 	Plugins    []pluginDoctorPluginView
@@ -328,6 +335,14 @@ func (a *application) parsePluginCommandOptions(command string, args []string) (
 	if profile.allowFormat {
 		options.format = parsedFormat
 	}
+	if profile.allowReadiness {
+		parsedReadiness, err := parsePluginReadiness(values.pluginReadiness)
+		if err != nil {
+			fmt.Fprintf(a.stderr, "%v\n", err)
+			return pluginCommandOptions{}, false
+		}
+		options.pluginReadiness = parsedReadiness
+	}
 
 	return *options, true
 }
@@ -344,6 +359,7 @@ func (a *application) renderPluginDoctorReport(report pluginDoctorReport) {
 	if report.LockPath != "" {
 		fmt.Fprintf(a.stdout, "  lock: %s\n", sanitizeCLIText(report.LockPath))
 	}
+	fmt.Fprintf(a.stdout, "  readiness: %s\n", sanitizeCLIText(string(normalizePluginReadiness(report.Readiness))))
 
 	fmt.Fprintln(a.stdout, "checks:")
 	for _, check := range report.Checks {
@@ -365,7 +381,9 @@ func (a *application) renderPluginDoctorReport(report pluginDoctorReport) {
 		for _, plugin := range report.Plugins {
 			fmt.Fprintf(a.stdout, "  %s %s\n", sanitizeCLIText(plugin.ID), sanitizeCLIText(plugin.Version))
 			fmt.Fprintf(a.stdout, "    manifest: %s\n", sanitizeCLIText(plugin.ManifestPath))
-			fmt.Fprintf(a.stdout, "    executable: %s\n", sanitizeCLIText(plugin.ExecutablePath))
+			if plugin.ExecutablePath != "" {
+				fmt.Fprintf(a.stdout, "    executable: %s\n", sanitizeCLIText(plugin.ExecutablePath))
+			}
 			if len(plugin.Grants) != 0 {
 				fmt.Fprintf(a.stdout, "    grants: %s\n", sanitizeCLIText(strings.Join(plugin.Grants, ", ")))
 			}
@@ -374,6 +392,10 @@ func (a *application) renderPluginDoctorReport(report pluginDoctorReport) {
 	}
 
 	fmt.Fprintln(a.stdout, "next steps:")
+	if normalizePluginReadiness(report.Readiness) == pluginReadinessDescriptor {
+		a.renderPluginDescriptorDoctorNextSteps(report)
+		return
+	}
 	if report.Healthy {
 		if report.LockPath == "" {
 			fmt.Fprintln(a.stdout, "  Run theater plugins lock to freeze the resolved manifest and executable checksums before validate or run.")
@@ -398,9 +420,14 @@ func (a *application) renderPluginDoctorReport(report pluginDoctorReport) {
 }
 
 func buildPluginDoctorReport(options pluginCommandOptions) (report pluginDoctorReport, exitCode int) {
+	if normalizePluginReadiness(options.pluginReadiness) == pluginReadinessDescriptor {
+		return buildPluginDescriptorDoctorReport(options)
+	}
+
 	report = pluginDoctorReport{
 		ConfigPath: options.pluginsConfig,
 		LockPath:   options.pluginsLock,
+		Readiness:  pluginReadinessRuntime,
 		Healthy:    true,
 	}
 
@@ -461,6 +488,60 @@ func buildPluginDoctorReport(options pluginCommandOptions) (report pluginDoctorR
 		Name:   "lock file and checksum drift",
 		Detail: fmt.Sprintf("%s matches %d plugin checksum snapshot(s)", locked.LockPath, len(locked.Plugins)),
 	})
+	return report, exitCode
+}
+
+func buildPluginDescriptorDoctorReport(options pluginCommandOptions) (report pluginDoctorReport, exitCode int) {
+	report = pluginDoctorReport{
+		ConfigPath: options.pluginsConfig,
+		LockPath:   options.pluginsLock,
+		Readiness:  pluginReadinessDescriptor,
+		Healthy:    true,
+	}
+
+	loaded, err := internalpluginregistry.LoadDescriptors(options.pluginsConfig, options.pluginsLock)
+	if err != nil {
+		report.Healthy = false
+		report.Checks = append(report.Checks, pluginDoctorCheck{
+			Status: checkStatusFail,
+			Name:   "plugin descriptor load",
+			Detail: pluginCommandErrorDetail(err),
+		})
+		exitCode = 1
+		return report, exitCode
+	}
+
+	report.Checks = append(report.Checks, pluginDoctorCheck{
+		Status: checkStatusOK,
+		Name:   "plugin descriptor load",
+		Detail: fmt.Sprintf("%d plugin descriptor(s) resolved from %s", len(loaded.Plugins), loaded.ConfigPath),
+	})
+	if options.pluginsLock == "" {
+		report.Checks = append(report.Checks, pluginDoctorCheck{
+			Status: checkStatusOK,
+			Name:   "manifest lock metadata",
+			Detail: "skipped because --plugins-lock was not provided",
+		})
+	} else {
+		report.Checks = append(report.Checks, pluginDoctorCheck{
+			Status: checkStatusOK,
+			Name:   "manifest lock metadata",
+			Detail: fmt.Sprintf("%s matches %d plugin manifest checksum snapshot(s)", loaded.LockPath, len(loaded.Plugins)),
+		})
+	}
+	report.Checks = append(report.Checks,
+		pluginDoctorCheck{
+			Status: checkStatusWarn,
+			Name:   "executable reachability",
+			Detail: "skipped in descriptor readiness",
+		},
+		pluginDoctorCheck{
+			Status: checkStatusWarn,
+			Name:   "host environment grants",
+			Detail: "skipped in descriptor readiness",
+		},
+	)
+	report.Plugins = buildPluginDoctorPlugins(loaded)
 	return report, exitCode
 }
 
@@ -590,12 +671,51 @@ func pluginCommandProfileFor(command string) pluginCommandProfile {
 		}
 	case commandPluginsDoctor:
 		return pluginCommandProfile{
-			command:       commandPluginsDoctor,
-			requireConfig: true,
+			command:        commandPluginsDoctor,
+			requireConfig:  true,
+			allowReadiness: true,
 		}
 	default:
 		return pluginCommandProfile{command: command}
 	}
+}
+
+func (a *application) renderPluginDescriptorDoctorNextSteps(report pluginDoctorReport) {
+	if !report.Healthy {
+		fmt.Fprintln(
+			a.stdout,
+			"  Fix the reported descriptor, manifest, or lock problem, "+
+				"then rerun theater plugins doctor --plugins-readiness descriptor.",
+		)
+		return
+	}
+	if report.LockPath == "" {
+		fmt.Fprintln(
+			a.stdout,
+			"  Run theater plugins lock to freeze the resolved manifest and executable checksums "+
+				"before descriptor or runtime readiness checks.",
+		)
+		return
+	}
+	fmt.Fprintln(a.stdout, "  Run theater plugins doctor --plugins-readiness runtime before live validate or run.")
+}
+
+func parsePluginReadiness(raw string) (pluginReadinessMode, error) {
+	switch pluginReadinessMode(raw) {
+	case pluginReadinessRuntime:
+		return pluginReadinessRuntime, nil
+	case pluginReadinessDescriptor:
+		return pluginReadinessDescriptor, nil
+	default:
+		return "", fmt.Errorf("invalid plugin readiness %q (want runtime or descriptor)", raw)
+	}
+}
+
+func normalizePluginReadiness(mode pluginReadinessMode) pluginReadinessMode {
+	if mode == "" {
+		return pluginReadinessRuntime
+	}
+	return mode
 }
 
 func loadFinalizedPluginManifest(path string) (pluginmanifest.File, error) {

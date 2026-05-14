@@ -368,7 +368,7 @@ func newValidateCommandSpec() *commandSpec {
 	return &commandSpec{
 		Name:        commandValidate,
 		Path:        "theater validate",
-		Args:        stageFileArgument + " [--format text|json] [--debug-paths]",
+		Args:        stageFileArgument + " [--format text|json] [--plugins-readiness runtime|descriptor] [--debug-paths]",
 		Short:       "Compile and validate a stage without live execution.",
 		FlagProfile: commandFlagProfileValidate,
 		Long: "Use validate when you want early feedback on stage shape, contracts, " +
@@ -399,6 +399,10 @@ func newValidateCommandSpec() *commandSpec {
 				Title: "Validation modes",
 				Lines: []string{
 					"Plain validate checks the compiled stage and prints either diagnostics or a valid result.",
+					"--plugins-readiness runtime is the default for plugin-backed validation and " +
+						"runs plugin validate hooks with declared host environment grants.",
+					"--plugins-readiness descriptor validates descriptor-backed stage structure " +
+						"without launching plugin processes or resolving env_from_host grants.",
 					"--debug-paths prepares the stage and prints reusable debug selectors instead of the normal valid output.",
 					"--format json keeps validation and debug-path discovery automation-friendly without changing the underlying validation contract.",
 				},
@@ -415,7 +419,7 @@ func newValidateCommandSpec() *commandSpec {
 		FlagGroups: []flagHelpGroup{
 			{Title: flagGroupFiles, Flags: []string{"file"}},
 			{Title: flagGroupOutput, Flags: []string{"format"}},
-			{Title: flagGroupPlugins, Flags: []string{"plugins-config", "plugins-lock"}},
+			{Title: flagGroupPlugins, Flags: []string{"plugins-config", "plugins-lock", "plugins-readiness"}},
 			{Title: flagGroupDebug, Flags: []string{"debug-paths"}},
 		},
 		Environment: combineEnvironmentHelp(sharedPluginEnvironmentHelp(), sharedOutputEnvironmentHelp()),
@@ -801,10 +805,10 @@ func newPluginsDoctorCommandSpec() *commandSpec {
 	return &commandSpec{
 		Name:  commandPluginsDoctor,
 		Path:  "theater plugins doctor",
-		Args:  "--plugins-config <path> [--plugins-lock <path>]",
+		Args:  "--plugins-config <path> [--plugins-lock <path>] [--plugins-readiness runtime|descriptor]",
 		Short: "Diagnose plugin registry readiness.",
 		Long: "Use plugins doctor when you want one readiness check for plugin registry file " +
-			"validity, manifest reachability, executable reachability, and optional lock drift.",
+			"validity, manifest reachability, executable reachability, host environment grants, and optional lock drift.",
 		FlagProfile: commandFlagProfilePluginsDoctor,
 		Examples: []commandExample{
 			{
@@ -824,6 +828,9 @@ func newPluginsDoctorCommandSpec() *commandSpec {
 					"doctor validates the plugin registry file, loads each plugin manifest, " +
 						"resolves each executable path, and optionally verifies manifest/executable checksums " +
 						"against the lock file.",
+					"--plugins-readiness runtime is the default and checks executable reachability plus host environment grants.",
+					"--plugins-readiness descriptor checks descriptor and manifest-lock readiness " +
+						"without resolving env_from_host grants or launching plugin code.",
 					"Use doctor after inspect or lock when you need a quick preflight before validate or run.",
 				},
 			},
@@ -836,7 +843,7 @@ func newPluginsDoctorCommandSpec() *commandSpec {
 			},
 		},
 		FlagGroups: []flagHelpGroup{
-			{Title: flagGroupPlugins, Flags: []string{"plugins-config", "plugins-lock"}},
+			{Title: flagGroupPlugins, Flags: []string{"plugins-config", "plugins-lock", "plugins-readiness"}},
 		},
 		Environment: combineEnvironmentHelp(sharedPluginEnvironmentHelp(), sharedOutputEnvironmentHelp()),
 		Defaults:    combineDefaultResolutionHelp(pluginInspectDefaultResolutionHelp(), outputDefaultResolutionHelp()),

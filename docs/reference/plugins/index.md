@@ -53,6 +53,11 @@ go run ./cmd/theater help plugins
 go run ./cmd/theater plugins inspect --plugins-config docs/examples/plugin-registry/hello-world.plugins.json
 ```
 
+<!-- theater-doc: command id=reference-plugin-doctor-descriptor cwd=../../.. expect-stdout="readiness: descriptor" expect-stdout-2="plugin descriptor load" expect-stdout-3="host environment grants: skipped in descriptor readiness" -->
+```sh
+go run ./cmd/theater plugins doctor --plugins-config docs/examples/plugin-registry/hello-world.plugins.json --plugins-readiness descriptor
+```
+
 <!-- theater-doc: command id=reference-plugin-process-smoke cwd=../../.. expect-stdout="plugin process smoke: ok" -->
 ```sh
 go run ./docs/examples/plugin-registry/process-smoke
@@ -149,15 +154,35 @@ must declare every environment value the plugin process may receive.
 | `grants.env_from_host` | array of names | Copy named variables from the Theater host environment into the plugin process |
 
 Use `grants.env_from_host` for source-safe local and CI registries. For example,
-`"env_from_host": ["AZURE_CLIENT_ID"]` copies the host value of
-`AZURE_CLIENT_ID` at launch time without storing the value in the registry file.
-Missing host variables fail `plugins doctor`, `validate`, and `run` with a
-diagnostic that names the missing variable but does not print its value.
+`"env_from_host": ["SERVICE_CLIENT_ID"]` copies the host value of
+`SERVICE_CLIENT_ID` at launch time without storing the value in the registry
+file.
+Missing host variables fail default runtime readiness checks for
+`plugins doctor`, `validate`, and `run` with a diagnostic that names the missing
+variable but does not print its value.
 
 `plugins inspect` and `plugins doctor` render literal environment grant names
 and copied host variable names. They do not print environment values. Plugin
 lock files contain only manifest and executable checksums, so lock files also
 do not store environment values.
+
+## Readiness Modes
+
+Plugin-aware `validate` and `plugins doctor` accept
+`--plugins-readiness runtime|descriptor`.
+
+`runtime` is the default. It checks plugin executable readiness, copied host
+environment grants, plugin session initialization, and validate hooks for
+referenced capabilities that opt into `theater.validate`. Use runtime readiness
+before live validation or `run`.
+
+`descriptor` is a static-analysis mode. It loads the registry and manifests,
+checks registry config against plugin config schemas, validates allowed
+capability refs against descriptors, and checks manifest lock metadata when a
+lock file is supplied. It does not resolve `env_from_host`, launch plugin
+processes, run validate hooks, run prepare hooks, or inject placeholder
+credentials. A descriptor-ready result proves descriptor-backed stage structure,
+not live execution readiness.
 
 ## Sensitive Values
 
@@ -216,6 +241,9 @@ runtime-resolved. They may validate literal-only constraints for keys present in
 path is dynamic. Theater does not resolve scenario inputs, prior exports,
 generators, or secret runtime values before calling validate or prepare hooks.
 
+Descriptor readiness skips plugin hook calls entirely. Use runtime readiness
+when plugin-authored validate or prepare semantics must run.
+
 ## Lifecycle
 
 | Step | Command | Purpose |
@@ -223,8 +251,8 @@ generators, or secret runtime values before calling validate or prepare hooks.
 | Inspect | `theater plugins inspect --plugins-config <path>` | Resolve plugin ids, manifests, executables, and allowed capabilities |
 | Digest | `theater plugins digest --manifest <manifest> --write` | Refresh descriptor digest after intentional descriptor changes |
 | Lock | `theater plugins lock --plugins-config <path> --plugins-lock <path>` | Freeze checksums into the lock file |
-| Diagnose | `theater plugins doctor --plugins-config <path> [--plugins-lock <path>]` | Check registry readiness and optional lock drift |
-| Validate | `theater validate <stage> --plugins-config <path> --plugins-lock <path>` | Validate stage refs against the plugin descriptors |
+| Diagnose | `theater plugins doctor --plugins-config <path> [--plugins-lock <path>] [--plugins-readiness runtime\|descriptor]` | Check registry readiness and optional lock drift |
+| Validate | `theater validate <stage> --plugins-config <path> --plugins-lock <path> [--plugins-readiness runtime\|descriptor]` | Validate stage refs against the plugin descriptors |
 | Run | `theater run <stage> --plugins-config <path> --plugins-lock <path>` | Execute against the same locked plugin set |
 
 ## Capability Kinds

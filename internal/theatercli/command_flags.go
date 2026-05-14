@@ -13,13 +13,15 @@ const (
 )
 
 type stageCommandFlagValues struct {
-	format    string
-	live      string
-	debugMode string
+	format          string
+	live            string
+	debugMode       string
+	pluginReadiness string
 }
 
 type pluginCommandFlagValues struct {
-	format string
+	format          string
+	pluginReadiness string
 }
 
 type listScenariosFlagValues struct {
@@ -140,18 +142,26 @@ func (a *application) newPluginCommandFlagSet(command string) (*flag.FlagSet, *p
 	profile := pluginCommandProfileFor(command)
 	flags := a.newFlagSet(a.commands.Must(commandPlugins, profile.command))
 	options := pluginCommandOptions{format: outputFormatText}
-	values := &pluginCommandFlagValues{format: string(outputFormatText)}
+	values := &pluginCommandFlagValues{
+		format:          string(outputFormatText),
+		pluginReadiness: string(pluginReadinessRuntime),
+	}
 	registerPluginCommandFlags(profile, flags, &options, values)
 	return flags, &options, values
 }
 
 func (a *application) newStageCommandFlagSet(command string) (*flag.FlagSet, *commandOptions, *stageCommandFlagValues) {
 	flags := a.newFlagSet(a.commands.Must(command))
-	options := commandOptions{format: outputFormatText, live: liveModeAuto}
+	options := commandOptions{
+		format:          outputFormatText,
+		live:            liveModeAuto,
+		pluginReadiness: pluginReadinessRuntime,
+	}
 	values := &stageCommandFlagValues{
-		format:    string(outputFormatText),
-		live:      string(liveModeAuto),
-		debugMode: string(theater.DebugModeOff),
+		format:          string(outputFormatText),
+		live:            string(liveModeAuto),
+		debugMode:       string(theater.DebugModeOff),
+		pluginReadiness: string(pluginReadinessRuntime),
 	}
 	registerStageCommandFlags(command, flags, &options, values)
 	return flags, &options, values
@@ -200,6 +210,9 @@ func registerPluginCommandFlags(
 	if profile.allowFormat {
 		flags.StringVar(&values.format, "format", values.format, "output format")
 	}
+	if profile.allowReadiness {
+		flags.StringVar(&values.pluginReadiness, "plugins-readiness", values.pluginReadiness, "plugin readiness mode: runtime or descriptor")
+	}
 	if profile.allowWrite {
 		flags.BoolVar(&options.write, "write", false, "rewrite descriptor_digest in the manifest file")
 	}
@@ -221,6 +234,7 @@ func registerStageCommandFlags(command string, flags *flag.FlagSet, options *com
 	}
 	if command == commandValidate {
 		flags.BoolVar(&options.debugPaths, "debug-paths", false, "list reusable debug selectors")
+		flags.StringVar(&values.pluginReadiness, "plugins-readiness", values.pluginReadiness, "plugin readiness mode: runtime or descriptor")
 	}
 }
 

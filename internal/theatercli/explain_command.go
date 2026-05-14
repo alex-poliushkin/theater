@@ -60,7 +60,7 @@ func (a *application) explainCommand(args []string) int {
 		return exitCodeCommandError
 	}
 
-	services, err := a.ensureServices(options.pluginsConfig, options.pluginsLock)
+	services, err := a.ensureServices(options.pluginsConfig, options.pluginsLock, pluginReadinessRuntime)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "build built-in catalogs: %v\n", err)
 		return exitCodeCommandError

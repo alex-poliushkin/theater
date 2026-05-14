@@ -476,6 +476,106 @@ scenario smoke
 	}
 }
 
+func TestApplicationValidateDescriptorReadinessSkipsMissingHostEnvironmentGrant(t *testing.T) {
+	t.Parallel()
+
+	envName := "THEATER_PLUGIN_MISSING_VALIDATE_DESCRIPTOR_HOST_GRANT_FOR_TEST"
+	if _, ok := os.LookupEnv(envName); ok {
+		t.Skipf("%s is set in the host environment", envName)
+	}
+
+	grants := defaultSmokePluginGrants()
+	grants.EnvFromHost = []string{envName}
+	configPath, lockPath := writeLockedSmokePluginFilesWithGrants(t, grants)
+	if err := os.Remove(filepath.Join(filepath.Dir(configPath), "smoke.py")); err != nil {
+		t.Fatalf("remove plugin executable: %v", err)
+	}
+	stagePath := writeStageFile(t, "plugin.thtr", `stage plugin_env
+scenario smoke
+  act echo
+    do action.smoke.echo(value: "hello")
+`)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := newApplication(stdout, stderr)
+	code := app.Run([]string{
+		commandValidate,
+		"--file", stagePath,
+		"--plugins-config", configPath,
+		"--plugins-lock", lockPath,
+		"--plugins-readiness", "descriptor",
+		"--format", "json",
+	})
+	if code != 0 {
+		t.Fatalf("validate exit code mismatch: got %d want 0 stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+	}
+	response := decodeValidationResponse(t, stdout.Bytes())
+	if !response.Valid || len(response.Diagnostics) != 0 {
+		t.Fatalf("descriptor validation mismatch: %#v", response)
+	}
+}
+
+func TestApplicationValidateDescriptorReadinessSkipsPluginValidateHooks(t *testing.T) {
+	t.Parallel()
+
+	configPath, lockPath := writeLockedSmokePluginFilesWithGrants(t, defaultSmokePluginGrants())
+	stagePath := writeStageFile(t, "plugin.thtr", `stage plugin_hook
+scenario smoke
+  act read
+    prop value = inventory.smoke.echo(value: "invalid")
+    do action.generate
+      outputs:
+        value: $value
+`)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := newApplication(stdout, stderr)
+	code := app.Run([]string{
+		commandValidate,
+		"--file", stagePath,
+		"--plugins-config", configPath,
+		"--plugins-lock", lockPath,
+		"--plugins-readiness", "descriptor",
+		"--format", "json",
+	})
+	if code != 0 {
+		t.Fatalf("validate exit code mismatch: got %d want 0 stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+	}
+	response := decodeValidationResponse(t, stdout.Bytes())
+	if !response.Valid || len(response.Diagnostics) != 0 {
+		t.Fatalf("descriptor validation mismatch: %#v", response)
+	}
+}
+
+func TestApplicationValidateRejectsUnknownPluginReadiness(t *testing.T) {
+	t.Parallel()
+
+	stagePath := writeStageFile(t, "stage.thtr", `stage readiness
+scenario smoke
+  act echo
+    do action.generate
+      outputs:
+        value: "ok"
+`)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := newApplication(stdout, stderr)
+	code := app.Run([]string{
+		commandValidate,
+		"--file", stagePath,
+		"--plugins-readiness", "placeholder",
+	})
+	if code != exitCodeCommandError {
+		t.Fatalf("validate exit code mismatch: got %d want %d stdout=%s stderr=%s", code, exitCodeCommandError, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), `invalid plugin readiness "placeholder"`) {
+		t.Fatalf("validate stderr missing readiness error: %s", stderr.String())
+	}
+}
+
 func TestApplicationValidateRedactsHostEnvironmentGrantDiagnostics(t *testing.T) {
 	secret := "host-secret-value"
 	t.Setenv("THEATER_PLUGIN_HOST_SECRET", secret)
@@ -650,6 +750,109 @@ func TestApplicationPluginsDoctorWithLockReportsReady(t *testing.T) {
 	}
 	if got := strings.TrimSpace(stderr.String()); got != "" {
 		t.Fatalf("stderr mismatch: got %q want empty", got)
+	}
+}
+
+func TestApplicationPluginsDoctorDescriptorReadinessSkipsRuntimeChecks(t *testing.T) {
+	t.Parallel()
+
+	envName := "THEATER_PLUGIN_MISSING_DOCTOR_DESCRIPTOR_HOST_GRANT_FOR_TEST"
+	if _, ok := os.LookupEnv(envName); ok {
+		t.Skipf("%s is set in the host environment", envName)
+	}
+
+	grants := defaultSmokePluginGrants()
+	grants.EnvFromHost = []string{envName}
+	configPath, lockPath := writeLockedSmokePluginFilesWithGrants(t, grants)
+	if err := os.Remove(filepath.Join(filepath.Dir(configPath), "smoke.py")); err != nil {
+		t.Fatalf("remove plugin executable: %v", err)
+	}
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := newApplication(stdout, stderr)
+	code := app.Run([]string{
+		commandPlugins,
+		commandPluginsDoctor,
+		"--plugins-config", configPath,
+		"--plugins-lock", lockPath,
+		"--plugins-readiness", "descriptor",
+	})
+	if code != 0 {
+		t.Fatalf("plugins doctor exit code mismatch: got %d want 0 stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"plugin registry: ready",
+		"readiness: descriptor",
+		"plugin descriptor load",
+		"manifest lock metadata",
+		"executable reachability: skipped in descriptor readiness",
+		"host environment grants: skipped in descriptor readiness",
+		"Run theater plugins doctor --plugins-readiness runtime before live validate or run.",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("plugins doctor output missing %q: %s", want, output)
+		}
+	}
+	if got := strings.TrimSpace(stderr.String()); got != "" {
+		t.Fatalf("stderr mismatch: got %q want empty", got)
+	}
+}
+
+func TestApplicationPluginsDoctorDescriptorReadinessWithoutLockReportsManifestLockSkipped(t *testing.T) {
+	t.Parallel()
+
+	configPath, _ := writeSmokePluginFiles(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := newApplication(stdout, stderr)
+	code := app.Run([]string{
+		commandPlugins,
+		commandPluginsDoctor,
+		"--plugins-config", configPath,
+		"--plugins-readiness", "descriptor",
+	})
+	if code != 0 {
+		t.Fatalf("plugins doctor exit code mismatch: got %d want 0 stderr=%s stdout=%s", code, stderr.String(), stdout.String())
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"readiness: descriptor",
+		"manifest lock metadata: skipped because --plugins-lock was not provided",
+		"Run theater plugins lock to freeze the resolved manifest and executable checksums before descriptor or runtime readiness checks.",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("plugins doctor output missing %q: %s", want, output)
+		}
+	}
+	if got := strings.TrimSpace(stderr.String()); got != "" {
+		t.Fatalf("stderr mismatch: got %q want empty", got)
+	}
+}
+
+func TestApplicationPluginsDoctorRejectsUnknownPluginReadiness(t *testing.T) {
+	t.Parallel()
+
+	configPath, _ := writeSmokePluginFiles(t)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	app := newApplication(stdout, stderr)
+	code := app.Run([]string{
+		commandPlugins,
+		commandPluginsDoctor,
+		"--plugins-config", configPath,
+		"--plugins-readiness", "placeholder",
+	})
+	if code != exitCodeCommandError {
+		t.Fatalf("plugins doctor exit code mismatch: got %d want %d stdout=%s stderr=%s", code, exitCodeCommandError, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), `invalid plugin readiness "placeholder"`) {
+		t.Fatalf("plugins doctor stderr missing readiness error: %s", stderr.String())
 	}
 }
 

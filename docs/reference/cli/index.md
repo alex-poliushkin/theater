@@ -17,7 +17,7 @@ Source of truth:
 go run ./cmd/theater help
 ```
 
-<!-- theater-doc: command id=reference-cli-validate-help cwd=../../.. expect-stdout="theater validate <stage.{yaml|yml|thtr}>" expect-stdout-2="--debug-paths" -->
+<!-- theater-doc: command id=reference-cli-validate-help cwd=../../.. expect-stdout="theater validate <stage.{yaml|yml|thtr}>" expect-stdout-2="--plugins-readiness" expect-stdout-3="--debug-paths" -->
 ```sh
 go run ./cmd/theater help validate
 ```
@@ -62,7 +62,7 @@ go run ./cmd/theater help migrate from-yaml
 | Command | Usage | Stable notes |
 | --- | --- | --- |
 | `theater init` | `theater init [theater/flows/.../starter.{yaml|thtr}] [--syntax yaml|thtr]` | Creates one starter stage under `theater/flows/` and prepares `theater/lib/`; never overwrites an existing target |
-| `theater validate` | `theater validate <stage.{yaml|yml|thtr}> [--format text|json] [--debug-paths]` | Alias: `check`; validates without live execution |
+| `theater validate` | `theater validate <stage.{yaml|yml|thtr}> [--format text|json] [--plugins-readiness runtime\|descriptor] [--debug-paths]` | Alias: `check`; validates without live execution |
 | `theater run` | `theater run <stage.{yaml|yml|thtr}> [--format text|json|junit] [--live auto|off] [--debug off|dump|interactive]` | Validates first, executes, and renders the final run document |
 | `theater fmt` | `theater fmt <path.thtr> [--write] [--check] [--diff]` | Prints formatted `.thtr` by default; `--write` mutates the file |
 | `theater lower` | `theater lower <path.thtr> [--map <path.json>]` | Writes canonical YAML to stdout; `--map` writes a source-map sidecar |
@@ -73,7 +73,7 @@ go run ./cmd/theater help migrate from-yaml
 | `theater plugins inspect` | `theater plugins inspect --plugins-config <path> [--plugins-lock <path>] [--format text\|json]` | Alias: `ls`; resolves the plugin set |
 | `theater plugins digest` | `theater plugins digest --manifest <path> [--write]` | Prints or updates a plugin manifest descriptor digest |
 | `theater plugins lock` | `theater plugins lock --plugins-config <path> --plugins-lock <path>` | Writes plugin checksum lock data |
-| `theater plugins doctor` | `theater plugins doctor --plugins-config <path> [--plugins-lock <path>]` | Diagnoses plugin registry readiness and optional lock drift |
+| `theater plugins doctor` | `theater plugins doctor --plugins-config <path> [--plugins-lock <path>] [--plugins-readiness runtime\|descriptor]` | Diagnoses plugin registry readiness and optional lock drift |
 | `theater version` | `theater version` | Prints one line: `theater <version>` |
 | `theater completion` | `theater completion <bash\|zsh\|fish\|powershell>` | Generates shell completion scripts |
 

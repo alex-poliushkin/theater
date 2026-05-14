@@ -292,9 +292,11 @@ func TestPluginsDoctorHelpUsesCommandMetadata(t *testing.T) {
 		"Diagnose plugin registry readiness.",
 		"Checks:",
 		"doctor validates the plugin registry file, loads each plugin manifest, resolves each executable path, and optionally verifies manifest/executable checksums against the lock file.",
+		"--plugins-readiness descriptor checks descriptor and manifest-lock readiness without resolving env_from_host grants or launching plugin code.",
 		"theater plugins doctor --plugins-config build/sqlite.plugins.json",
 		"--plugins-config <string>",
 		"--plugins-lock <string>",
+		"--plugins-readiness <string>",
 		envPluginsConfig,
 		defaultResolutionFlagsOverrideEnv,
 		defaultResolutionPluginRegistryRequired,
@@ -403,6 +405,9 @@ func TestCommandHelpUsesMetadataAcrossCommands(t *testing.T) {
 				}
 				if !strings.Contains(output, "--debug-paths") {
 					t.Fatalf("validate help missing long-form flag presentation: %q", output)
+				}
+				if !strings.Contains(output, "--plugins-readiness <string>") || !strings.Contains(output, "descriptor validates descriptor-backed stage structure") {
+					t.Fatalf("validate help missing plugin readiness mode: %q", output)
 				}
 			}
 			if test.name == "doctor" {

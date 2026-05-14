@@ -115,7 +115,7 @@ func (a *application) listScenariosCommand(args []string) int {
 		return exitCodeCommandError
 	}
 
-	services, err := a.ensureServices("", "")
+	services, err := a.ensureServices("", "", pluginReadinessRuntime)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "build built-in catalogs: %v\n", err)
 		return exitCodeCommandError
