@@ -186,6 +186,19 @@ func buildScenarioSourceMap(
 		)
 	}
 
+	for i := range scenario.AuthBindings {
+		authBinding := scenario.AuthBindings[i]
+		authBindingPath := codec.JoinChild(scenarioPath, "auth_bindings", authBinding.Auth)
+		authBindingLocator := appendYAMLPath(scenarioLocator, yamlKey("auth_bindings"), yamlKey(authBinding.Auth))
+		builder.record(authBindingPath, authBinding.Span, authBindingLocator)
+		recordAuthBindingSlots(
+			builder,
+			authBindingPath,
+			appendYAMLPath(authBindingLocator, yamlKey("slots")),
+			authBinding.Slots,
+		)
+	}
+
 	for i := range scenario.Acts {
 		actLocator := appendYAMLPath(
 			scenarioLocator,
@@ -198,6 +211,26 @@ func buildScenarioSourceMap(
 	}
 
 	return nil
+}
+
+func recordAuthBindingSlots(
+	builder *sourceMapBuilder,
+	authBindingPath string,
+	slotsLocator []yamlPathStep,
+	slots []mappingEntrySyntax,
+) {
+	codec := sourcePathCodec{}
+	for i := range slots {
+		slot := slots[i]
+		slotPath := codec.JoinChild(authBindingPath, "slot", slot.Name)
+		slotLocator := appendYAMLPath(slotsLocator, yamlKey(slot.Name))
+		builder.record(slotPath, slot.Span, slotLocator)
+		if len(slot.Mapping) != 0 {
+			recordMappingEntries(builder, slotPath, appendYAMLPath(slotLocator, yamlKey("object")), slot.Mapping)
+			continue
+		}
+		recordBindingExpressionChildren(builder, slotPath, slotLocator, slot.Value)
+	}
 }
 
 func buildActSourceMap(

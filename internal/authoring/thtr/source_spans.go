@@ -31,6 +31,17 @@ func applySourceMapToBindingSourceSpans(spec *theater.StageSpec, sourceMap *sour
 
 func applyScenarioSourceMapBindingSpans(scenario *theater.ScenarioSpec, scenarioPath string, sourceMap *sourceMap) {
 	codec := sourcePathCodec{}
+	for authName, authBinding := range scenario.AuthBindings {
+		authBindingPath := codec.JoinChild(scenarioPath, "auth_bindings", authName)
+		for slotName := range authBinding.Slots {
+			slotBinding := authBinding.Slots[slotName]
+			slotPath := codec.JoinChild(authBindingPath, "slot", slotName)
+			applySourceMapBindingSpan(&slotBinding, slotPath, sourceMap)
+			authBinding.Slots[slotName] = slotBinding
+		}
+		scenario.AuthBindings[authName] = authBinding
+	}
+
 	for actIndex := range scenario.Acts {
 		act := &scenario.Acts[actIndex]
 		actPath := codec.JoinChild(scenarioPath, "act", act.ID)

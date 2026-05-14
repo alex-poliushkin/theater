@@ -2228,6 +2228,50 @@ call run-login = auth/login(email: "user@example.test")
 	}
 }
 
+func TestParseLowersDynamicBearerAuthBinding(t *testing.T) {
+	t.Parallel()
+
+	spec, err := Parse([]byte(`stage mobile-dashboard
+http
+  auth mobile_api = http.auth(
+    attach: list [
+      object { bearer: object { token_slot: "access_token" } },
+    ],
+  )
+
+scenario mobile/dashboard-ready(access_token: string!)
+  bind auth mobile_api
+    access_token: $access_token
+  act wait-customer
+    do action.http
+      method: "GET"
+      url: "https://gateway.example.test/customer"
+      session: "none"
+      auth: "mobile_api"
+
+call run-dashboard = mobile/dashboard-ready(access_token: "issued-token")
+`), nil)
+	if err != nil {
+		failWithSpan(t, "parse", err)
+	}
+
+	bearer := spec.HTTP.Auth["mobile_api"].Attach[0].Bearer
+	if bearer == nil {
+		t.Fatal("mobile_api bearer attachment must be present")
+	}
+	if got, want := bearer.TokenSlot, "access_token"; got != want {
+		t.Fatalf("bearer token slot mismatch: got %q want %q", got, want)
+	}
+
+	binding := spec.Scenarios[0].AuthBindings["mobile_api"].Slots["access_token"]
+	if binding.Ref == nil {
+		t.Fatal("auth binding slot ref must be present")
+	}
+	if got, want := binding.Ref.Name, "access_token"; got != want {
+		t.Fatalf("auth binding slot ref mismatch: got %q want %q", got, want)
+	}
+}
+
 func findDiagnosticByCodeValue(diagnostics []theater.Diagnostic, code string) *theater.Diagnostic {
 	for i := range diagnostics {
 		if diagnostics[i].Code == code {
@@ -3397,6 +3441,49 @@ scenario login
 		t.Fatalf("diagnostic source file mismatch: got %q want %q", got, want)
 	}
 	if got, want := diagnostic.Span.Line, 14; got != want {
+		t.Fatalf("diagnostic source line mismatch: got %d want %d", got, want)
+	}
+}
+
+func TestLoadFileDetailedRewritesDynamicAuthBindingDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "invalid.thtr")
+	if err := os.WriteFile(path, []byte(`stage main
+
+http
+  auth mobile_api = http.auth(
+    attach: list [
+      object { bearer: object { token_slot: "access_token" } },
+    ],
+  )
+
+scenario mobile/dashboard-ready(access_token: string!)
+  bind auth mobile_api
+    refresh_token: $access_token
+  act wait-customer
+    do action.http(url: "https://gateway.example.test/customer", auth: "mobile_api")
+
+call run-dashboard = mobile/dashboard-ready(access_token: "issued-token")
+`), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+
+	result, err := LoadFileDetailed(path, nil)
+	if err != nil {
+		t.Fatalf("load file detailed failed: %v", err)
+	}
+
+	validator := theater.NewValidator(nil, nil)
+	diagnostics := result.RewriteDiagnostics(validator.Validate(result.Spec))
+	diagnostic := findDiagnosticByCodeValue(diagnostics, "unknown_http_auth_binding_slot")
+	if diagnostic == nil {
+		t.Fatalf("expected unknown_http_auth_binding_slot diagnostic, got %#v", diagnostics)
+	}
+	if got, want := diagnostic.Span.File, path; got != want {
+		t.Fatalf("diagnostic source file mismatch: got %q want %q", got, want)
+	}
+	if got, want := diagnostic.Span.Line, 12; got != want {
 		t.Fatalf("diagnostic source line mismatch: got %d want %d", got, want)
 	}
 }

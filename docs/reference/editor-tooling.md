@@ -77,7 +77,7 @@ a veto for repo-library scenario rename scopes that are not bounded to one file.
 Native structure view shows stages, scenarios, calls and scenario acts. Folding
 regions cover scenario, act, object/list and large call-data blocks. Quick
 documentation is available for supported built-in and descriptor-backed
-capability refs, for stage/scenario/act/call/prop/log/export/capture_auth
+capability refs, for stage/scenario/act/call/prop/log/export/bind/capture_auth
 declarations and, where references resolve through native PSI, for scenario
 calls, act transitions and `$ref` value references.
 

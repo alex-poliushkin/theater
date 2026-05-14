@@ -74,6 +74,51 @@ type BindingSpec struct {
 	SourceSpan *SourceRef             `yaml:"-" json:"-"`
 }
 
+// Clone returns a deep copy of the binding spec.
+func (s BindingSpec) Clone() BindingSpec {
+	cloned := s
+	if s.Ref != nil {
+		ref := *s.Ref
+		cloned.Ref = &ref
+	}
+	if s.Object != nil {
+		cloned.Object = make(map[string]BindingSpec, len(s.Object))
+		for key := range s.Object {
+			cloned.Object[key] = s.Object[key].Clone()
+		}
+	}
+	if s.List != nil {
+		cloned.List = make([]BindingSpec, 0, len(s.List))
+		for i := range s.List {
+			cloned.List = append(cloned.List, s.List[i].Clone())
+		}
+	}
+	if s.Parts != nil {
+		cloned.Parts = make([]BindingSpec, 0, len(s.Parts))
+		for i := range s.Parts {
+			cloned.Parts = append(cloned.Parts, s.Parts[i].Clone())
+		}
+	}
+	if s.Args != nil {
+		cloned.Args = make(map[string]BindingSpec, len(s.Args))
+		for key := range s.Args {
+			cloned.Args[key] = s.Args[key].Clone()
+		}
+	}
+	if s.Candidates != nil {
+		cloned.Candidates = make([]BindingSpec, 0, len(s.Candidates))
+		for i := range s.Candidates {
+			cloned.Candidates = append(cloned.Candidates, s.Candidates[i].Clone())
+		}
+	}
+	if s.SourceSpan != nil {
+		source := *s.SourceSpan
+		cloned.SourceSpan = &source
+	}
+
+	return cloned
+}
+
 // LogSpec declares one act-local scenario-authored log record.
 type LogSpec struct {
 	ID          string                  `yaml:"id" json:"id"`
@@ -145,11 +190,12 @@ type StageSpec struct {
 
 // ScenarioSpec defines a reusable scenario with inputs and ordered acts.
 type ScenarioSpec struct {
-	ID         string                   `yaml:"id"`
-	Name       string                   `yaml:"name,omitempty"`
-	Inputs     map[string]ValueContract `yaml:"inputs,omitempty"`
-	Acts       []ActSpec                `yaml:"acts"`
-	SourceSpan *SourceRef               `yaml:"-" json:"-"`
+	ID           string                         `yaml:"id"`
+	Name         string                         `yaml:"name,omitempty"`
+	Inputs       map[string]ValueContract       `yaml:"inputs,omitempty"`
+	AuthBindings map[string]HTTPAuthBindingSpec `yaml:"auth_bindings,omitempty" json:"auth_bindings,omitempty"`
+	Acts         []ActSpec                      `yaml:"acts"`
+	SourceSpan   *SourceRef                     `yaml:"-" json:"-"`
 }
 
 // ScenarioCallSpec invokes a scenario within a stage.

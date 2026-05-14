@@ -59,6 +59,14 @@ The top-level order is part of the authoring contract:
 
 ## Act Order
 
+Scenario body order is fixed:
+
+| Position | Form | Required |
+| --- | --- | --- |
+| 1 | `name "Display name"` | no |
+| 2 | `bind auth <auth-id>` | no |
+| 3 | `act <id>` | yes |
+
 Act body order is fixed so the file reads in execution order:
 
 | Position | Form | Required |

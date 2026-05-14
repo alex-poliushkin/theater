@@ -22,11 +22,16 @@ type rawStageSpec struct {
 }
 
 type rawScenarioSpec struct {
-	ID     string                           `yaml:"id"`
-	Name   string                           `yaml:"name,omitempty"`
-	Inputs map[string]theater.ValueContract `yaml:"inputs,omitempty"`
-	Acts   []rawActSpec                     `yaml:"acts"`
-	Span   theater.SourceRef
+	ID           string                            `yaml:"id"`
+	Name         string                            `yaml:"name,omitempty"`
+	Inputs       map[string]theater.ValueContract  `yaml:"inputs,omitempty"`
+	AuthBindings map[string]rawHTTPAuthBindingSpec `yaml:"auth_bindings,omitempty"`
+	Acts         []rawActSpec                      `yaml:"acts"`
+	Span         theater.SourceRef
+}
+
+type rawHTTPAuthBindingSpec struct {
+	Slots map[string]rawBindingNode `yaml:"slots,omitempty"`
 }
 
 type rawScenarioCallSpec struct {
@@ -195,7 +200,7 @@ func (r *rawStageSpec) UnmarshalYAML(node *goyaml.Node) error {
 func (r *rawScenarioSpec) UnmarshalYAML(node *goyaml.Node) error {
 	type rawScenarioSpecAlias rawScenarioSpec
 
-	if err := rejectUnknownFields(node, "id", "name", "inputs", "acts"); err != nil {
+	if err := rejectUnknownFields(node, "id", "name", "inputs", "auth_bindings", "acts"); err != nil {
 		return err
 	}
 
@@ -206,6 +211,22 @@ func (r *rawScenarioSpec) UnmarshalYAML(node *goyaml.Node) error {
 
 	*r = rawScenarioSpec(decoded)
 	r.Span = rawSourceRef(node)
+	return nil
+}
+
+func (r *rawHTTPAuthBindingSpec) UnmarshalYAML(node *goyaml.Node) error {
+	type rawHTTPAuthBindingSpecAlias rawHTTPAuthBindingSpec
+
+	if err := rejectUnknownFields(node, "slots"); err != nil {
+		return err
+	}
+
+	var decoded rawHTTPAuthBindingSpecAlias
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+
+	*r = rawHTTPAuthBindingSpec(decoded)
 	return nil
 }
 

@@ -1,0 +1,19 @@
+stage reference-dynamic-http-auth
+
+http
+  auth mobile_api = http.auth
+    attach: list [
+      object { bearer: object { token_slot: "access_token" } }
+    ]
+
+scenario mobile/dashboard-ready(access_token: string!)
+  bind auth mobile_api
+    access_token: $access_token
+  act wait-customer
+    do action.http
+      method: "GET"
+      url: "https://gateway.example.test/customer"
+      session: "none"
+      auth: "mobile_api"
+
+call run-dashboard = mobile/dashboard-ready(access_token: "issued-token")

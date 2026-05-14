@@ -31,12 +31,13 @@ type stagePlan struct {
 }
 
 type scenarioPlan struct {
-	ID          string
-	Path        string
-	PlanOrdinal int
-	Inputs      map[string]ValueContract
-	Acts        []actPlan
-	SourceSpan  *SourceRef
+	ID           string
+	Path         string
+	PlanOrdinal  int
+	Inputs       map[string]ValueContract
+	AuthBindings map[string]httpAuthBindingPlan
+	Acts         []actPlan
+	SourceSpan   *SourceRef
 }
 
 type scenarioCallPlan struct {
@@ -81,6 +82,11 @@ type actionPlan struct {
 type httpAuthCapturePlan struct {
 	Auth  string
 	Slots map[string]HTTPCaptureSourceSpec
+}
+
+type httpAuthBindingPlan struct {
+	Path  string
+	Slots map[string]bindingPlan
 }
 
 type eventuallyPlan struct {

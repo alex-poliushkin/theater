@@ -23,6 +23,15 @@ Equivalent Theater DSL lookup:
 Auth attachment kinds are `bearer`, `basic`, `api_key`, `header_slot`,
 `query_slot`, and `form_slot`.
 
+Bearer auth accepts exactly one of `token` for static bearer auth or
+`token_slot` for scenario-local dynamic bearer auth. A `token_slot` must be
+initialized through `scenarios[].auth_bindings`, populated later by
+`capture_auth`, or both before a request consumes it.
+
+| Path | Meaning |
+| --- | --- |
+| `scenarios[].auth_bindings.<auth>.slots.<slot>` | Binding that initializes one declared HTTP auth slot at scenario start |
+
 ## State Registry
 
 | Path | Meaning |

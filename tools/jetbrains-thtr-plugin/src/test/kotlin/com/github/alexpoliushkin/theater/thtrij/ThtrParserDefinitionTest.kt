@@ -3,6 +3,7 @@ package com.github.alexpoliushkin.theater.thtrij
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrActDeclaration
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrAuthDeclaration
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrBackendDeclaration
+import com.github.alexpoliushkin.theater.thtrij.psi.ThtrBindStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrCallDeclaration
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrCaptureAuthStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrDependencyStatement
@@ -101,9 +102,22 @@ class ThtrParserDefinitionTest : BasePlatformTestCase() {
 				"    expect ok: field(exit_code) == 0\n",
 		)
 		assertNoErrors(multilineFile, "inline multiline string")
-		coverage.add(multilineFile)
+			coverage.add(multilineFile)
 
-		assertTrue("stages", coverage.stages > 0)
+			val authBindingFile = parse(
+				"stage dynamic-auth\n" +
+					"scenario mobile/dashboard-ready(access_token: string!)\n" +
+					"  bind auth mobile_api\n" +
+					"    access_token: ${'$'}access_token\n" +
+					"  act wait-customer\n" +
+					"    do action.http\n" +
+					"      auth: \"mobile_api\"\n",
+			)
+			assertNoErrors(authBindingFile, "inline auth binding")
+			assertEquals("inline auth binding", 1, count<ThtrBindStatement>(authBindingFile))
+			coverage.add(authBindingFile)
+
+			assertTrue("stages", coverage.stages > 0)
 		assertTrue("scenarios", coverage.scenarios > 0)
 		assertTrue("calls", coverage.calls > 0)
 		assertTrue("acts", coverage.acts > 0)
@@ -112,8 +126,9 @@ class ThtrParserDefinitionTest : BasePlatformTestCase() {
 		assertTrue("logs", coverage.logs > 0)
 		assertTrue("properties", coverage.properties > 0)
 		assertTrue("exports", coverage.exports > 0)
-		assertTrue("transitions", coverage.transitions > 0)
-		assertTrue("dependencies", coverage.dependencies > 0)
+			assertTrue("transitions", coverage.transitions > 0)
+			assertTrue("auth bindings", coverage.authBindings > 0)
+			assertTrue("dependencies", coverage.dependencies > 0)
 		assertTrue("http blocks", coverage.httpBlocks > 0)
 		assertTrue("http session declarations", coverage.sessions > 0)
 		assertTrue("http auth declarations", coverage.auths > 0)
@@ -215,6 +230,7 @@ private class SyntaxCoverage {
 	var properties = 0
 	var exports = 0
 	var transitions = 0
+	var authBindings = 0
 	var dependencies = 0
 	var httpBlocks = 0
 	var sessions = 0
@@ -243,8 +259,9 @@ private class SyntaxCoverage {
 		logs += count<ThtrLogStatement>(file)
 		properties += count<ThtrPropStatement>(file)
 		exports += count<ThtrExportStatement>(file)
-		transitions += count<ThtrTransitionStatement>(file)
-		dependencies += count<ThtrDependencyStatement>(file)
+			transitions += count<ThtrTransitionStatement>(file)
+			authBindings += count<ThtrBindStatement>(file)
+			dependencies += count<ThtrDependencyStatement>(file)
 		httpBlocks += count<ThtrHttpBlock>(file)
 		sessions += count<ThtrSessionDeclaration>(file)
 		auths += count<ThtrAuthDeclaration>(file)

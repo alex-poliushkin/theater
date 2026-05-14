@@ -17,6 +17,9 @@ public interface ThtrDeclaration extends PsiElement {
   ThtrBackendDeclaration getBackendDeclaration();
 
   @Nullable
+  ThtrBindStatement getBindStatement();
+
+  @Nullable
   ThtrCallDeclaration getCallDeclaration();
 
   @Nullable

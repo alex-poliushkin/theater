@@ -19,6 +19,8 @@ func validateHTTPAuthoring(stage *stagePlan) []Diagnostic {
 
 	for i := range stage.Scenarios {
 		scenario := &stage.Scenarios[i]
+		diagnostics = append(diagnostics, validateHTTPAuthBindings(stage.HTTP, scenario)...)
+
 		for j := range scenario.Acts {
 			act := &scenario.Acts[j]
 			if act.Action.Use == httpActionRef {
@@ -156,12 +158,12 @@ func validateHTTPAuthAttachments(path string, auth HTTPAuthSpec) []Diagnostic {
 
 		switch {
 		case attachment.Bearer != nil:
-			if attachment.Bearer.Token == "" {
+			if (attachment.Bearer.Token == "") == (attachment.Bearer.TokenSlot == "") {
 				diagnostics = append(diagnostics, Diagnostic{
-					Code:     "missing_http_auth_bearer_token",
+					Code:     "invalid_http_auth_bearer_token_source",
 					Path:     attachmentPath,
 					Severity: SeverityError,
-					Summary:  "bearer attachment token is required",
+					Summary:  "bearer attachment must declare exactly one of token or token_slot",
 				})
 			}
 			diagnostics = append(diagnostics, validateHTTPHeaderTarget(attachmentPath, "Authorization", headerTargets)...)
@@ -244,6 +246,93 @@ func validateHTTPAuthAttachments(path string, auth HTTPAuthSpec) []Diagnostic {
 				})
 			}
 			diagnostics = append(diagnostics, validateHTTPFormTarget(attachmentPath, attachment.FormSlot.Name, formTargets)...)
+		}
+	}
+
+	return diagnostics
+}
+
+func validateHTTPAuthBindings(httpSpec *HTTPSpec, scenario *scenarioPlan) []Diagnostic {
+	if scenario == nil || len(scenario.AuthBindings) == 0 {
+		return nil
+	}
+
+	diagnostics := make([]Diagnostic, 0)
+	inputRoots := scenarioInputRoots(scenario.Inputs)
+	for authName, binding := range scenario.AuthBindings {
+		path := binding.Path
+		if err := validateRefName(authName); err != nil {
+			diagnostics = append(diagnostics, Diagnostic{
+				Code:     "invalid_http_auth_binding_name",
+				Path:     path,
+				Severity: SeverityError,
+				Summary:  fmt.Sprintf("http auth binding %q is invalid: %v", authName, err),
+			})
+		}
+
+		auth, authKnown := HTTPAuthSpec{}, false
+		if httpSpec == nil || !hasHTTPAuth(httpSpec, authName) {
+			diagnostics = append(diagnostics, Diagnostic{
+				Code:     "unknown_http_auth_binding_ref",
+				Path:     path,
+				Severity: SeverityError,
+				Summary:  fmt.Sprintf("http auth %q is not declared in stage http.auth", authName),
+			})
+		} else {
+			auth = httpSpec.Auth[authName]
+			authKnown = true
+		}
+
+		if len(binding.Slots) == 0 {
+			diagnostics = append(diagnostics, Diagnostic{
+				Code:     "missing_http_auth_binding_slots",
+				Path:     path,
+				Severity: SeverityError,
+				Summary:  fmt.Sprintf("http auth binding %q must declare at least one slot", authName),
+			})
+			continue
+		}
+
+		for slot := range binding.Slots {
+			slotBinding := binding.Slots[slot]
+			slotPath := httpAuthBindingSlotPath(path, slot)
+			if slot == "" {
+				diagnostics = append(diagnostics, Diagnostic{
+					Code:     "invalid_http_auth_binding_slot",
+					Path:     slotPath,
+					Severity: SeverityError,
+					Summary:  "http auth binding slot name is required",
+				})
+				continue
+			}
+			if authKnown && !authUsesSlot(auth, slot) {
+				diagnostics = append(diagnostics, Diagnostic{
+					Code:     "unknown_http_auth_binding_slot",
+					Path:     slotPath,
+					Severity: SeverityError,
+					Summary:  fmt.Sprintf("auth slot %q is not declared by target http auth", slot),
+				})
+			}
+
+			diagnostics = append(diagnostics, validateBinding(slotPath, slotBinding)...)
+			diagnostics = append(
+				diagnostics,
+				validateLocalBindingRefResolution(slotPath, slotBinding, inputRoots)...,
+			)
+			if err := validateBindingContractWithResolver(
+				nil,
+				nil,
+				nil,
+				slotBinding,
+				ValueContract{Kind: ValueKindString},
+			); err != nil {
+				diagnostics = append(diagnostics, Diagnostic{
+					Code:     "incompatible_http_auth_binding_slot",
+					Path:     slotPath,
+					Severity: SeverityError,
+					Summary:  fmt.Sprintf("auth slot %q expects string: %v", slot, err),
+				})
+			}
 		}
 	}
 
@@ -1112,6 +1201,8 @@ func authUsesSlot(auth HTTPAuthSpec, slot string) bool {
 	for i := range auth.Attach {
 		attachment := auth.Attach[i]
 		switch {
+		case attachment.Bearer != nil && attachment.Bearer.TokenSlot == slot:
+			return true
 		case attachment.HeaderSlot != nil && attachment.HeaderSlot.Slot == slot:
 			return true
 		case attachment.QuerySlot != nil && attachment.QuerySlot.Slot == slot:
@@ -1175,6 +1266,14 @@ func httpAuthPath(stagePath, name string) string {
 
 func httpIdentityPath(stagePath, name string) string {
 	return stagePath + "/http/" + runtimePathCodec{}.Join("identity", name)
+}
+
+func httpAuthBindingPath(scenarioPath, name string) string {
+	return joinChildPath(scenarioPath, "auth_bindings", name)
+}
+
+func httpAuthBindingSlotPath(bindingPath, slot string) string {
+	return joinChildPath(bindingPath, "slot", slot)
 }
 
 func httpAttachPath(authPath string, index int) string {

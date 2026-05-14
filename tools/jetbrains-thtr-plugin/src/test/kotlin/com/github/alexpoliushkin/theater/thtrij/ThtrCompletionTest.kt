@@ -29,10 +29,11 @@ class ThtrCompletionTest : BasePlatformTestCase() {
 			scenario login
 			  <caret>
 			""",
-		)
-		assertTrue(scenarioLabels.contains("act"))
-		assertFalse(scenarioLabels.contains("call"))
-		assertFalse(scenarioLabels.contains("stage"))
+			)
+			assertTrue(scenarioLabels.contains("act"))
+			assertTrue(scenarioLabels.contains("bind"))
+			assertFalse(scenarioLabels.contains("call"))
+			assertFalse(scenarioLabels.contains("stage"))
 
 		val actLabels = completionLabels(
 			"""

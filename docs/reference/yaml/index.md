@@ -78,7 +78,14 @@ Dependency `when` values are `success`, `failure`, and `done`.
 | --- | --- | --- |
 | `id` | yes | Scenario id |
 | `inputs` | no | Input contracts keyed by input name |
+| `auth_bindings` | no | Scenario-start HTTP auth slot bindings |
 | `acts` | no | Ordered act definitions |
+
+`auth_bindings` initializes named HTTP auth slots before the first act in one
+scenario execution. The key under `auth_bindings` must match a top-level
+`http.auth` entry, and each `slots.<name>` binding must target a slot declared
+by that auth entry, such as a bearer `token_slot`. Slot values are stored as
+secret-sensitive auth state and are never report outputs.
 
 | Act field | Required | Meaning |
 | --- | --- | --- |

@@ -13,6 +13,7 @@ public interface ThtrTypes {
   IElementType ACT_DECLARATION = new ThtrElementType("ACT_DECLARATION");
   IElementType AUTH_DECLARATION = new ThtrElementType("AUTH_DECLARATION");
   IElementType BACKEND_DECLARATION = new ThtrElementType("BACKEND_DECLARATION");
+  IElementType BIND_STATEMENT = new ThtrElementType("BIND_STATEMENT");
   IElementType CALL_DECLARATION = new ThtrElementType("CALL_DECLARATION");
   IElementType CAPTURE_AUTH_STATEMENT = new ThtrElementType("CAPTURE_AUTH_STATEMENT");
   IElementType DECLARATION = new ThtrElementType("DECLARATION");
@@ -50,6 +51,7 @@ public interface ThtrTypes {
   IElementType BAD_INDENT = new ThtrTokenType("bad_indent");
   IElementType BANG = new ThtrTokenType("!");
   IElementType BETWEEN = new ThtrTokenType("between");
+  IElementType BIND = new ThtrTokenType("bind");
   IElementType CALL = new ThtrTokenType("call");
   IElementType CAPTURE_AUTH = new ThtrTokenType("capture_auth");
   IElementType COLON = new ThtrTokenType(":");
@@ -129,6 +131,9 @@ public interface ThtrTypes {
       }
       else if (type == BACKEND_DECLARATION) {
         return new ThtrBackendDeclarationImpl(node);
+      }
+      else if (type == BIND_STATEMENT) {
+        return new ThtrBindStatementImpl(node);
       }
       else if (type == CALL_DECLARATION) {
         return new ThtrCallDeclarationImpl(node);

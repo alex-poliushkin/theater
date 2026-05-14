@@ -38,12 +38,18 @@ func lowerStage(raw rawStageSpec, matchers theater.MatcherSugarResolver, sourceF
 	}
 
 	for _, rawScenario := range raw.Scenarios {
+		authBindings, err := lowerHTTPAuthBindings(rawScenario.AuthBindings, sourceFile)
+		if err != nil {
+			return theater.StageSpec{}, err
+		}
+
 		scenario := theater.ScenarioSpec{
-			ID:         rawScenario.ID,
-			Name:       rawScenario.Name,
-			Inputs:     rawScenario.Inputs,
-			Acts:       make([]theater.ActSpec, 0, len(rawScenario.Acts)),
-			SourceSpan: bindSourceRef(rawScenario.Span, sourceFile),
+			ID:           rawScenario.ID,
+			Name:         rawScenario.Name,
+			Inputs:       rawScenario.Inputs,
+			AuthBindings: authBindings,
+			Acts:         make([]theater.ActSpec, 0, len(rawScenario.Acts)),
+			SourceSpan:   bindSourceRef(rawScenario.Span, sourceFile),
 		}
 
 		for actIndex := range rawScenario.Acts {
@@ -126,6 +132,23 @@ func lowerStage(raw rawStageSpec, matchers theater.MatcherSugarResolver, sourceF
 	}
 
 	return spec, nil
+}
+
+func lowerHTTPAuthBindings(
+	raw map[string]rawHTTPAuthBindingSpec,
+	sourceFile string,
+) (map[string]theater.HTTPAuthBindingSpec, error) {
+	bindings := make(map[string]theater.HTTPAuthBindingSpec, len(raw))
+	for authName, rawBinding := range raw {
+		slots, err := lowerBindingNodeMapWithSource(rawBinding.Slots, sourceFile)
+		if err != nil {
+			return nil, err
+		}
+
+		bindings[authName] = theater.HTTPAuthBindingSpec{Slots: slots}
+	}
+
+	return bindings, nil
 }
 
 func lowerExpectation(raw rawExpectationSpec, matchers theater.MatcherSugarResolver, sourceFile string) (theater.ExpectationSpec, error) {

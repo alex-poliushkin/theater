@@ -38,6 +38,7 @@ private val KEYWORDS: TokenSet = TokenSet.create(
 	ThtrTypes.IDENTITY,
 	ThtrTypes.SCENARIO,
 	ThtrTypes.ACT,
+	ThtrTypes.BIND,
 	ThtrTypes.CALL,
 	ThtrTypes.NAME,
 	ThtrTypes.DO,

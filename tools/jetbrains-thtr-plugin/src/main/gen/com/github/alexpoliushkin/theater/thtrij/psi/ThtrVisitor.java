@@ -19,6 +19,10 @@ public class ThtrVisitor extends PsiElementVisitor {
     visitPsiElement(o);
   }
 
+  public void visitBindStatement(@NotNull ThtrBindStatement o) {
+    visitPsiElement(o);
+  }
+
   public void visitCallDeclaration(@NotNull ThtrCallDeclaration o) {
     visitPsiElement(o);
   }

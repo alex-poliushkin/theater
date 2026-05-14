@@ -237,6 +237,73 @@ func TestMarshalStageUsesSafeExpectationSugarAndRoundTrips(t *testing.T) {
 	requireSemanticStageYAMLEqual(t, roundTripped, spec)
 }
 
+func TestMarshalStageRendersDynamicBearerAuthBinding(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "mobile-dashboard",
+		HTTP: &theater.HTTPSpec{
+			Auth: map[string]theater.HTTPAuthSpec{
+				"mobile_api": {Attach: []theater.HTTPAuthAttachmentSpec{{
+					Bearer: &theater.HTTPBearerAuthSpec{TokenSlot: "access_token"},
+				}}},
+			},
+		},
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "mobile/dashboard-ready",
+			Inputs: map[string]theater.ValueContract{
+				"access_token": {Kind: theater.ValueKindString, Required: true},
+			},
+			AuthBindings: map[string]theater.HTTPAuthBindingSpec{
+				"mobile_api": {
+					Slots: map[string]theater.BindingSpec{
+						"access_token": refBinding("access_token"),
+					},
+				},
+			},
+			Acts: []theater.ActSpec{{
+				ID: "wait-customer",
+				Action: theater.ActionSpec{
+					Use: "action.http",
+					With: map[string]theater.BindingSpec{
+						"url":  literalBinding("https://gateway.example.test/customer"),
+						"auth": literalBinding("mobile_api"),
+					},
+				},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{
+			ID:         "run-dashboard",
+			ScenarioID: "mobile/dashboard-ready",
+			Bindings: map[string]theater.BindingSpec{
+				"access_token": literalBinding("issued-token"),
+			},
+		}},
+	}
+
+	got, err := MarshalStage(spec)
+	if err != nil {
+		t.Fatalf("marshal stage failed: %v", err)
+	}
+
+	text := string(got)
+	for _, want := range []string{
+		`object { bearer: object { token_slot: "access_token" } }`,
+		`bind auth mobile_api`,
+		`access_token: $access_token`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("migrated source must include %q:\n%s", want, text)
+		}
+	}
+
+	roundTripped, err := Parse(got, nil)
+	if err != nil {
+		t.Fatalf("parse migrated source failed: %v", err)
+	}
+	requireSemanticStageYAMLEqual(t, roundTripped, spec)
+}
+
 func TestMarshalStageKeepsCollectionMatchersCanonical(t *testing.T) {
 	t.Parallel()
 

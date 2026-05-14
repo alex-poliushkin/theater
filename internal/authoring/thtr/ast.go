@@ -35,11 +35,12 @@ type stageSyntax struct {
 }
 
 type scenarioSyntax struct {
-	ID     string
-	Name   *nameSyntax
-	Inputs []inputSyntax
-	Acts   []actSyntax
-	Span   sourceSpan
+	ID           string
+	Name         *nameSyntax
+	Inputs       []inputSyntax
+	AuthBindings []authBindingSyntax
+	Acts         []actSyntax
+	Span         sourceSpan
 }
 
 type inputSyntax struct {
@@ -169,6 +170,12 @@ type dependencySyntax struct {
 }
 
 type captureAuthSyntax struct {
+	Auth  string
+	Slots []mappingEntrySyntax
+	Span  sourceSpan
+}
+
+type authBindingSyntax struct {
 	Auth  string
 	Slots []mappingEntrySyntax
 	Span  sourceSpan

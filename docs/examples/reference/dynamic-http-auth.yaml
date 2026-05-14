@@ -1,0 +1,35 @@
+id: reference-dynamic-http-auth
+http:
+  auth:
+    mobile_api:
+      attach:
+        - bearer:
+            token_slot: access_token
+scenarios:
+  - id: mobile/dashboard-ready
+    inputs:
+      access_token:
+        type: string
+        required: true
+        sensitivity: secret
+        capture: omit
+    auth_bindings:
+      mobile_api:
+        slots:
+          access_token:
+            kind: ref
+            ref: access_token
+    acts:
+      - id: wait-customer
+        action:
+          use: action.http
+          with:
+            method: GET
+            url: https://gateway.example.test/customer
+            session: none
+            auth: mobile_api
+scenario_calls:
+  - id: run-dashboard
+    scenario_id: mobile/dashboard-ready
+    bindings:
+      access_token: issued-token

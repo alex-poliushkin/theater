@@ -836,6 +836,12 @@ func buildHTTPAuthCall(spec theater.HTTPAuthSpec) (callExpressionSyntax, error) 
 func buildHTTPAttachmentExpression(spec theater.HTTPAuthAttachmentSpec) (expressionSyntax, error) {
 	switch {
 	case spec.Bearer != nil:
+		fieldName := "token"
+		fieldValue := spec.Bearer.Token
+		if spec.Bearer.TokenSlot != "" {
+			fieldName = "token_slot"
+			fieldValue = spec.Bearer.TokenSlot
+		}
 		return objectExpressionSyntax{
 			Dynamic: true,
 			Fields: []mappingEntrySyntax{{
@@ -843,8 +849,8 @@ func buildHTTPAttachmentExpression(spec theater.HTTPAuthAttachmentSpec) (express
 				Value: objectExpressionSyntax{
 					Dynamic: true,
 					Fields: []mappingEntrySyntax{{
-						Name:  "token",
-						Value: stringLiteralExpression(spec.Bearer.Token),
+						Name:  fieldName,
+						Value: stringLiteralExpression(fieldValue),
 					}},
 				},
 			}},
@@ -961,9 +967,10 @@ func buildScenario(spec theater.ScenarioSpec) (scenarioSyntax, error) {
 	}
 
 	scenario := scenarioSyntax{
-		ID:     scenarioID,
-		Inputs: make([]inputSyntax, 0, len(spec.Inputs)),
-		Acts:   make([]actSyntax, 0, len(spec.Acts)),
+		ID:           scenarioID,
+		Inputs:       make([]inputSyntax, 0, len(spec.Inputs)),
+		AuthBindings: make([]authBindingSyntax, 0, len(spec.AuthBindings)),
+		Acts:         make([]actSyntax, 0, len(spec.Acts)),
 	}
 	if spec.Name != "" {
 		scenario.Name = buildOptionalName(spec.Name)
@@ -977,6 +984,14 @@ func buildScenario(spec theater.ScenarioSpec) (scenarioSyntax, error) {
 		scenario.Inputs = append(scenario.Inputs, input)
 	}
 
+	for _, authName := range sortedStringKeys(spec.AuthBindings) {
+		authBinding, err := buildAuthBinding(authName, spec.AuthBindings[authName])
+		if err != nil {
+			return scenarioSyntax{}, err
+		}
+		scenario.AuthBindings = append(scenario.AuthBindings, authBinding)
+	}
+
 	for i := range spec.Acts {
 		act, err := buildAct(spec.Acts[i])
 		if err != nil {
@@ -986,6 +1001,35 @@ func buildScenario(spec theater.ScenarioSpec) (scenarioSyntax, error) {
 	}
 
 	return scenario, nil
+}
+
+func buildAuthBinding(authName string, spec theater.HTTPAuthBindingSpec) (authBindingSyntax, error) {
+	name, err := requireLocalIdentifier(authName, "auth binding target")
+	if err != nil {
+		return authBindingSyntax{}, err
+	}
+
+	binding := authBindingSyntax{
+		Auth:  name,
+		Slots: make([]mappingEntrySyntax, 0, len(spec.Slots)),
+	}
+	for _, slotName := range sortedStringKeys(spec.Slots) {
+		slot, err := requireLocalIdentifier(slotName, "auth binding slot")
+		if err != nil {
+			return authBindingSyntax{}, err
+		}
+		value, err := buildBindingExpression(spec.Slots[slotName])
+		if err != nil {
+			return authBindingSyntax{}, err
+		}
+
+		binding.Slots = append(binding.Slots, mappingEntrySyntax{
+			Name:  slot,
+			Value: value,
+		})
+	}
+
+	return binding, nil
 }
 
 func buildInputSyntax(name string, contract theater.ValueContract) (inputSyntax, error) {

@@ -27,6 +27,12 @@ type HTTPAuthSpec struct {
 	Attach []HTTPAuthAttachmentSpec `yaml:"attach,omitempty" json:"attach,omitempty"`
 }
 
+// HTTPAuthBindingSpec initializes declared auth slots for one scenario
+// execution from scenario-start bindings.
+type HTTPAuthBindingSpec struct {
+	Slots map[string]BindingSpec `yaml:"slots,omitempty" json:"slots,omitempty"`
+}
+
 // HTTPIdentitySpec bundles one optional session ref and one optional auth ref
 // for request ergonomics.
 type HTTPIdentitySpec struct {
@@ -44,9 +50,11 @@ type HTTPAuthAttachmentSpec struct {
 	FormSlot   *HTTPFormSlotAuthSpec   `yaml:"form_slot,omitempty" json:"form_slot,omitempty"`
 }
 
-// HTTPBearerAuthSpec attaches a bearer token to Authorization.
+// HTTPBearerAuthSpec attaches a bearer token to Authorization. Exactly one of
+// Token or TokenSlot must be set.
 type HTTPBearerAuthSpec struct {
-	Token string `yaml:"token" json:"token"`
+	Token     string `yaml:"token,omitempty" json:"token,omitempty"`
+	TokenSlot string `yaml:"token_slot,omitempty" json:"token_slot,omitempty"`
 }
 
 // HTTPBasicAuthSpec attaches HTTP Basic credentials.
@@ -149,6 +157,21 @@ func (s HTTPAuthSpec) Clone() HTTPAuthSpec {
 	for i := range s.Attach {
 		cloned.Attach[i] = s.Attach[i].Clone()
 	}
+	return cloned
+}
+
+// Clone returns a deep copy of the auth binding spec.
+func (s HTTPAuthBindingSpec) Clone() HTTPAuthBindingSpec {
+	cloned := HTTPAuthBindingSpec{
+		Slots: make(map[string]BindingSpec, len(s.Slots)),
+	}
+	for name := range s.Slots {
+		cloned.Slots[name] = s.Slots[name].Clone()
+	}
+	if len(cloned.Slots) == 0 {
+		cloned.Slots = nil
+	}
+
 	return cloned
 }
 

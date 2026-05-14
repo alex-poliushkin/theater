@@ -50,12 +50,13 @@ func (c stageCompiler) compileStage(spec StageSpec) *stagePlan {
 func (c stageCompiler) compileScenario(stagePath string, spec ScenarioSpec) scenarioPlan {
 	scenarioPath := c.state.paths.JoinChild(stagePath, "scenario", spec.ID)
 	scenario := scenarioPlan{
-		ID:          spec.ID,
-		Path:        scenarioPath,
-		PlanOrdinal: c.state.nextOrdinal(),
-		Inputs:      cloneValueContracts(spec.Inputs),
-		Acts:        make([]actPlan, 0, len(spec.Acts)),
-		SourceSpan:  cloneSourceRef(spec.SourceSpan),
+		ID:           spec.ID,
+		Path:         scenarioPath,
+		PlanOrdinal:  c.state.nextOrdinal(),
+		Inputs:       cloneValueContracts(spec.Inputs),
+		AuthBindings: c.compileHTTPAuthBindings(scenarioPath, spec.AuthBindings),
+		Acts:         make([]actPlan, 0, len(spec.Acts)),
+		SourceSpan:   cloneSourceRef(spec.SourceSpan),
 	}
 
 	for i := range spec.Acts {
@@ -63,6 +64,33 @@ func (c stageCompiler) compileScenario(stagePath string, spec ScenarioSpec) scen
 	}
 
 	return scenario
+}
+
+func (c stageCompiler) compileHTTPAuthBindings(
+	scenarioPath string,
+	specs map[string]HTTPAuthBindingSpec,
+) map[string]httpAuthBindingPlan {
+	if len(specs) == 0 {
+		return nil
+	}
+
+	bindings := make(map[string]httpAuthBindingPlan, len(specs))
+	for authName, spec := range specs {
+		path := httpAuthBindingPath(scenarioPath, authName)
+		plan := httpAuthBindingPlan{
+			Path:  path,
+			Slots: make(map[string]bindingPlan, len(spec.Slots)),
+		}
+		for slotName := range spec.Slots {
+			plan.Slots[slotName] = c.fragments.compileBinding(httpAuthBindingSlotPath(path, slotName), spec.Slots[slotName])
+		}
+		if len(plan.Slots) == 0 {
+			plan.Slots = nil
+		}
+		bindings[authName] = plan
+	}
+
+	return bindings
 }
 
 func (c stageCompiler) compileAct(scenarioPath string, spec ActSpec) actPlan {

@@ -326,6 +326,7 @@ private fun isActStatement(trimmed: String): Boolean {
 
 private fun startsBlockArgumentForm(trimmed: String): Boolean {
 	return trimmed.startsWith("do ") && !trimmed.contains("(") ||
+		trimmed.startsWith("bind auth ") ||
 		trimmed.startsWith("capture_auth ")
 }
 

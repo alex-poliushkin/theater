@@ -27,9 +27,23 @@ Checked Theater DSL example:
 | `scenario <id>` | Reusable scenario without inputs |
 | `scenario <id>(name: string!)` | Reusable scenario with required input |
 | `scenario <id>(name: string)` | Reusable scenario with optional input |
+| `bind auth <auth-id>` | Initialize a named HTTP auth slot bundle before the first act |
 
 Input type shorthand supports the existing value-kind surface: `string`,
 `number`, `bool`, `object`, `list`, `bytes`, `null`, and `any`.
+
+`bind auth` entries appear after an optional scenario `name` and before `act`
+entries. Each indented slot line is a binding expression:
+
+    scenario mobile/dashboard-ready(access_token: string!)
+      bind auth mobile_api
+        access_token: $access_token
+      act wait-customer
+        do action.http(url: "https://gateway.example.test/customer", auth: "mobile_api")
+
+The target auth id must be declared in the stage `http` block. A slot such as
+`access_token` must be declared by that auth entry, for example with bearer
+`token_slot`.
 
 ## Act
 

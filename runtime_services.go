@@ -25,6 +25,12 @@ type ScenarioScopeInitializer interface {
 	Close()
 }
 
+// HTTPAuthSlotInitializer receives scenario-start values for declared HTTP
+// auth slots.
+type HTTPAuthSlotInitializer interface {
+	InitializeHTTPAuthSlots(resources ResourceScope, bindings map[string]Values) error
+}
+
 // ScenarioScopeInitializerFactory builds one initializer for a run.
 type ScenarioScopeInitializerFactory func() ScenarioScopeInitializer
 
@@ -140,6 +146,25 @@ func (r *scenarioScopeRun) Initialize(resources ResourceScope) {
 
 		r.initializers[i].InitializeScenarioScope(resources)
 	}
+}
+
+func (r *scenarioScopeRun) InitializeHTTPAuthSlots(resources ResourceScope, bindings map[string]Values) error {
+	if r == nil || len(bindings) == 0 {
+		return nil
+	}
+
+	for i := range r.initializers {
+		initializer, ok := r.initializers[i].(HTTPAuthSlotInitializer)
+		if !ok {
+			continue
+		}
+
+		if err := initializer.InitializeHTTPAuthSlots(resources, bindings); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (r *scenarioScopeRun) Close() {

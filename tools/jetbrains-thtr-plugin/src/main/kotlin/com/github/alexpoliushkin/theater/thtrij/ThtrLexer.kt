@@ -253,6 +253,7 @@ private fun keywordToken(text: String): IElementType? {
 		"scenario" -> ThtrTypes.SCENARIO
 		"act" -> ThtrTypes.ACT
 		"call" -> ThtrTypes.CALL
+		"bind" -> ThtrTypes.BIND
 		"name" -> ThtrTypes.NAME
 		"do" -> ThtrTypes.DO
 		"log" -> ThtrTypes.LOG

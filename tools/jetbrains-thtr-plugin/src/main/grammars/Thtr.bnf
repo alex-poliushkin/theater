@@ -21,6 +21,7 @@
     SCENARIO="scenario"
     ACT="act"
     CALL="call"
+    BIND="bind"
     NAME="name"
     DO="do"
     LOG="log"
@@ -105,6 +106,7 @@ declaration ::= stage_declaration
   | identity_declaration
   | scenario_declaration
   | act_declaration
+  | bind_statement
   | call_declaration
   | backend_declaration
   | record_declaration
@@ -138,6 +140,7 @@ act_declaration ::= ACT identifier_like line_tail {
   mixin="com.github.alexpoliushkin.theater.thtrij.psi.impl.ThtrNamedElementImpl"
   implements="com.github.alexpoliushkin.theater.thtrij.psi.ThtrNamedElement"
 }
+bind_statement ::= BIND line_tail
 call_declaration ::= CALL identifier_like line_tail { pin=1 recoverWhile=recover_declaration }
 backend_declaration ::= BACKEND declaration_tail { pin=1 recoverWhile=recover_declaration }
 record_declaration ::= RECORD declaration_tail { pin=1 recoverWhile=recover_declaration }
@@ -184,4 +187,4 @@ private keyword_atom ::= WHEN | EVERY | REPEATABLE | TRUE | FALSE | NULL | HAS |
 private literal ::= STRING | NUMBER | DURATION
 private punctuation ::= L_PAREN | R_PAREN | L_BRACE | R_BRACE | L_BRACKET | R_BRACKET | COMMA | COLON | DOT | EQUALS | EQEQ | ARROW | PIPE | BANG | GT | GTE | LT | LTE
 private bad_character ::= BAD_CHARACTER
-private recover_declaration ::= !(STAGE | HTTP | STATE | SESSION | AUTH | IDENTITY | SCENARIO | ACT | CALL | BACKEND | RECORD | POOL | NAME | DO | LOG | EXPECT | EVENTUALLY | PROP | EXPORT | ON | DEPENDENCY | CAPTURE_AUTH)
+private recover_declaration ::= !(STAGE | HTTP | STATE | SESSION | AUTH | IDENTITY | SCENARIO | ACT | BIND | CALL | BACKEND | RECORD | POOL | NAME | DO | LOG | EXPECT | EVENTUALLY | PROP | EXPORT | ON | DEPENDENCY | CAPTURE_AUTH)

@@ -135,6 +135,11 @@ func nearestScenarioPath(scenarios []scenarioSyntax, position sourceSpan, stageP
 				return bindingPath(scenarioPath+"/input", scenario.Inputs[j].Name)
 			}
 		}
+		for j := range scenario.AuthBindings {
+			if path := nearestAuthBindingPath(scenario.AuthBindings[j], position, scenarioPath); path != "" {
+				return path
+			}
+		}
 		if path := nearestActPath(scenario.Acts, position, scenarioPath); path != "" {
 			return path
 		}
@@ -143,6 +148,22 @@ func nearestScenarioPath(scenarios []scenarioSyntax, position sourceSpan, stageP
 	}
 
 	return ""
+}
+
+func nearestAuthBindingPath(authBinding authBindingSyntax, position sourceSpan, scenarioPath string) string {
+	if !spanContainsPosition(authBinding.Span, position.Start) {
+		return ""
+	}
+
+	codec := sourcePathCodec{}
+	authBindingPath := codec.JoinChild(scenarioPath, "auth_bindings", authBinding.Auth)
+	for i := range authBinding.Slots {
+		if spanContainsPosition(authBinding.Slots[i].Span, position.Start) {
+			return codec.JoinChild(authBindingPath, "slot", authBinding.Slots[i].Name)
+		}
+	}
+
+	return authBindingPath
 }
 
 func nearestActPath(acts []actSyntax, position sourceSpan, scenarioPath string) string {

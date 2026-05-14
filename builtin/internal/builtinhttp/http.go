@@ -295,6 +295,22 @@ func (i *scenarioScopeInitializer) InitializeScenarioScope(resources theater.Res
 	})
 }
 
+func (i *scenarioScopeInitializer) InitializeHTTPAuthSlots(
+	resources theater.ResourceScope,
+	bindings map[string]theater.Values,
+) error {
+	state := authStateFromResources(resources)
+	if state == nil {
+		return errors.New("http auth bindings require scenario-local resources")
+	}
+
+	for authName, values := range bindings {
+		state.storeValues(authName, values)
+	}
+
+	return nil
+}
+
 func (i *scenarioScopeInitializer) Close() {
 	if i == nil || i.factory == nil {
 		return
@@ -496,7 +512,11 @@ func applyAuthAttachment(
 ) error {
 	switch {
 	case attachment.Bearer != nil:
-		return injectHeader(headers, injectedHeaders, "Authorization", "Bearer "+attachment.Bearer.Token)
+		token, err := bearerToken(state, authName, *attachment.Bearer)
+		if err != nil {
+			return err
+		}
+		return injectHeader(headers, injectedHeaders, "Authorization", "Bearer "+token)
 	case attachment.Basic != nil:
 		return injectBasicAuth(headers, injectedHeaders, *attachment.Basic)
 	case attachment.APIKey != nil:
@@ -819,6 +839,26 @@ func authStateFromResources(resources theater.ResourceScope) *authStateStore {
 	return state
 }
 
+func bearerToken(state *authStateStore, authName string, spec theater.HTTPBearerAuthSpec) (string, error) {
+	if spec.TokenSlot == "" {
+		if spec.Token == "" {
+			return "", errors.New("bearer attachment token is required")
+		}
+
+		return spec.Token, nil
+	}
+
+	token, err := resolveAuthSlot(state, authName, spec.TokenSlot)
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(token) == "" {
+		return "", fmt.Errorf("auth slot %q must not be empty", spec.TokenSlot)
+	}
+
+	return token, nil
+}
+
 func resolveAuthSlot(state *authStateStore, authName, slot string) (string, error) {
 	if state == nil {
 		return "", fmt.Errorf("auth slot %q is not set", slot)
@@ -850,6 +890,21 @@ func (s *authStateStore) slot(authName, slot string) (string, error) {
 }
 
 func (s *authStateStore) store(authName string, values map[string]string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	authSlots, ok := s.slots[authName]
+	if !ok {
+		authSlots = make(map[string]theater.Secret)
+		s.slots[authName] = authSlots
+	}
+
+	for slot, value := range values {
+		authSlots[slot] = theater.NewSecret(value)
+	}
+}
+
+func (s *authStateStore) storeValues(authName string, values theater.Values) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -909,6 +964,8 @@ func authSpecUsesSlot(authSpec theater.HTTPAuthSpec, slot string) bool {
 	for i := range authSpec.Attach {
 		attachment := authSpec.Attach[i]
 		switch {
+		case attachment.Bearer != nil && attachment.Bearer.TokenSlot == slot:
+			return true
 		case attachment.HeaderSlot != nil && attachment.HeaderSlot.Slot == slot:
 			return true
 		case attachment.QuerySlot != nil && attachment.QuerySlot.Slot == slot:

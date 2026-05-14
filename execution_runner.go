@@ -34,6 +34,7 @@ type scenarioRunner struct {
 	recorder      executionRecorder
 	scenarioNode  executionNode
 	resources     ResourceScope
+	scopeRun      *scenarioScopeRun
 	live          observe.Sink
 	scope         *valueScope
 	state         *statemodel.Manager
@@ -114,6 +115,7 @@ func newScenarioRunner(
 		recorder:      recorder,
 		scenarioNode:  recorder.scenario(),
 		resources:     newScenarioResources(scopeRun),
+		scopeRun:      scopeRun,
 		live:          live,
 		scope:         newValueScope(nil),
 		state:         state,
@@ -345,8 +347,13 @@ func (r *scenarioRunner) applyBindings(ctx context.Context) (scenarioState, bool
 	}
 
 	protectedBindings := protectValues(bindings, r.scenario.Inputs)
+	protectAuthBindingSources(protectedBindings, r.scenario.AuthBindings)
 	r.scope.writeAll(protectedBindings)
 	r.scope.writeAll(missingOptionalScenarioInputs(r.scenario.Inputs, protectedBindings))
+	if err := r.applyHTTPAuthBindings(ctx); err != nil {
+		state, finishErr := r.finish(ctx, StatusFailed, internalFailure(r.call.Path, "scenario auth binding failed", err))
+		return state, true, finishErr
+	}
 	r.inputSection = r.snapshot.valuesSectionWithSources(
 		protectedBindings,
 		r.scenario.Inputs,
@@ -354,6 +361,102 @@ func (r *scenarioRunner) applyBindings(ctx context.Context) (scenarioState, bool
 		bindingSourceSpans(r.call.Bindings),
 	)
 	return scenarioState{}, false, nil
+}
+
+func (r *scenarioRunner) applyHTTPAuthBindings(ctx context.Context) error {
+	if len(r.scenario.AuthBindings) == 0 {
+		return nil
+	}
+
+	resolver := newReferenceResolver(r.scope).
+		withDecorators(r.catalog).
+		withGeneration(r.catalog, r.generation, r.identity).
+		withMatchers(r.matchers)
+	resolved := make(map[string]Values, len(r.scenario.AuthBindings))
+	for authName, binding := range r.scenario.AuthBindings {
+		values, err := resolver.ResolveBindingsContext(ctx, binding.Slots)
+		if err != nil {
+			return fmt.Errorf("%s: %w", binding.Path, err)
+		}
+
+		resolved[authName] = values
+	}
+
+	return r.scopeRun.InitializeHTTPAuthSlots(r.resources, resolved)
+}
+
+func protectAuthBindingSources(bindings Values, authBindings map[string]httpAuthBindingPlan) {
+	if len(bindings) == 0 || len(authBindings) == 0 {
+		return
+	}
+
+	refs := authBindingSourceRefs(authBindings)
+	for name := range refs {
+		value, ok := bindings[name]
+		if !ok || isMissingValue(value) {
+			continue
+		}
+
+		bindings[name] = NewSecret(value)
+	}
+}
+
+func authBindingSourceRefs(authBindings map[string]httpAuthBindingPlan) map[string]struct{} {
+	refs := make(map[string]struct{})
+	for authName := range authBindings {
+		authBinding := authBindings[authName]
+		for slot := range authBinding.Slots {
+			collectBindingSourceRefs(refs, authBinding.Slots[slot])
+		}
+	}
+
+	return refs
+}
+
+func collectBindingSourceRefs(refs map[string]struct{}, binding bindingPlan) {
+	switch binding.Kind {
+	case BindingKindRef:
+		if binding.Ref != nil && binding.Ref.Name != "" {
+			refs[binding.Ref.Name] = struct{}{}
+			collectSelectorSourceRefs(refs, binding.Ref.selectorPlan)
+		}
+	case BindingKindObject:
+		for key := range binding.Object {
+			collectBindingSourceRefs(refs, binding.Object[key])
+		}
+	case BindingKindList:
+		for i := range binding.List {
+			collectBindingSourceRefs(refs, binding.List[i])
+		}
+	case BindingKindString:
+		for i := range binding.Parts {
+			collectBindingSourceRefs(refs, binding.Parts[i])
+		}
+	case BindingKindGenerate:
+		for key := range binding.Args {
+			collectBindingSourceRefs(refs, binding.Args[key])
+		}
+	case BindingKindCoalesce:
+		for i := range binding.Candidates {
+			collectBindingSourceRefs(refs, binding.Candidates[i])
+		}
+	}
+}
+
+func collectSelectorSourceRefs(refs map[string]struct{}, selector selectorPlan) {
+	for i := range selector.Through {
+		step := selector.Through[i]
+		if step.Pick == nil {
+			continue
+		}
+
+		collectBindingSourceRefs(refs, step.Pick.Equals)
+		for j := range step.Pick.Where {
+			for key := range step.Pick.Where[j].Assert.Args {
+				collectBindingSourceRefs(refs, step.Pick.Where[j].Assert.Args[key])
+			}
+		}
+	}
 }
 
 func missingOptionalScenarioInputs(inputs map[string]ValueContract, bindings Values) Values {

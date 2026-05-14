@@ -86,6 +86,10 @@ type HTTPSessionSpec = specmodel.HTTPSessionSpec
 // HTTPAuthSpec declares one reusable HTTP auth attachment set.
 type HTTPAuthSpec = specmodel.HTTPAuthSpec
 
+// HTTPAuthBindingSpec initializes declared auth slots for one scenario
+// execution from scenario-start bindings.
+type HTTPAuthBindingSpec = specmodel.HTTPAuthBindingSpec
+
 // HTTPIdentitySpec bundles one optional session ref and one optional auth ref.
 type HTTPIdentitySpec = specmodel.HTTPIdentitySpec
 

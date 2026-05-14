@@ -47,6 +47,12 @@ public class ThtrDeclarationImpl extends ASTWrapperPsiElement implements ThtrDec
 
   @Override
   @Nullable
+  public ThtrBindStatement getBindStatement() {
+    return findChildByClass(ThtrBindStatement.class);
+  }
+
+  @Override
+  @Nullable
   public ThtrCallDeclaration getCallDeclaration() {
     return findChildByClass(ThtrCallDeclaration.class);
   }

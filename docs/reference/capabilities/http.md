@@ -69,5 +69,85 @@ received it instead of `field(...)`.
 | `http.auth.<name>.attach[]` | Reusable auth attachment list |
 | `http.identities.<name>.session` | Session bundled into an identity |
 | `http.identities.<name>.auth` | Auth bundle selected by an identity |
+| `scenarios[].auth_bindings.<name>.slots.<slot>` | Scenario-start auth slot binding |
+
+Auth attachments are typed. Bearer auth accepts exactly one of:
+
+- `token`: a static bearer token stored in the stage file.
+- `token_slot`: a scenario-local auth slot. Bind the slot from scenario inputs
+  with `auth_bindings` or populate it with `capture_auth` before a request uses
+  the auth bundle.
+
+Dynamic bearer slot values are stored as secret-sensitive auth state. Missing,
+empty, non-string, or typed-missing bearer slot values fail before the HTTP
+request is sent. `auth: none` remains the explicit request-level opt-out, and
+manual `headers.Authorization` remains incompatible with typed bearer/basic
+auth.
+
+Checked Theater DSL example using a scenario-start bearer slot:
+
+<!-- theater-doc: source id=reference-dynamic-http-auth-thtr kind=thtr path=../../examples/reference/dynamic-http-auth.thtr pair=reference-dynamic-http-auth checks=fmt,lower,validate -->
+```thtr
+stage reference-dynamic-http-auth
+
+http
+  auth mobile_api = http.auth
+    attach: list [
+      object { bearer: object { token_slot: "access_token" } }
+    ]
+
+scenario mobile/dashboard-ready(access_token: string!)
+  bind auth mobile_api
+    access_token: $access_token
+  act wait-customer
+    do action.http
+      method: "GET"
+      url: "https://gateway.example.test/customer"
+      session: "none"
+      auth: "mobile_api"
+
+call run-dashboard = mobile/dashboard-ready(access_token: "issued-token")
+```
+
+Checked YAML example using the same auth slot:
+
+<!-- theater-doc: source id=reference-dynamic-http-auth-yaml kind=yaml path=../../examples/reference/dynamic-http-auth.yaml pair=reference-dynamic-http-auth checks=validate -->
+```yaml
+id: reference-dynamic-http-auth
+http:
+  auth:
+    mobile_api:
+      attach:
+        - bearer:
+            token_slot: access_token
+scenarios:
+  - id: mobile/dashboard-ready
+    inputs:
+      access_token:
+        type: string
+        required: true
+        sensitivity: secret
+        capture: omit
+    auth_bindings:
+      mobile_api:
+        slots:
+          access_token:
+            kind: ref
+            ref: access_token
+    acts:
+      - id: wait-customer
+        action:
+          use: action.http
+          with:
+            method: GET
+            url: https://gateway.example.test/customer
+            session: none
+            auth: mobile_api
+scenario_calls:
+  - id: run-dashboard
+    scenario_id: mobile/dashboard-ready
+    bindings:
+      access_token: issued-token
+```
 
 For a task recipe, use [HTTP Sessions](../../how-to/use-http-sessions.md).

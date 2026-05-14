@@ -120,6 +120,7 @@ private val KEYWORDS = setOf(
 	"identity",
 	"scenario",
 	"act",
+	"bind",
 	"call",
 	"name",
 	"do",

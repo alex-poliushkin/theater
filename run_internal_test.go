@@ -154,6 +154,78 @@ func TestNewScenarioResourcesApplyCatalogScenarioScopeInitializers(t *testing.T)
 	}
 }
 
+func TestScenarioScopeRunInitializesHTTPAuthSlotsOnEveryMatchingInitializer(t *testing.T) {
+	t.Parallel()
+
+	calls := make([]string, 0, 2)
+	catalog := NewCatalog()
+	for _, name := range []string{"first", "second"} {
+		name := name
+		if err := catalog.RegisterScenarioScopeInitializer("test/runtime/auth/"+name, func() ScenarioScopeInitializer {
+			return &testHTTPAuthSlotInitializer{name: name, calls: &calls}
+		}); err != nil {
+			t.Fatalf("register scenario scope initializer %q failed: %v", name, err)
+		}
+	}
+
+	scopeRun := newScenarioScopeRun(catalog)
+	resources := newScenarioResources(scopeRun)
+	err := scopeRun.InitializeHTTPAuthSlots(resources, map[string]Values{
+		"mobile_api": {"access_token": "issued-token"},
+	})
+	if err != nil {
+		t.Fatalf("initialize http auth slots failed: %v", err)
+	}
+
+	if !reflect.DeepEqual(calls, []string{"first", "second"}) {
+		t.Fatalf("http auth slot initializer calls mismatch: got %#v", calls)
+	}
+}
+
+func TestAuthBindingSourceRefsIncludeSelectorPickBindings(t *testing.T) {
+	t.Parallel()
+
+	refs := authBindingSourceRefs(map[string]httpAuthBindingPlan{
+		"mobile_api": {
+			Slots: map[string]bindingPlan{
+				"access_token": {
+					Kind: BindingKindRef,
+					Ref: &refPlan{
+						Name: "tokens",
+						selectorPlan: selectorPlan{
+							Through: []throughStepPlan{{
+								Pick: &pickStepPlan{
+									At: JSONPointer("/value"),
+									Equals: bindingPlan{
+										Kind: BindingKindRef,
+										Ref:  &refPlan{Name: "access_token"},
+									},
+									Where: []pickWhereClausePlan{{
+										Assert: assertPlan{
+											Args: map[string]bindingPlan{
+												"expected": {
+													Kind: BindingKindRef,
+													Ref:  &refPlan{Name: "tenant_id"},
+												},
+											},
+										},
+									}},
+								},
+							}},
+						},
+					},
+				},
+			},
+		},
+	})
+
+	for _, name := range []string{"tokens", "access_token", "tenant_id"} {
+		if _, ok := refs[name]; !ok {
+			t.Fatalf("auth binding source refs must include %q, got %#v", name, refs)
+		}
+	}
+}
+
 func TestPreflightCatalogDetectsMissingRefs(t *testing.T) {
 	t.Parallel()
 
@@ -993,6 +1065,11 @@ type testScenarioScopeResource struct {
 	id string
 }
 
+type testHTTPAuthSlotInitializer struct {
+	name  string
+	calls *[]string
+}
+
 func (i *testScenarioScopeInitializer) InitializeScenarioScope(resources ResourceScope) {
 	resources.GetOrCreate(i.key, func() any {
 		return i.value
@@ -1000,6 +1077,15 @@ func (i *testScenarioScopeInitializer) InitializeScenarioScope(resources Resourc
 }
 
 func (*testScenarioScopeInitializer) Close() {}
+
+func (*testHTTPAuthSlotInitializer) InitializeScenarioScope(ResourceScope) {}
+
+func (i *testHTTPAuthSlotInitializer) InitializeHTTPAuthSlots(ResourceScope, map[string]Values) error {
+	*i.calls = append(*i.calls, i.name)
+	return nil
+}
+
+func (*testHTTPAuthSlotInitializer) Close() {}
 
 type noopAction struct{}
 

@@ -108,12 +108,25 @@ func (f *thtrFormatter) writeScenario(scenario scenarioSyntax) {
 		f.writeNameLine(scenario.Name, 1)
 	}
 
+	for i := range scenario.AuthBindings {
+		f.writeCommentsBefore(scenario.AuthBindings[i].Span.Start.Line)
+		f.writeAuthBinding(scenario.AuthBindings[i], 1)
+	}
+
 	for i := range scenario.Acts {
 		if i > 0 {
 			f.blankLine()
 		}
 		f.writeCommentsBefore(scenario.Acts[i].Span.Start.Line)
 		f.writeAct(scenario.Acts[i], 1)
+	}
+}
+
+func (f *thtrFormatter) writeAuthBinding(binding authBindingSyntax, indent int) {
+	f.writeLine(appendTrailingComment(indented(indent, "bind auth "+binding.Auth), f.takeTrailingComment(binding.Span.Start.Line)))
+	for i := range binding.Slots {
+		f.writeCommentsBefore(binding.Slots[i].Span.Start.Line)
+		f.writeMultilineText(f.renderBlockMappingEntry(binding.Slots[i], indent+1))
 	}
 }
 

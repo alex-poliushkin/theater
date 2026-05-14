@@ -1,6 +1,7 @@
 package com.github.alexpoliushkin.theater.thtrij
 
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrActDeclaration
+import com.github.alexpoliushkin.theater.thtrij.psi.ThtrBindStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrCallDeclaration
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrCaptureAuthStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrExportStatement
@@ -92,6 +93,11 @@ private fun constructDocumentation(element: PsiElement?): ThtrConstructDocumenta
 			summary = "Groups actions, scenario-authored logs, expectations, exports and transitions inside a scenario.",
 		)
 		is ThtrCallDeclaration -> callDocumentation(construct)
+		is ThtrBindStatement -> ThtrConstructDocumentation(
+			title = "bind ${construct.text.removePrefix("bind ").lineSequence().firstOrNull()?.trim().orEmpty()}",
+			kind = ".thtr auth binding",
+			summary = "Initializes scenario-local HTTP auth slots before the first act runs.",
+		)
 		is ThtrPropStatement -> ThtrConstructDocumentation(
 			title = "prop ${identifierText(construct)}",
 			kind = ".thtr prop",

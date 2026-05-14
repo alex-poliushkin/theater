@@ -139,11 +139,12 @@ func lowerScenario(scenario scenarioSyntax, sourceFile string, stateAliases stat
 	}
 
 	spec := theater.ScenarioSpec{
-		ID:         scenario.ID,
-		Name:       name,
-		Inputs:     make(map[string]theater.ValueContract, len(scenario.Inputs)),
-		Acts:       make([]theater.ActSpec, 0, len(scenario.Acts)),
-		SourceSpan: bindSourceSpan(scenario.Span, sourceFile),
+		ID:           scenario.ID,
+		Name:         name,
+		Inputs:       make(map[string]theater.ValueContract, len(scenario.Inputs)),
+		AuthBindings: make(map[string]theater.HTTPAuthBindingSpec, len(scenario.AuthBindings)),
+		Acts:         make([]theater.ActSpec, 0, len(scenario.Acts)),
+		SourceSpan:   bindSourceSpan(scenario.Span, sourceFile),
 	}
 
 	for i := range scenario.Inputs {
@@ -163,12 +164,62 @@ func lowerScenario(scenario scenarioSyntax, sourceFile string, stateAliases stat
 		spec.Inputs = nil
 	}
 
+	for i := range scenario.AuthBindings {
+		authBinding, err := lowerAuthBinding(scenario.AuthBindings[i])
+		if err != nil {
+			return theater.ScenarioSpec{}, err
+		}
+		if _, exists := spec.AuthBindings[scenario.AuthBindings[i].Auth]; exists {
+			return theater.ScenarioSpec{}, &lowerError{
+				span:    scenario.AuthBindings[i].Span,
+				message: fmt.Sprintf("auth binding %q is duplicated", scenario.AuthBindings[i].Auth),
+			}
+		}
+
+		spec.AuthBindings[scenario.AuthBindings[i].Auth] = authBinding
+	}
+	if len(spec.AuthBindings) == 0 {
+		spec.AuthBindings = nil
+	}
+
 	for i := range scenario.Acts {
 		act, err := lowerAct(scenario.Acts[i], sourceFile, stateAliases)
 		if err != nil {
 			return theater.ScenarioSpec{}, err
 		}
 		spec.Acts = append(spec.Acts, act)
+	}
+
+	return spec, nil
+}
+
+func lowerAuthBinding(binding authBindingSyntax) (theater.HTTPAuthBindingSpec, error) {
+	spec := theater.HTTPAuthBindingSpec{
+		Slots: make(map[string]theater.BindingSpec, len(binding.Slots)),
+	}
+	for i := range binding.Slots {
+		slot := binding.Slots[i]
+		if len(slot.Mapping) != 0 {
+			return theater.HTTPAuthBindingSpec{}, &lowerError{
+				span:    slot.Span,
+				message: "auth binding slot value must be expression",
+			}
+		}
+		if _, exists := spec.Slots[slot.Name]; exists {
+			return theater.HTTPAuthBindingSpec{}, &lowerError{
+				span:    slot.Span,
+				message: fmt.Sprintf("auth binding slot %q is duplicated", slot.Name),
+			}
+		}
+
+		value, err := lowerBindingExpression(slot.Value)
+		if err != nil {
+			return theater.HTTPAuthBindingSpec{}, err
+		}
+		spec.Slots[slot.Name] = value
+	}
+	if len(spec.Slots) == 0 {
+		spec.Slots = nil
 	}
 
 	return spec, nil
@@ -1311,12 +1362,23 @@ func lowerHTTPAttachment(value any, span sourceSpan) (theater.HTTPAuthAttachment
 }
 
 func lowerBearerAttachment(config map[string]any, span sourceSpan) (theater.HTTPAuthAttachmentSpec, error) {
-	token, err := requireStringField(config, "token", span)
+	token, tokenPresent, err := stringField(config, "token", span)
 	if err != nil {
 		return theater.HTTPAuthAttachmentSpec{}, err
 	}
+	tokenSlot, tokenSlotPresent, err := stringField(config, "token_slot", span)
+	if err != nil {
+		return theater.HTTPAuthAttachmentSpec{}, err
+	}
+	if tokenPresent == tokenSlotPresent {
+		return theater.HTTPAuthAttachmentSpec{}, &lowerError{
+			span:    span,
+			message: `bearer attachment must declare exactly one of "token" or "token_slot"`,
+		}
+	}
+
 	return theater.HTTPAuthAttachmentSpec{
-		Bearer: &theater.HTTPBearerAuthSpec{Token: token},
+		Bearer: &theater.HTTPBearerAuthSpec{Token: token, TokenSlot: tokenSlot},
 	}, nil
 }
 
@@ -1409,21 +1471,33 @@ func lowerFormSlotAttachment(config map[string]any, span sourceSpan) (theater.HT
 }
 
 func requireStringField(object map[string]any, name string, span sourceSpan) (string, error) {
-	value, ok := object[name]
+	text, ok, err := stringField(object, name, span)
+	if err != nil {
+		return "", err
+	}
 	if !ok {
 		return "", &lowerError{
 			span:    span,
 			message: fmt.Sprintf("field %q is required", name),
 		}
 	}
-	text, ok := value.(string)
+
+	return text, nil
+}
+
+func stringField(object map[string]any, name string, span sourceSpan) (text string, ok bool, err error) {
+	value, ok := object[name]
 	if !ok {
-		return "", &lowerError{
+		return "", false, nil
+	}
+	text, ok = value.(string)
+	if !ok {
+		return "", false, &lowerError{
 			span:    span,
 			message: fmt.Sprintf("field %q must be string", name),
 		}
 	}
-	return text, nil
+	return text, true, nil
 }
 
 func lowerStateSection(section stageSectionSyntax) (*theater.StateSpec, stateAliasTable, error) {

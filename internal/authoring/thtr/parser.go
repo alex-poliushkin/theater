@@ -301,6 +301,21 @@ func (p *parser) parseScenario() (scenarioSyntax, error) {
 			scenario.Span.End = name.Span.End
 			continue
 		}
+		if p.atKeyword("bind") {
+			if seenActs {
+				return scenarioSyntax{}, &parserError{
+					span:    p.peek().Span,
+					message: "scenario entries must follow name, bind auth, act order",
+				}
+			}
+			authBinding, err := p.parseAuthBinding()
+			if err != nil {
+				return scenarioSyntax{}, err
+			}
+			scenario.AuthBindings = append(scenario.AuthBindings, authBinding)
+			scenario.Span.End = authBinding.Span.End
+			continue
+		}
 
 		seenActs = true
 		act, err := p.parseAct()
@@ -320,6 +335,46 @@ func (p *parser) parseScenario() (scenarioSyntax, error) {
 		}
 	}
 	return scenario, nil
+}
+
+func (p *parser) parseAuthBinding() (authBindingSyntax, error) {
+	start, err := p.expectKeyword("bind")
+	if err != nil {
+		return authBindingSyntax{}, err
+	}
+	if _, err := p.expectKeyword("auth"); err != nil {
+		return authBindingSyntax{}, err
+	}
+	auth, authSpan, err := p.parseLocalIdentifier()
+	if err != nil {
+		return authBindingSyntax{}, err
+	}
+
+	binding := authBindingSyntax{
+		Auth: auth,
+		Span: sourceSpan{Start: start.Span.Start, End: authSpan.End},
+	}
+
+	if err := p.expectBlockStart(); err != nil {
+		return authBindingSyntax{}, err
+	}
+	for !p.at(tokenDedent) && !p.at(tokenEOF) {
+		p.skipIgnorable()
+		if p.at(tokenDedent) || p.at(tokenEOF) {
+			break
+		}
+		slot, err := p.parseMappingEntry()
+		if err != nil {
+			return authBindingSyntax{}, err
+		}
+		binding.Slots = append(binding.Slots, slot)
+		binding.Span.End = slot.Span.End
+	}
+	if _, err := p.expect(tokenDedent); err != nil {
+		return authBindingSyntax{}, err
+	}
+
+	return binding, nil
 }
 
 func (p *parser) parseInputList() ([]inputSyntax, sourceSpan, error) {

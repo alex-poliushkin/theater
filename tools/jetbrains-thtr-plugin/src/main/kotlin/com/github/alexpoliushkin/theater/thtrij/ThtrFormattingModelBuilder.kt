@@ -61,7 +61,7 @@ private class ThtrBlock(
 			ThtrTypes.IDENTITY_DECLARATION, ThtrTypes.DEPENDENCY_STATEMENT -> Indent.getSpaceIndent(indentSize)
 			ThtrTypes.DO_STATEMENT, ThtrTypes.LOG_STATEMENT, ThtrTypes.EXPECT_STATEMENT, ThtrTypes.EVENTUALLY_STATEMENT,
 			ThtrTypes.PROP_STATEMENT, ThtrTypes.EXPORT_STATEMENT, ThtrTypes.TRANSITION_STATEMENT,
-			ThtrTypes.CAPTURE_AUTH_STATEMENT, ThtrTypes.NAME_STATEMENT -> Indent.getSpaceIndent(indentSize * 2)
+			ThtrTypes.BIND_STATEMENT, ThtrTypes.CAPTURE_AUTH_STATEMENT, ThtrTypes.NAME_STATEMENT -> Indent.getSpaceIndent(indentSize * 2)
 			else -> Indent.getNoneIndent()
 		}
 	}

@@ -359,6 +359,7 @@ object ThtrSymbols {
 			trimmedLine == "state" ||
 			trimmedLine.startsWith("scenario ") ||
 			trimmedLine.startsWith("act ") ||
+			trimmedLine.startsWith("bind ") ||
 			trimmedLine.startsWith("name ") ||
 			trimmedLine.startsWith("do ") ||
 			trimmedLine.startsWith("log ") ||
