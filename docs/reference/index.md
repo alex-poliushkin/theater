@@ -38,6 +38,7 @@ Reference pages record exact contracts.
 ## Ratified Future Contracts
 
 - [Cleanup hooks](cleanup-hooks.md)
+- [Preflight guardrails](preflight-guardrails.md)
 
 Current contract entrypoints:
 

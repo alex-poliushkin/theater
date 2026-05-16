@@ -51,6 +51,10 @@ Scenario-level cleanup hooks are a [ratified future contract](../cleanup-hooks.m
 They are not available in the current `.thtr` parser, formatter, lowerer, or
 runtime.
 
+Scenario-level preflight guardrails are a
+[ratified future contract](../preflight-guardrails.md). They are not available
+in the current `.thtr` parser, formatter, lowerer, or runtime.
+
 ## Act
 
 | Form | Meaning |
