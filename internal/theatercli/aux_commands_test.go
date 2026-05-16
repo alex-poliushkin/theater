@@ -667,6 +667,9 @@ func TestCompleteCommandUsesMetadata(t *testing.T) {
 		{name: "plugins digest flags", args: []string{commandComplete, commandPlugins, commandPluginsDigest, "--"}, want: []string{"--manifest", "--write"}},
 		{name: "run flags", args: []string{commandComplete, commandRun, "-d"}, want: []string{"-debug", "-debug-dump"}},
 		{name: "run long flags", args: []string{commandComplete, commandRun, "--d"}, want: []string{"--debug", "--debug-dump"}},
+		{name: "run sidecar flags", args: []string{commandComplete, commandRun, "--j"}, want: []string{"--json-output", "--junit-output"}},
+		{name: "run markdown sidecar flag", args: []string{commandComplete, commandRun, "--m"}, want: []string{"--markdown-output"}},
+		{name: "run overwrite flag", args: []string{commandComplete, commandRun, "--o"}, want: []string{"--overwrite"}},
 		{name: "completion shells", args: []string{commandComplete, commandCompletion, ""}, want: []string{"bash", "fish", "powershell", "zsh"}},
 	}
 

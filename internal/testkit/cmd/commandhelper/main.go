@@ -33,6 +33,12 @@ func main() {
 		runSpawnMarker(os.Args[2:])
 	case "write-marker":
 		runWriteMarker(os.Args[2:])
+	case "append-marker":
+		runAppendMarker(os.Args[2:])
+	case "remove-path":
+		runRemovePath(os.Args[2:])
+	case "replace-with-symlink":
+		runReplaceWithSymlink(os.Args[2:])
 	default:
 		fail("unknown command: " + os.Args[1])
 	}
@@ -205,6 +211,65 @@ func runWriteMarker(args []string) {
 
 	sleepMillis(*delay)
 	if err := os.WriteFile(*path, []byte("marker"), 0o644); err != nil {
+		fail(err.Error())
+	}
+}
+
+func runAppendMarker(args []string) {
+	flags := flag.NewFlagSet("append-marker", flag.ExitOnError)
+	path := flags.String("path", "", "")
+	_ = flags.Parse(args)
+
+	if *path == "" {
+		fail("path is required")
+	}
+
+	file, err := os.OpenFile(*path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		fail(err.Error())
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			fail(err.Error())
+		}
+	}()
+
+	if _, err := file.WriteString("marker\n"); err != nil {
+		fail(err.Error())
+	}
+}
+
+func runRemovePath(args []string) {
+	flags := flag.NewFlagSet("remove-path", flag.ExitOnError)
+	path := flags.String("path", "", "")
+	_ = flags.Parse(args)
+
+	if *path == "" {
+		fail("path is required")
+	}
+
+	if err := os.RemoveAll(*path); err != nil {
+		fail(err.Error())
+	}
+}
+
+func runReplaceWithSymlink(args []string) {
+	flags := flag.NewFlagSet("replace-with-symlink", flag.ExitOnError)
+	path := flags.String("path", "", "")
+	target := flags.String("target", "", "")
+	_ = flags.Parse(args)
+
+	if *path == "" {
+		fail("path is required")
+	}
+	if *target == "" {
+		fail("target is required")
+	}
+
+	if err := os.RemoveAll(*path); err != nil {
+		fail(err.Error())
+	}
+	if err := os.Symlink(*target, *path); err != nil {
 		fail(err.Error())
 	}
 }

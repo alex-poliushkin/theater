@@ -57,15 +57,46 @@ go run ./cmd/theater run docs/examples/reference/logs.thtr --live auto
 | `text` | `validate`, `run`, `validate --debug-paths`, `list scenarios`, `plugins inspect` | Human-readable stdout; text output may use ANSI styling when color policy allows it |
 | `json` | `validate`, `run`, `validate --debug-paths`, `list scenarios`, `plugins inspect` | Machine-readable stdout; no ANSI styling |
 | `junit` | `run`, `report render` | Compact scenario-call JUnit XML stdout for CI test-report ingestion |
-| `markdown` | `report render` | Bounded human-readable run summary for CI job summaries and artifacts |
+| `markdown` | `report render`, `run` sidecars | Bounded human-readable run summary for CI job summaries and artifacts |
 
 Live progress, scenario-authored live log lines, debug prompts, and interactive
 pause cards use stderr so redirected stdout remains safe for JSON, JUnit, or
 text summary capture. Passing text summaries do not print all scenario-authored
 report logs by default; use `run --format json` to read retained log records
-from `result.report.logs`. Use `report render` when a saved run JSON file
-should become compact JUnit or detailed Markdown without executing the stage
-again.
+from `result.report.logs`. Use `run --json-output`, `--junit-output`, and
+`--markdown-output` when one execution should produce multiple artifacts. Use
+`report render` when a saved run JSON file should become compact JUnit or
+detailed Markdown without executing the stage again.
+
+## Run Sidecar Outputs
+
+`theater run` keeps `--format` as the stdout renderer. Sidecar flags add file
+outputs from the same run document:
+
+| Flag | File output |
+| --- | --- |
+| `--json-output <path>` | JSON run wrapper |
+| `--junit-output <path>` | JUnit XML |
+| `--markdown-output <path>` | Markdown report |
+| `--overwrite` | Allow replacing existing sidecar files |
+
+Sidecar flags do not accept `-`. Existing files require `--overwrite`, and
+unsafe targets such as directories, symlinks, non-regular files, duplicate
+paths, missing parents, symlinked parent directories, and parent traversal are
+rejected.
+
+<!-- theater-doc: command id=reference-output-run-sidecars cwd=../../.. expect-stdout=passed expect-stdout-2="passed=1 failed=0" -->
+```sh
+go run ./cmd/theater run docs/examples/first-stage/stage.thtr --live off --format text --json-output /tmp/theater-first-stage.run.json --junit-output /tmp/theater-first-stage.junit.xml --markdown-output /tmp/theater-first-stage.md --overwrite
+```
+
+Exit precedence:
+
+| Result | Exit code |
+| --- | --- |
+| Run passed and all requested outputs were written | `0` |
+| Run failed or was canceled and all requested outputs were written | `1` |
+| Sidecar path preflight, render, or write failed | `2` |
 
 ## JSON Wrappers
 

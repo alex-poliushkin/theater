@@ -45,10 +45,33 @@ go run ./cmd/theater report render --input docs/examples/reference/saved-run.jso
 | `file` | Stage file path passed to the command |
 | `result` | Public run document |
 
+`theater run` can also write the same run document and derived CI artifacts to
+sidecar files with `--json-output`, `--junit-output`, and `--markdown-output`.
+Sidecars are rendered from the same in-memory run document as stdout output and
+do not execute the stage again.
+
 `theater report render --input <run.json>` reads this same wrapper. The render
 command exits `0` when artifact generation succeeds, even when the saved run
 document describes a failed Theater run. Failed outcomes are represented inside
 the rendered JUnit or Markdown artifact.
+
+## Run Sidecar Outputs
+
+| Flag | Artifact |
+| --- | --- |
+| `--json-output <path>` | JSON wrapper with `file` and `result`, matching `run --format json` stdout |
+| `--junit-output <path>` | JUnit XML rendered from the run document |
+| `--markdown-output <path>` | Markdown report rendered from the run document |
+| `--overwrite` | Replace existing sidecar files; without this flag existing files are rejected |
+
+Sidecar paths must be explicit file paths. Theater rejects `-`, parent
+traversal, missing or non-directory parents, directories, symlinks, symlinked
+parent directories, non-regular existing files, and duplicate sidecar paths. New
+files are created with owner read/write permissions.
+
+Sidecars are written after execution and before stdout rendering. When sidecar
+rendering or writing fails, Theater exits with command failure status and prints
+a concise stderr diagnostic without printing report contents.
 
 The public run document has:
 

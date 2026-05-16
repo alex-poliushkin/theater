@@ -113,6 +113,15 @@ func (r runDocumentRenderer) Render(format outputFormat, file string, document r
 }
 
 func (r runDocumentRenderer) renderJSON(file string, document reportmodel.RunDocument) int {
+	if err := writeRunDocumentJSON(r.stdout, file, document); err != nil {
+		fmt.Fprintf(r.stderr, "encode json: %v\n", err)
+		return exitCodeCommandError
+	}
+
+	return runExitCode(document)
+}
+
+func writeRunDocumentJSON(writer io.Writer, file string, document reportmodel.RunDocument) error {
 	response := struct {
 		File   string                  `json:"file"`
 		Result reportmodel.RunDocument `json:"result"`
@@ -121,12 +130,7 @@ func (r runDocumentRenderer) renderJSON(file string, document reportmodel.RunDoc
 		Result: document,
 	}
 
-	if err := writeJSON(r.stdout, response); err != nil {
-		fmt.Fprintf(r.stderr, "encode json: %v\n", err)
-		return exitCodeCommandError
-	}
-
-	return runExitCode(document)
+	return writeJSON(writer, response)
 }
 
 func (r runDocumentRenderer) renderJUnit(document reportmodel.RunDocument) int {

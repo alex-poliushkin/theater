@@ -731,6 +731,38 @@ func TestRunStageTHTRAuthoringDiagnosticsRenderInRunOutput(t *testing.T) {
 	}
 }
 
+func TestRunStageWritesSidecarsForTHTRAuthoringDiagnostics(t *testing.T) {
+	outputDir := t.TempDir()
+	jsonPath := filepath.Join(outputDir, "authoring.json")
+	junitPath := filepath.Join(outputDir, "authoring.junit.xml")
+	markdownPath := filepath.Join(outputDir, "authoring.md")
+	path := writeStageFile(t, "stage.thtr", "stage main\nscenario\n")
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	code := run([]string{
+		"run",
+		"-file", path,
+		"-live", "off",
+		"--json-output", jsonPath,
+		"--junit-output", junitPath,
+		"--markdown-output", markdownPath,
+	}, &stdout, &stderr)
+	if got, want := code, 1; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(readFileString(t, jsonPath), `"code": "thtr_parse_error"`) {
+		t.Fatalf("json sidecar missing authoring diagnostic: %q", readFileString(t, jsonPath))
+	}
+	if !strings.Contains(readFileString(t, junitPath), `<error`) {
+		t.Fatalf("junit sidecar missing authoring failure: %q", readFileString(t, junitPath))
+	}
+	if !strings.Contains(readFileString(t, markdownPath), "thtr_parse_error") {
+		t.Fatalf("markdown sidecar missing authoring diagnostic: %q", readFileString(t, markdownPath))
+	}
+}
+
 func TestRunValidateRejectsUnknownSubcommand(t *testing.T) {
 	t.Parallel()
 
@@ -1332,6 +1364,524 @@ scenario_calls:
 
 	if strings.TrimSpace(stderr.String()) != "" {
 		t.Fatalf("stderr mismatch: got %q want empty", stderr.String())
+	}
+}
+
+func TestRunStageWritesSidecarOutputsFromOneExecution(t *testing.T) {
+	helper := testkit.BuildCommandHelper(t)
+	outputDir := t.TempDir()
+	markerPath := filepath.Join(outputDir, "marker.txt")
+	jsonPath := filepath.Join(outputDir, "run.json")
+	junitPath := filepath.Join(outputDir, "run.junit.xml")
+	markdownPath := filepath.Join(outputDir, "run.md")
+	path := writeStageYAML(t, `
+id: main
+scenarios:
+  - id: probe
+    acts:
+      - id: append-marker
+        action:
+          use: action.command
+          with:
+            executable:
+              kind: literal
+              value: `+helper+`
+            args:
+              kind: list
+              list:
+                - kind: literal
+                  value: append-marker
+                - kind: literal
+                  value: --path
+                - kind: literal
+                  value: `+markerPath+`
+        expectations:
+          - id: exit-zero
+            subject: exit_code
+            assert:
+              eq: 0
+scenario_calls:
+  - id: run-probe
+    scenario_id: probe
+`)
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	code := run([]string{
+		"run",
+		"-file", path,
+		"--live", "off",
+		"--format", "text",
+		"--json-output", jsonPath,
+		"--junit-output", junitPath,
+		"--markdown-output", markdownPath,
+	}, &stdout, &stderr)
+	if got, want := code, 0; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+
+	if got, want := strings.Count(readFileString(t, markerPath), "marker\n"), 1; got != want {
+		t.Fatalf("stage executed wrong number of times: got %d marker writes want %d", got, want)
+	}
+	if !strings.Contains(readFileString(t, jsonPath), `"schema_version": "v1alpha1"`) {
+		t.Fatalf("json sidecar missing run document schema: %q", readFileString(t, jsonPath))
+	}
+	if !strings.Contains(readFileString(t, junitPath), `<testsuites`) {
+		t.Fatalf("junit sidecar missing testsuites root: %q", readFileString(t, junitPath))
+	}
+	if !strings.Contains(readFileString(t, markdownPath), "# Theater Run Report") {
+		t.Fatalf("markdown sidecar missing report title: %q", readFileString(t, markdownPath))
+	}
+	if !strings.Contains(stdout.String(), "passed") {
+		t.Fatalf("stdout text output missing passed summary: %q", stdout.String())
+	}
+	if strings.TrimSpace(stderr.String()) != "" {
+		t.Fatalf("stderr mismatch: got %q want empty", stderr.String())
+	}
+}
+
+func TestRunStageWritesSidecarsForFailedRun(t *testing.T) {
+	outputDir := t.TempDir()
+	jsonPath := filepath.Join(outputDir, "failed.json")
+	junitPath := filepath.Join(outputDir, "failed.junit.xml")
+	markdownPath := filepath.Join(outputDir, "failed.md")
+	path := writeStageYAML(t, `
+id: main
+scenarios:
+  - id: probe
+    acts:
+      - id: generate
+        action:
+          use: action.generate
+          with:
+            outputs:
+              ok: true
+        expectations:
+          - id: wrong-value
+            subject:
+              field: values
+              path: /ok
+            assert:
+              eq: false
+scenario_calls:
+  - id: run-probe
+    scenario_id: probe
+`)
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	code := run([]string{
+		"run",
+		"-file", path,
+		"--live", "off",
+		"--json-output", jsonPath,
+		"--junit-output", junitPath,
+		"--markdown-output", markdownPath,
+	}, &stdout, &stderr)
+	if got, want := code, 1; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+
+	if !strings.Contains(readFileString(t, jsonPath), `"status": "failed"`) {
+		t.Fatalf("json sidecar missing failed status: %q", readFileString(t, jsonPath))
+	}
+	if !strings.Contains(readFileString(t, junitPath), `<failure`) {
+		t.Fatalf("junit sidecar missing failure: %q", readFileString(t, junitPath))
+	}
+	if !strings.Contains(readFileString(t, markdownPath), "failed") {
+		t.Fatalf("markdown sidecar missing failed status: %q", readFileString(t, markdownPath))
+	}
+}
+
+func TestRunStageRejectsExistingSidecarWithoutOverwriteBeforeExecution(t *testing.T) {
+	helper := testkit.BuildCommandHelper(t)
+	outputDir := t.TempDir()
+	markerPath := filepath.Join(outputDir, "marker.txt")
+	jsonPath := filepath.Join(outputDir, "run.json")
+	if err := os.WriteFile(jsonPath, []byte("existing"), 0o600); err != nil {
+		t.Fatalf("write existing sidecar failed: %v", err)
+	}
+	path := writeStageYAML(t, `
+id: main
+scenarios:
+  - id: probe
+    acts:
+      - id: append-marker
+        action:
+          use: action.command
+          with:
+            executable:
+              kind: literal
+              value: `+helper+`
+            args:
+              kind: list
+              list:
+                - kind: literal
+                  value: append-marker
+                - kind: literal
+                  value: --path
+                - kind: literal
+                  value: `+markerPath+`
+scenario_calls:
+  - id: run-probe
+    scenario_id: probe
+`)
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	code := run([]string{
+		"run",
+		"-file", path,
+		"--live", "off",
+		"--json-output", jsonPath,
+	}, &stdout, &stderr)
+	if got, want := code, exitCodeCommandError; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+
+	if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
+		t.Fatalf("stage must not execute when sidecar preflight fails, marker stat err=%v", err)
+	}
+	if got, want := readFileString(t, jsonPath), "existing"; got != want {
+		t.Fatalf("existing sidecar changed: got %q want %q", got, want)
+	}
+	if !strings.Contains(stderr.String(), "sidecar output") {
+		t.Fatalf("stderr must explain sidecar failure: %q", stderr.String())
+	}
+}
+
+func TestRunStageOverwritesExistingSidecarWhenRequested(t *testing.T) {
+	outputDir := t.TempDir()
+	jsonPath := filepath.Join(outputDir, "run.json")
+	if err := os.WriteFile(jsonPath, []byte("existing"), 0o644); err != nil {
+		t.Fatalf("write existing sidecar failed: %v", err)
+	}
+	path := writeStageYAML(t, `
+id: main
+scenarios:
+  - id: probe
+    acts:
+      - id: generate
+        action:
+          use: action.generate
+          with:
+            outputs:
+              ok: true
+scenario_calls:
+  - id: run-probe
+    scenario_id: probe
+`)
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	code := run([]string{
+		"run",
+		"-file", path,
+		"--live", "off",
+		"--json-output", jsonPath,
+		"--overwrite",
+	}, &stdout, &stderr)
+	if got, want := code, 0; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+	if got := readFileString(t, jsonPath); !strings.Contains(got, `"schema_version": "v1alpha1"`) || strings.Contains(got, "existing") {
+		t.Fatalf("json sidecar was not replaced with run document: %q", got)
+	}
+	info, err := os.Stat(jsonPath)
+	if err != nil {
+		t.Fatalf("stat json sidecar failed: %v", err)
+	}
+	if got, want := info.Mode().Perm(), os.FileMode(0o600); got != want {
+		t.Fatalf("json sidecar mode mismatch: got %o want %o", got, want)
+	}
+}
+
+func TestRunStageRejectsDuplicateSidecarPathBeforeExecution(t *testing.T) {
+	helper := testkit.BuildCommandHelper(t)
+	outputDir := t.TempDir()
+	markerPath := filepath.Join(outputDir, "marker.txt")
+	sidecarPath := filepath.Join(outputDir, "run.out")
+	path := writeStageYAML(t, `
+id: main
+scenarios:
+  - id: probe
+    acts:
+      - id: append-marker
+        action:
+          use: action.command
+          with:
+            executable:
+              kind: literal
+              value: `+helper+`
+            args:
+              kind: list
+              list:
+                - kind: literal
+                  value: append-marker
+                - kind: literal
+                  value: --path
+                - kind: literal
+                  value: `+markerPath+`
+scenario_calls:
+  - id: run-probe
+    scenario_id: probe
+`)
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	code := run([]string{
+		"run",
+		"-file", path,
+		"--live", "off",
+		"--json-output", sidecarPath,
+		"--junit-output", sidecarPath,
+	}, &stdout, &stderr)
+	if got, want := code, exitCodeCommandError; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "used for both") {
+		t.Fatalf("stderr must explain duplicate sidecar path: %q", stderr.String())
+	}
+	if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
+		t.Fatalf("stage must not execute when sidecar preflight fails, marker stat err=%v", err)
+	}
+}
+
+func TestRunStageReportsSidecarWriteFailureAfterExecution(t *testing.T) {
+	helper := testkit.BuildCommandHelper(t)
+	outputDir := t.TempDir()
+	sidecarDir := filepath.Join(outputDir, "sidecars")
+	if err := os.Mkdir(sidecarDir, 0o755); err != nil {
+		t.Fatalf("mkdir sidecar dir failed: %v", err)
+	}
+	jsonPath := filepath.Join(sidecarDir, "run.json")
+	path := writeStageYAML(t, `
+id: main
+scenarios:
+  - id: probe
+    acts:
+      - id: remove-sidecar-dir
+        action:
+          use: action.command
+          with:
+            executable:
+              kind: literal
+              value: `+helper+`
+            args:
+              kind: list
+              list:
+                - kind: literal
+                  value: remove-path
+                - kind: literal
+                  value: --path
+                - kind: literal
+                  value: `+sidecarDir+`
+scenario_calls:
+  - id: run-probe
+    scenario_id: probe
+`)
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	code := run([]string{
+		"run",
+		"-file", path,
+		"--live", "off",
+		"--json-output", jsonPath,
+	}, &stdout, &stderr)
+	if got, want := code, exitCodeCommandError; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+	if _, err := os.Stat(sidecarDir); !os.IsNotExist(err) {
+		t.Fatalf("stage must execute before sidecar write failure, sidecar dir stat err=%v", err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "" {
+		t.Fatalf("stdout must stay empty when sidecar writing fails before stdout rendering, got %q", got)
+	}
+	if !strings.Contains(stderr.String(), "write sidecar output") || !strings.Contains(stderr.String(), "sidecar output parent") {
+		t.Fatalf("stderr must explain sidecar write failure: %q", stderr.String())
+	}
+}
+
+func TestRunStageRejectsSymlinkedSidecarParentAfterExecution(t *testing.T) {
+	helper := testkit.BuildCommandHelper(t)
+	outputDir := t.TempDir()
+	sidecarDir := filepath.Join(outputDir, "sidecars")
+	escapeDir := filepath.Join(outputDir, "escape")
+	for _, dir := range []string{sidecarDir, escapeDir} {
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatalf("mkdir %s failed: %v", dir, err)
+		}
+	}
+	jsonPath := filepath.Join(sidecarDir, "run.json")
+	path := writeStageYAML(t, `
+id: main
+scenarios:
+  - id: probe
+    acts:
+      - id: replace-sidecar-dir
+        action:
+          use: action.command
+          with:
+            executable:
+              kind: literal
+              value: `+helper+`
+            args:
+              kind: list
+              list:
+                - kind: literal
+                  value: replace-with-symlink
+                - kind: literal
+                  value: --path
+                - kind: literal
+                  value: `+sidecarDir+`
+                - kind: literal
+                  value: --target
+                - kind: literal
+                  value: `+escapeDir+`
+scenario_calls:
+  - id: run-probe
+    scenario_id: probe
+`)
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	code := run([]string{
+		"run",
+		"-file", path,
+		"--live", "off",
+		"--json-output", jsonPath,
+		"--overwrite",
+	}, &stdout, &stderr)
+	if got, want := code, exitCodeCommandError; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "" {
+		t.Fatalf("stdout must stay empty when sidecar writing fails before stdout rendering, got %q", got)
+	}
+	if !strings.Contains(stderr.String(), "must not contain symlink directory") {
+		t.Fatalf("stderr must explain symlinked parent rejection: %q", stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(escapeDir, "run.json")); !os.IsNotExist(err) {
+		t.Fatalf("sidecar escaped into symlink target, stat err=%v", err)
+	}
+}
+
+func TestRunStageRejectsUnsafeSidecarPathsBeforeExecution(t *testing.T) {
+	helper := testkit.BuildCommandHelper(t)
+	outputDir := t.TempDir()
+	markerPath := filepath.Join(outputDir, "marker.txt")
+	directoryOutput := filepath.Join(outputDir, "sidecar-dir")
+	if err := os.Mkdir(directoryOutput, 0o755); err != nil {
+		t.Fatalf("mkdir sidecar dir failed: %v", err)
+	}
+	symlinkOutput := filepath.Join(outputDir, "sidecar-link")
+	if err := os.Symlink(filepath.Join(outputDir, "target.json"), symlinkOutput); err != nil {
+		t.Fatalf("symlink sidecar failed: %v", err)
+	}
+	traversalOutput := outputDir + string(os.PathSeparator) + ".." + string(os.PathSeparator) + "escape.json"
+	missingParentOutput := filepath.Join(outputDir, "missing", "run.json")
+	parentFile := filepath.Join(outputDir, "parent-file")
+	if err := os.WriteFile(parentFile, []byte("parent"), 0o600); err != nil {
+		t.Fatalf("write parent file failed: %v", err)
+	}
+	fileParentOutput := filepath.Join(parentFile, "run.json")
+	path := writeStageYAML(t, `
+id: main
+scenarios:
+  - id: probe
+    acts:
+      - id: append-marker
+        action:
+          use: action.command
+          with:
+            executable:
+              kind: literal
+              value: `+helper+`
+            args:
+              kind: list
+              list:
+                - kind: literal
+                  value: append-marker
+                - kind: literal
+                  value: --path
+                - kind: literal
+                  value: `+markerPath+`
+scenario_calls:
+  - id: run-probe
+    scenario_id: probe
+`)
+
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{name: "directory", path: directoryOutput, want: "is a directory"},
+		{name: "symlink", path: symlinkOutput, want: "is a symlink"},
+		{name: "parent traversal", path: traversalOutput, want: "must not contain parent traversal"},
+		{name: "missing parent", path: missingParentOutput, want: "no such file or directory"},
+		{name: "parent is file", path: fileParentOutput, want: "is not a directory"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			var stdout strings.Builder
+			var stderr strings.Builder
+
+			code := run([]string{
+				"run",
+				"-file", path,
+				"--live", "off",
+				"--json-output", test.path,
+				"--overwrite",
+			}, &stdout, &stderr)
+			if got, want := code, exitCodeCommandError; got != want {
+				t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+			}
+			if !strings.Contains(stderr.String(), test.want) {
+				t.Fatalf("stderr mismatch: got %q want substring %q", stderr.String(), test.want)
+			}
+			if _, err := os.Stat(markerPath); !os.IsNotExist(err) {
+				t.Fatalf("stage must not execute when sidecar preflight fails, marker stat err=%v", err)
+			}
+		})
+	}
+}
+
+func TestRunStageRejectsDashSidecarOutput(t *testing.T) {
+	path := writeStageYAML(t, `
+id: main
+scenarios:
+  - id: probe
+    acts:
+      - id: generate
+        action:
+          use: action.generate
+          with:
+            outputs:
+              ok: true
+scenario_calls:
+  - id: run-probe
+    scenario_id: probe
+`)
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	code := run([]string{"run", "-file", path, "--json-output", "-"}, &stdout, &stderr)
+	if got, want := code, exitCodeCommandError; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "does not accept -") {
+		t.Fatalf("stderr must explain dash sidecar rejection: %q", stderr.String())
 	}
 }
 

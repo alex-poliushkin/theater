@@ -22,7 +22,7 @@ go run ./cmd/theater help
 go run ./cmd/theater help validate
 ```
 
-<!-- theater-doc: command id=reference-cli-run-help cwd=../../.. expect-stdout="--format text|json|junit" expect-stdout-2="--live auto|off" expect-stdout-3="--plugin-exporter" -->
+<!-- theater-doc: command id=reference-cli-run-help cwd=../../.. expect-stdout="--format text|json|junit" expect-stdout-2="--live auto|off" expect-stdout-3="--json-output" expect-stdout-4="--junit-output" expect-stdout-5="--markdown-output" expect-stdout-6="--plugin-exporter" -->
 ```sh
 go run ./cmd/theater help run
 ```
@@ -68,7 +68,7 @@ go run ./cmd/theater help report render
 | --- | --- | --- |
 | `theater init` | `theater init [theater/flows/.../starter.{yaml|thtr}] [--syntax yaml|thtr]` | Creates one starter stage under `theater/flows/` and prepares `theater/lib/`; never overwrites an existing target |
 | `theater validate` | `theater validate <stage.{yaml|yml|thtr}> [--format text|json] [--plugins-readiness runtime\|descriptor] [--debug-paths]` | Alias: `check`; validates without live execution |
-| `theater run` | `theater run <stage.{yaml|yml|thtr}> [--format text|json|junit] [--live auto|off] [--debug off|dump|interactive]` | Validates first, executes, and renders the final run document |
+| `theater run` | `theater run <stage.{yaml|yml|thtr}> [--format text|json|junit] [--json-output <path>] [--junit-output <path>] [--markdown-output <path>] [--overwrite] [--live auto|off] [--debug off|dump|interactive]` | Validates first, executes once, renders stdout, and can write explicit sidecar artifacts |
 | `theater fmt` | `theater fmt <path.thtr> [--write] [--check] [--diff]` | Prints formatted `.thtr` by default; `--write` mutates the file |
 | `theater lower` | `theater lower <path.thtr> [--map <path.json>]` | Writes canonical YAML to stdout; `--map` writes a source-map sidecar |
 | `theater migrate from-yaml` | `theater migrate from-yaml --file <stage.yaml\|stage.yml> [--plugins-config <path.json> --plugins-lock <path.lock.json>]` | Emits formatter-clean `.thtr` to stdout |

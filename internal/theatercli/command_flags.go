@@ -250,6 +250,10 @@ func registerStageCommandFlags(command string, flags *flag.FlagSet, options *com
 	if command == commandRun {
 		flags.StringVar(&values.live, "live", values.live, "live output mode")
 		flags.StringVar(&values.debugMode, "debug", values.debugMode, "debug mode")
+		flags.StringVar(&options.runSidecars.JSON, "json-output", "", "write run JSON sidecar to path")
+		flags.StringVar(&options.runSidecars.JUnit, "junit-output", "", "write JUnit sidecar to path")
+		flags.StringVar(&options.runSidecars.Markdown, "markdown-output", "", "write Markdown sidecar to path")
+		flags.BoolVar(&options.runSidecars.Overwrite, "overwrite", false, "replace existing sidecar output files")
 		flags.Var(&repeatableStringFlag{values: &options.debugBreaks}, "break", "debug selector")
 		flags.Var(&repeatableStringFlag{values: &options.debugBreakFiles}, "break-file", "path to a debug selector file")
 		flags.BoolVar(&options.debugStep, "step", false, "pause at the first debuggable boundary in interactive debug mode")

@@ -83,6 +83,7 @@ type commandOptions struct {
 	debugStep       bool
 	debugDumpPath   string
 	stopOnFailure   bool
+	runSidecars     runSidecarOutputs
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
@@ -223,13 +224,17 @@ func (a *application) runStage(args []string) int {
 	if !ok {
 		return exitCodeCommandError
 	}
+	if err := validateRunSidecarOutputs(options.runSidecars); err != nil {
+		fmt.Fprintf(a.stderr, "%v\n", err)
+		return exitCodeCommandError
+	}
 
 	loaded, services, ok := a.loadStage(options)
 	if !ok {
 		return exitCodeCommandError
 	}
 	if len(loaded.AuthoringDiagnostics) != 0 {
-		return a.runRenderer.Render(options.format, options.file, newAuthoringFailureRunDocument(options.file, loaded.AuthoringDiagnostics))
+		return a.renderRunDocument(options, newAuthoringFailureRunDocument(options.file, loaded.AuthoringDiagnostics))
 	}
 
 	ctx := context.Background()
@@ -281,7 +286,16 @@ func (a *application) runStage(args []string) int {
 	}
 	result.Diagnostics = loaded.RewriteDiagnostics(result.Diagnostics)
 
-	return a.runRenderer.Render(options.format, options.file, result.Document())
+	return a.renderRunDocument(options, result.Document())
+}
+
+func (a *application) renderRunDocument(options commandOptions, document theater.RunDocument) int {
+	if err := writeRunSidecarOutputs(options.file, document, options.runSidecars); err != nil {
+		fmt.Fprintf(a.stderr, "write sidecar output: %v\n", err)
+		return exitCodeCommandError
+	}
+
+	return a.runRenderer.Render(options.format, options.file, document)
 }
 
 func (a *application) lowerStage(args []string) int {

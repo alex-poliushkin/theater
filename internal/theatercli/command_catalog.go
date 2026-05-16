@@ -357,13 +357,16 @@ func newInitCommandSpec() *commandSpec {
 
 func newRunCommandSpec() *commandSpec {
 	return &commandSpec{
-		Name:        commandRun,
-		Path:        "theater run",
-		Args:        stageFileArgument + " [--format text|json|junit] [--live auto|off] [--debug off|dump|interactive]",
+		Name: commandRun,
+		Path: "theater run",
+		Args: stageFileArgument + " [--format text|json|junit] [--live auto|off] " +
+			"[--json-output <path>] [--junit-output <path>] [--markdown-output <path>] " +
+			"[--overwrite] [--debug off|dump|interactive]",
 		Short:       "Validate, execute, and render a stage run.",
 		FlagProfile: commandFlagProfileRun,
 		Long: "Use run when you want the full validate-first path: load a stage, " +
 			"validate it, execute it, and render the final result as text, JSON, or JUnit. " +
+			"Use sidecar output flags to write JSON, JUnit, or Markdown artifacts from the same run document. " +
 			"Use a positional stage path for the common case; --file remains available " +
 			"when explicit spelling helps readability, and legacy -file remains supported for compatibility.",
 		Examples: []commandExample{
@@ -378,6 +381,13 @@ func newRunCommandSpec() *commandSpec {
 			{
 				Title:   "CI-friendly JUnit output",
 				Command: "theater run theater/flows/http/example-domain.yaml --format junit > build/example-domain.junit.xml",
+			},
+			{
+				Title: "Run once and write sidecar artifacts",
+				Command: "theater run theater/flows/http/example-domain.yaml --live off --format text \\\n" +
+					"  --json-output build/example-domain.run.json \\\n" +
+					"  --junit-output build/example-domain.junit.xml \\\n" +
+					"  --markdown-output build/example-domain.md",
 			},
 			{
 				Title:   "Dump debug sidecar",
@@ -410,6 +420,9 @@ func newRunCommandSpec() *commandSpec {
 					"Text output keeps the final summary on stdout. With --live auto, progress lines stream on stderr during text-oriented runs.",
 					"JSON and JUnit keep stdout machine-readable. Interactive debug prompts " +
 						"and pause cards also stay on stderr so redirected stdout remains clean.",
+					"Sidecar output flags write explicit file paths after execution and before stdout rendering. Existing files require --overwrite.",
+					"Sidecar render or write failures exit with command failure status. " +
+						"Failed runs still write requested sidecars when rendering succeeds.",
 				},
 			},
 			{
@@ -439,7 +452,7 @@ func newRunCommandSpec() *commandSpec {
 		},
 		FlagGroups: []flagHelpGroup{
 			{Title: flagGroupFiles, Flags: []string{"file"}},
-			{Title: flagGroupOutput, Flags: []string{"format", "live"}},
+			{Title: flagGroupOutput, Flags: []string{"format", "live", "json-output", "junit-output", "markdown-output", "overwrite"}},
 			{Title: flagGroupPlugins, Flags: []string{"plugins-config", "plugins-lock", "plugin-exporter"}},
 			{Title: flagGroupDebug, Flags: []string{"debug", "break", "break-file", "step", "debug-dump", "stop-on-failure"}},
 		},

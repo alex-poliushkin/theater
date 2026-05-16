@@ -65,6 +65,7 @@ func TestRunCommandHelpUsesCommandMetadata(t *testing.T) {
 		"Quiet text output:",
 		"Machine-readable JSON output:",
 		"CI-friendly JUnit output:",
+		"Run once and write sidecar artifacts:",
 		"Dump debug sidecar:",
 		"Interactive debug session:",
 		"Run with plugin registry and lock files:",
@@ -76,6 +77,9 @@ func TestRunCommandHelpUsesCommandMetadata(t *testing.T) {
 	}
 	for _, want := range []string{
 		"theater run theater/flows/http/example-domain.yaml --format json > build/example-domain.run.json",
+		"--json-output build/example-domain.run.json",
+		"--junit-output build/example-domain.junit.xml",
+		"--markdown-output build/example-domain.md",
 		"theater run theater/flows/plugins/hello-world-plugin.yaml",
 		"--plugin-exporter <report-exporter-capability>",
 		"--live off",
@@ -108,7 +112,12 @@ func TestRunCommandHelpUsesCommandMetadata(t *testing.T) {
 	if !strings.Contains(output, "--file remains available when explicit spelling helps readability") {
 		t.Fatalf("command help missing compatibility note: %q", output)
 	}
-	if !strings.Contains(output, "--file <string>") || !strings.Contains(output, "--live <string>") {
+	if !strings.Contains(output, "--file <string>") ||
+		!strings.Contains(output, "--live <string>") ||
+		!strings.Contains(output, "--json-output <string>") ||
+		!strings.Contains(output, "--junit-output <string>") ||
+		!strings.Contains(output, "--markdown-output <string>") ||
+		!strings.Contains(output, "--overwrite") {
 		t.Fatalf("command help missing long-form options: %q", output)
 	}
 	for _, want := range []string{

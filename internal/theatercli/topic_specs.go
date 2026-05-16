@@ -127,7 +127,7 @@ func newFormatsTopicSpec() cliTopicSpec {
 					"text  default human-readable output for run, validate, debug-path discovery, and scenario discovery",
 					"json  machine-readable stdout for run, validate, debug-path discovery, plugins inspect, and scenario discovery",
 					"junit  compact scenario-call JUnit XML for run and report render",
-					"markdown  detailed human-readable CI summary for report render",
+					"markdown  detailed human-readable CI summary for report render and run sidecars",
 				},
 			},
 			{
@@ -136,6 +136,7 @@ func newFormatsTopicSpec() cliTopicSpec {
 					"Text summaries stay on stdout.",
 					"Live progress, debug prompts, and interactive pause cards stay on stderr so redirected stdout remains machine-safe.",
 					"JSON, JUnit, and Markdown keep stdout artifact-safe while command-level failures still print on stderr.",
+					"Run sidecar flags write requested JSON, JUnit, and Markdown artifacts to explicit file paths before stdout rendering.",
 				},
 			},
 			{
