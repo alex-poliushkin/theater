@@ -35,6 +35,10 @@ Reference pages record exact contracts.
 - [Selectors](selectors.md)
 - [Expectations](expectations.md)
 
+## Ratified Future Contracts
+
+- [Cleanup hooks](cleanup-hooks.md)
+
 Current contract entrypoints:
 
 - [YAML reference](yaml/index.md)

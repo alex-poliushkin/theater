@@ -110,6 +110,9 @@ outputs.
 
 Transition `on` values are `on_pass`, `on_fail`, `on_timeout`, and `on_cancel`.
 
+Scenario-level cleanup hooks are a [ratified future contract](../cleanup-hooks.md).
+They are not available in the current YAML schema or runtime.
+
 `logs` declares report-oriented observations. Logs evaluate after a successful
 action and before expectations, exports, and transitions. `run --format json`
 includes emitted, omitted, and error records under `result.report.logs`; inside

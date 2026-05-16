@@ -47,6 +47,10 @@ library file may contribute a slot-backed auth declaration. A slot such as
 `session_token` must be declared by that auth entry, for example with bearer
 `token_slot`.
 
+Scenario-level cleanup hooks are a [ratified future contract](../cleanup-hooks.md).
+They are not available in the current `.thtr` parser, formatter, lowerer, or
+runtime.
+
 ## Act
 
 | Form | Meaning |
