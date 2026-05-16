@@ -16,6 +16,13 @@ Reusable-scenario example:
 - [YAML flow](reusable-scenario/theater/flows/reuse-message.yaml)
 - [YAML library](reusable-scenario/theater/lib/messages/make.yaml)
 
+Reusable-auth example:
+
+- [Theater DSL flow](reusable-auth/theater/flows/sample-ready.thtr)
+- [Theater DSL library](reusable-auth/theater/lib/service/sample-ready.thtr)
+- [YAML flow](reusable-auth/theater/flows/sample-ready.yaml)
+- [YAML library](reusable-auth/theater/lib/service/sample-ready.yaml)
+
 Check-values example:
 
 - [Theater DSL](check-values/profile.thtr)

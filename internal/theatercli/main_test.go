@@ -2264,6 +2264,97 @@ func TestValidateStageAutoDetectsRepoFlowFile(t *testing.T) {
 	}
 }
 
+func TestValidateRepoFlowReportsSelectedLibraryStaticHTTPAuth(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := createCLIFlowRepo(t)
+	flowPath := writeCLIRepoFile(t, repoRoot, filepath.Join("theater", "flows", "service", "sample.thtr"), `stage sample-flow
+
+call run-sample = service/sample-ready()
+`)
+	libraryPath := writeCLIRepoFile(t, repoRoot, filepath.Join("theater", "lib", "service", "sample.thtr"), `stage service-lib
+
+http
+  auth service_api = http.auth
+    attach: list [
+      object { bearer: object { token: "selected-library-secret" } }
+    ]
+
+scenario service/sample-ready
+  act get-sample
+    do action.http(auth: "service_api")
+`)
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	code := run([]string{"validate", "--file", flowPath}, &stdout, &stderr)
+	if got, want := code, 1; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+
+	output := normalizeRunOutput(stdout.String(), map[string]string{
+		libraryPath: "LIBRARY",
+	})
+	if !strings.Contains(output, "invalid_selected_library_http_auth") {
+		t.Fatalf("output must include selected library auth diagnostic code: %q", output)
+	}
+	if !strings.Contains(output, "LIBRARY:6:7") {
+		t.Fatalf("output must include library source span: %q", output)
+	}
+	if strings.Contains(output, "selected-library-secret") {
+		t.Fatalf("output leaked static credential: %q", output)
+	}
+}
+
+func TestValidateRepoFlowReportsDuplicateSelectedLibraryHTTPAuth(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := createCLIFlowRepo(t)
+	flowPath := writeCLIRepoFile(t, repoRoot, filepath.Join("theater", "flows", "service", "sample.thtr"), `stage sample-flow
+
+http
+  auth service_api = http.auth
+    attach: list [
+      object { bearer: object { token_slot: "session_token" } }
+    ]
+
+call run-sample = service/sample-ready()
+`)
+	libraryPath := writeCLIRepoFile(t, repoRoot, filepath.Join("theater", "lib", "service", "sample.thtr"), `stage service-lib
+
+http
+  auth service_api = http.auth
+    attach: list [
+      object { bearer: object { token_slot: "session_token" } }
+    ]
+
+scenario service/sample-ready
+  bind auth service_api
+    session_token: "token-from-runtime"
+  act get-sample
+    do action.http(auth: "service_api")
+`)
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	code := run([]string{"validate", "--file", flowPath}, &stdout, &stderr)
+	if got, want := code, 1; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+
+	output := normalizeRunOutput(stdout.String(), map[string]string{
+		libraryPath: "LIBRARY",
+	})
+	if !strings.Contains(output, "duplicate_selected_library_http_auth") {
+		t.Fatalf("output must include duplicate selected library auth diagnostic code: %q", output)
+	}
+	if !strings.Contains(output, "LIBRARY:4:3") {
+		t.Fatalf("output must include library source span: %q", output)
+	}
+}
+
 func TestRunStageAutoDetectsRepoFlowFileFromNestedWorkingDirectory(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")

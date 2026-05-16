@@ -60,6 +60,14 @@ Repo-aware YAML flow files can live under `theater/flows/`. Reusable library
 files live under `theater/lib/`, contribute reusable scenarios, and must not
 declare `scenario_calls`.
 
+Selected library files can also carry slot-backed `http.auth` entries for the
+scenarios they provide. When a library file is selected, every auth declaration
+in that file must be slot-backed and non-colliding; only auth names referenced
+by selected scenarios are copied into the assembled flow. Unselected libraries
+do not contribute auth entries. Static bearer tokens, basic credentials, and
+static API key values are rejected from selected library auth declarations; keep
+those values in the runnable flow or external runtime configuration.
+
 ## Scenario Calls
 
 | Field | Required | Meaning |
@@ -83,9 +91,10 @@ Dependency `when` values are `success`, `failure`, and `done`.
 
 `auth_bindings` initializes named HTTP auth slots before the first act in one
 scenario execution. The key under `auth_bindings` must match a top-level
-`http.auth` entry, and each `slots.<name>` binding must target a slot declared
-by that auth entry, such as a bearer `token_slot`. Slot values are stored as
-secret-sensitive auth state and are never report outputs.
+`http.auth` entry after repo-aware composition, and each `slots.<name>` binding
+must target a slot declared by that auth entry, such as a bearer `token_slot`.
+Slot values are stored as secret-sensitive auth state and are never report
+outputs.
 
 | Act field | Required | Meaning |
 | --- | --- | --- |

@@ -48,6 +48,169 @@ call login-user = auth/login()
 	}
 }
 
+func TestAnalyzeDocumentComposesSelectedLibraryHTTPAuth(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	flowPath := writeTestFile(t, filepath.Join(repoRoot, "theater", "flows", "service", "sample.thtr"), "stage sample-flow\n")
+	libraryPath := writeTestFile(t, filepath.Join(repoRoot, "theater", "lib", "service", "sample.thtr"), `stage service-lib
+
+http
+  auth service_api = http.auth
+    attach: list [
+      object { bearer: object { token_slot: "session_token" } }
+    ]
+
+scenario service/sample-ready(session_token: string!)
+  bind auth service_api
+    session_token: $session_token
+  act get-sample
+    do action.http(method: "GET", url: "https://api.example.test/sample", auth: "service_api")
+`)
+
+	grouped := testAnalyzeDocument(t, flowPath, `stage sample-flow
+
+call run-sample = service/sample-ready(session_token: "token-from-runtime")
+`)
+	if got, want := len(grouped[flowPath]), 0; got != want {
+		t.Fatalf("current file diagnostics mismatch: got %d want %d: %#v", got, want, grouped[flowPath])
+	}
+	if got := len(grouped[libraryPath]); got != 0 {
+		t.Fatalf("library diagnostics mismatch: got %d: %#v", got, grouped[libraryPath])
+	}
+}
+
+func TestAnalyzeDocumentReportsSelectedLibraryStaticHTTPAuth(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	flowPath := writeTestFile(t, filepath.Join(repoRoot, "theater", "flows", "service", "sample.thtr"), "stage sample-flow\n")
+	libraryPath := writeTestFile(t, filepath.Join(repoRoot, "theater", "lib", "service", "sample.thtr"), `stage service-lib
+
+http
+  auth service_api = http.auth
+    attach: list [
+      object { bearer: object { token: "selected-library-secret" } }
+    ]
+
+scenario service/sample-ready
+  act get-sample
+    do action.http(auth: "service_api")
+`)
+
+	grouped := testAnalyzeDocument(t, flowPath, `stage sample-flow
+
+call run-sample = service/sample-ready()
+`)
+	if got, want := len(grouped[flowPath]), 0; got != want {
+		t.Fatalf("current file diagnostics mismatch: got %d want %d: %#v", got, want, grouped[flowPath])
+	}
+	diagnostics := grouped[libraryPath]
+	if got, want := len(diagnostics), 1; got != want {
+		t.Fatalf("library diagnostics count mismatch: got %d want %d: %#v", got, want, diagnostics)
+	}
+	if got, want := diagnostics[0].Code, "invalid_selected_library_http_auth"; got != want {
+		t.Fatalf("library diagnostic code mismatch: got %q want %q", got, want)
+	}
+	if strings.Contains(diagnostics[0].Message, "selected-library-secret") {
+		t.Fatalf("static credential value leaked in diagnostic: %#v", diagnostics[0])
+	}
+}
+
+func TestServerRevalidatesSelectedLibraryHTTPAuthOverlay(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := t.TempDir()
+	flowPath := writeTestFile(t, filepath.Join(repoRoot, "theater", "flows", "service", "sample.thtr"), `stage sample-flow
+
+call run-sample = service/sample-ready()
+`)
+	libraryPath := writeTestFile(t, filepath.Join(repoRoot, "theater", "lib", "service", "sample.thtr"), validSelectedAuthLibrarySource())
+	flowURI := uriFromPath(flowPath)
+	libraryURI := uriFromPath(libraryPath)
+
+	stdout := bytes.NewBuffer(nil)
+	s := &server{
+		writer:  stdout,
+		docs:    make(map[string]lspDocument),
+		support: testLanguageSupport(t),
+	}
+	if err := s.didOpen(lspDidOpenTextDocumentParams{
+		TextDocument: lspTextDocumentItem{
+			URI:        flowURI,
+			LanguageID: "thtr",
+			Version:    1,
+			Text:       readTestFile(t, flowPath),
+		},
+	}); err != nil {
+		t.Fatalf("open flow failed: %v", err)
+	}
+	if _, ok := s.docs[flowURI].PublishedURIs[libraryURI]; ok {
+		t.Fatalf("valid flow should not publish library diagnostics yet: %#v", s.docs[flowURI].PublishedURIs)
+	}
+
+	stdout.Reset()
+	if err := s.didOpen(lspDidOpenTextDocumentParams{
+		TextDocument: lspTextDocumentItem{
+			URI:        libraryURI,
+			LanguageID: "thtr",
+			Version:    1,
+			Text:       readTestFile(t, libraryPath),
+		},
+	}); err != nil {
+		t.Fatalf("open library failed: %v", err)
+	}
+
+	stdout.Reset()
+	if err := s.didChange(lspDidChangeTextDocumentParams{
+		TextDocument: lspVersionedTextDocumentIdentifier{
+			URI:     libraryURI,
+			Version: 2,
+		},
+		ContentChanges: []lspTextDocumentContentChangeEvent{{Text: staticSelectedAuthLibrarySource()}},
+	}); err != nil {
+		t.Fatalf("change library to static auth failed: %v", err)
+	}
+	if _, ok := s.docs[flowURI].PublishedURIs[libraryURI]; !ok {
+		t.Fatalf("flow diagnostics must track selected library auth diagnostic: %#v", s.docs[flowURI].PublishedURIs)
+	}
+	messages := readFramedMessages(t, stdout.Bytes())
+	if !publishedDiagnosticsContain(messages, libraryURI, "invalid_selected_library_http_auth") {
+		t.Fatalf("expected selected library auth diagnostic, got %#v", messages)
+	}
+	if strings.Contains(fmt.Sprint(messages), "selected-library-secret") {
+		t.Fatalf("published selected library auth diagnostic leaked static credential: %#v", messages)
+	}
+	if got, want := publishedDiagnosticLinesByCode(t, messages, libraryURI, "invalid_selected_library_http_auth"), []int64{5}; !slices.Equal(got, want) {
+		t.Fatalf("selected library auth diagnostic lines mismatch: got %v want %v messages=%#v", got, want, messages)
+	}
+	line, character, ok := publishedDiagnosticStartByCode(t, messages, libraryURI, "invalid_selected_library_http_auth")
+	if !ok {
+		t.Fatalf("selected library auth diagnostic start missing: %#v", messages)
+	}
+	if gotLine, gotCharacter, wantLine, wantCharacter := line, character, int64(5), int64(6); gotLine != wantLine || gotCharacter != wantCharacter {
+		t.Fatalf("selected library auth diagnostic start mismatch: got %d:%d want %d:%d", gotLine, gotCharacter, wantLine, wantCharacter)
+	}
+
+	stdout.Reset()
+	if err := s.didChange(lspDidChangeTextDocumentParams{
+		TextDocument: lspVersionedTextDocumentIdentifier{
+			URI:     libraryURI,
+			Version: 3,
+		},
+		ContentChanges: []lspTextDocumentContentChangeEvent{{Text: validSelectedAuthLibrarySource()}},
+	}); err != nil {
+		t.Fatalf("change library to slot-backed auth failed: %v", err)
+	}
+	if _, ok := s.docs[flowURI].PublishedURIs[libraryURI]; ok {
+		t.Fatalf("flow diagnostics must clear selected library auth diagnostic: %#v", s.docs[flowURI].PublishedURIs)
+	}
+	messages = readFramedMessages(t, stdout.Bytes())
+	if !publishedDiagnosticsEmpty(messages, libraryURI) {
+		t.Fatalf("expected selected library auth diagnostic to clear, got %#v", messages)
+	}
+}
+
 func TestCompletionItemsForDocumentSuggestScenarioIDsInCall(t *testing.T) {
 	t.Parallel()
 
@@ -1183,6 +1346,38 @@ scenario auth/login
 `
 }
 
+func validSelectedAuthLibrarySource() string {
+	return `stage service-lib
+
+http
+  auth service_api = http.auth
+    attach: list [
+      object { bearer: object { token_slot: "session_token" } }
+    ]
+
+scenario service/sample-ready
+  bind auth service_api
+    session_token: "token-from-runtime"
+  act get-sample
+    do action.http(method: "GET", url: "https://api.example.test/sample", auth: "service_api")
+`
+}
+
+func staticSelectedAuthLibrarySource() string {
+	return `stage service-lib
+
+http
+  auth service_api = http.auth
+    attach: list [
+      object { bearer: object { token: "selected-library-secret" } }
+    ]
+
+scenario service/sample-ready
+  act get-sample
+    do action.http(method: "GET", url: "https://api.example.test/sample", auth: "service_api")
+`
+}
+
 func invalidEventuallyLibrarySourceWithLeadingComment() string {
 	return `stage auth-lib
 
@@ -1387,6 +1582,45 @@ func publishedDiagnosticLinesByCode(t *testing.T, messages []map[string]any, uri
 		}
 	}
 	return lines
+}
+
+func publishedDiagnosticStartByCode(
+	t *testing.T,
+	messages []map[string]any,
+	uri, code string,
+) (line int64, character int64, ok bool) {
+	t.Helper()
+
+	for i := range messages {
+		if messages[i]["method"] != "textDocument/publishDiagnostics" {
+			continue
+		}
+		params, ok := messages[i]["params"].(map[string]any)
+		if !ok || params["uri"] != uri {
+			continue
+		}
+		diagnostics, ok := params["diagnostics"].([]any)
+		if !ok {
+			continue
+		}
+		for j := range diagnostics {
+			diagnostic, ok := diagnostics[j].(map[string]any)
+			if !ok || diagnostic["code"] != code {
+				continue
+			}
+			rng, ok := diagnostic["range"].(map[string]any)
+			if !ok {
+				t.Fatalf("diagnostic range missing: %#v", diagnostic)
+			}
+			start, ok := rng["start"].(map[string]any)
+			if !ok {
+				t.Fatalf("diagnostic range start missing: %#v", rng)
+			}
+			return jsonNumberValue(t, start["line"]), jsonNumberValue(t, start["character"]), true
+		}
+	}
+
+	return 0, 0, false
 }
 
 func signatureResponseContains(response map[string]any, label string) bool {

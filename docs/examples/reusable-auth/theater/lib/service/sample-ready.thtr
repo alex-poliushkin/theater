@@ -1,4 +1,4 @@
-stage reference-dynamic-http-auth
+stage reusable-auth-service-lib
 
 http
   auth service_api = http.auth
@@ -9,11 +9,9 @@ http
 scenario service/sample-ready(session_token: string!)
   bind auth service_api
     session_token: $session_token
-  act get-sample-resource
+  act get-sample
     do action.http
       method: "GET"
-      url: "https://api.example.test/sample-resource"
+      url: "https://api.example.test/sample"
       session: "none"
       auth: "service_api"
-
-call run-sample = service/sample-ready(session_token: env("THEATER_DOC_SERVICE_SESSION_TOKEN"))

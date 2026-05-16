@@ -42,6 +42,43 @@ the ordering readable instead of inferring it from every `$ref`.
 The default dependency predicate is success. YAML writes the same rule as
 `when: success`.
 
+## Auth Requirements
+
+A reusable scenario may require a named HTTP auth bundle. The scenario makes
+that requirement visible with a scenario-level auth binding and uses the same
+name in HTTP actions:
+
+    scenario service/sample-ready(session_token: string!)
+      bind auth service_api
+        session_token: $session_token
+
+      act get-sample-resource
+        do action.http(
+          method: "GET",
+          url: "https://api.example.test/sample-resource",
+          auth: "service_api",
+        )
+
+The auth binding names the slots the scenario fills. The HTTP action names the
+auth bundle it consumes.
+
+Keep credential values outside reusable scenario source. A reusable scenario can
+require a slot such as `session_token`, while the runnable flow supplies that
+slot from explicit runtime data such as an environment-backed binding.
+
+Repo-aware loading can compose selected library auth declarations when the auth
+bundle is slot-backed. Only library files selected by the flow's scenario calls
+can contribute auth entries. When a library file is selected, every auth
+declaration in that file must be slot-backed and non-colliding; only auth names
+referenced by selected scenarios are copied into the assembled flow. Static
+bearer tokens, basic credentials, and static API keys stay owned by the runnable
+flow or by external runtime configuration; they are not composed from reusable
+libraries.
+
+Duplicate auth names across the flow and selected libraries fail before the run,
+even when the definitions look identical. Theater keeps this strict so a flow
+cannot silently pick one auth policy over another.
+
 ## Layout
 
 Repo-aware loading uses two fixed roots:
@@ -53,6 +90,10 @@ Theater loads a flow from `theater/flows/` and assembles only the library
 scenarios that the flow actually calls. It still resolves calls by scenario id,
 not by file path. A call to `messages/make` means "find the scenario with this
 id", not "import this file".
+
+Auth registry composition follows the same selected-library rule. A library
+that is not selected by the flow contributes no scenarios and no HTTP auth
+entries.
 
 Continue with [Reuse A Scenario](../tutorial/04-reuse-a-scenario.md) for a
 runnable Theater DSL and YAML example.

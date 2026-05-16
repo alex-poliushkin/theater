@@ -35,14 +35,16 @@ Input type shorthand supports the existing value-kind surface: `string`,
 `bind auth` entries appear after an optional scenario `name` and before `act`
 entries. Each indented slot line is a binding expression:
 
-    scenario mobile/dashboard-ready(access_token: string!)
-      bind auth mobile_api
-        access_token: $access_token
-      act wait-customer
-        do action.http(url: "https://gateway.example.test/customer", auth: "mobile_api")
+    scenario service/sample-ready(session_token: string!)
+      bind auth service_api
+        session_token: $session_token
+      act get-sample-resource
+        do action.http(url: "https://api.example.test/sample-resource", auth: "service_api")
 
-The target auth id must be declared in the stage `http` block. A slot such as
-`access_token` must be declared by that auth entry, for example with bearer
+The target auth id must be declared in the assembled stage `http` block. In a
+standalone file that means the same stage. In a repo-aware flow, a selected
+library file may contribute a slot-backed auth declaration. A slot such as
+`session_token` must be declared by that auth entry, for example with bearer
 `token_slot`.
 
 ## Act

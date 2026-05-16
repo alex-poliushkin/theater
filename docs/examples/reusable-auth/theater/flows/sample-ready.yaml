@@ -1,0 +1,9 @@
+id: reusable-auth-sample
+scenarios: []
+scenario_calls:
+  - id: run-sample
+    scenario_id: service/sample-ready
+    bindings:
+      session_token:
+        kind: env
+        name: THEATER_DOC_SERVICE_SESSION_TOKEN

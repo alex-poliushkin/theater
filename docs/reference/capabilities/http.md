@@ -91,22 +91,22 @@ Checked Theater DSL example using a scenario-start bearer slot:
 stage reference-dynamic-http-auth
 
 http
-  auth mobile_api = http.auth
+  auth service_api = http.auth
     attach: list [
-      object { bearer: object { token_slot: "access_token" } }
+      object { bearer: object { token_slot: "session_token" } }
     ]
 
-scenario mobile/dashboard-ready(access_token: string!)
-  bind auth mobile_api
-    access_token: $access_token
-  act wait-customer
+scenario service/sample-ready(session_token: string!)
+  bind auth service_api
+    session_token: $session_token
+  act get-sample-resource
     do action.http
       method: "GET"
-      url: "https://gateway.example.test/customer"
+      url: "https://api.example.test/sample-resource"
       session: "none"
-      auth: "mobile_api"
+      auth: "service_api"
 
-call run-dashboard = mobile/dashboard-ready(access_token: "issued-token")
+call run-sample = service/sample-ready(session_token: env("THEATER_DOC_SERVICE_SESSION_TOKEN"))
 ```
 
 Checked YAML example using the same auth slot:
@@ -116,38 +116,143 @@ Checked YAML example using the same auth slot:
 id: reference-dynamic-http-auth
 http:
   auth:
-    mobile_api:
+    service_api:
       attach:
         - bearer:
-            token_slot: access_token
+            token_slot: session_token
 scenarios:
-  - id: mobile/dashboard-ready
+  - id: service/sample-ready
     inputs:
-      access_token:
+      session_token:
         type: string
         required: true
         sensitivity: secret
         capture: omit
     auth_bindings:
-      mobile_api:
+      service_api:
         slots:
-          access_token:
+          session_token:
             kind: ref
-            ref: access_token
+            ref: session_token
     acts:
-      - id: wait-customer
+      - id: get-sample-resource
         action:
           use: action.http
           with:
             method: GET
-            url: https://gateway.example.test/customer
+            url: https://api.example.test/sample-resource
             session: none
-            auth: mobile_api
+            auth: service_api
 scenario_calls:
-  - id: run-dashboard
-    scenario_id: mobile/dashboard-ready
+  - id: run-sample
+    scenario_id: service/sample-ready
     bindings:
-      access_token: issued-token
+      session_token:
+        kind: env
+        name: THEATER_DOC_SERVICE_SESSION_TOKEN
+```
+
+## Repo-Aware Reusable Auth
+
+Repo-aware flow loading composes selected library auth entries into the
+assembled flow before validation. This is authoring/load behavior only. It is
+not runtime fallback, does not add new Go API surface, and is not a generic
+import/include mechanism.
+
+Only library files selected by the flow's scenario calls can contribute auth
+entries. Unselected library files do not contribute registries and cannot cause
+auth-name collisions. When a library file is selected, every auth declaration
+in that file must be slot-backed and non-colliding; only auth names referenced
+by selected scenarios are copied into the assembled flow.
+
+Selected library auth entries are composable only when every attachment is
+slot-backed. Static bearer tokens, basic credentials, and static API key values
+declared in a selected library are rejected before run. Duplicate auth names
+across the flow and selected libraries, or across selected libraries, are hard
+validation errors even when definitions match textually.
+
+Checked Theater DSL library file:
+
+<!-- theater-doc: source id=reusable-auth-library-thtr kind=thtr path=../../examples/reusable-auth/theater/lib/service/sample-ready.thtr pair=reusable-auth-library checks=fmt,lower,validate -->
+```thtr
+stage reusable-auth-service-lib
+
+http
+  auth service_api = http.auth
+    attach: list [
+      object { bearer: object { token_slot: "session_token" } }
+    ]
+
+scenario service/sample-ready(session_token: string!)
+  bind auth service_api
+    session_token: $session_token
+  act get-sample
+    do action.http
+      method: "GET"
+      url: "https://api.example.test/sample"
+      session: "none"
+      auth: "service_api"
+```
+
+Checked Theater DSL flow file. The flow calls the library scenario and supplies
+the runtime slot value, but it does not repeat `http.auth.service_api`:
+
+<!-- theater-doc: source id=reusable-auth-flow-thtr kind=thtr path=../../examples/reusable-auth/theater/flows/sample-ready.thtr pair=reusable-auth-flow checks=fmt,lower,validate -->
+```thtr
+stage reusable-auth-sample
+
+call run-sample = service/sample-ready(session_token: env("THEATER_DOC_SERVICE_SESSION_TOKEN"))
+```
+
+Checked YAML library file:
+
+<!-- theater-doc: source id=reusable-auth-library-yaml kind=yaml path=../../examples/reusable-auth/theater/lib/service/sample-ready.yaml pair=reusable-auth-library checks=validate -->
+```yaml
+id: reusable-auth-service-lib
+http:
+  auth:
+    service_api:
+      attach:
+        - bearer:
+            token_slot: session_token
+scenarios:
+  - id: service/sample-ready
+    inputs:
+      session_token:
+        type: string
+        required: true
+        sensitivity: secret
+        capture: omit
+    auth_bindings:
+      service_api:
+        slots:
+          session_token:
+            kind: ref
+            ref: session_token
+    acts:
+      - id: get-sample
+        action:
+          use: action.http
+          with:
+            method: GET
+            url: https://api.example.test/sample
+            session: none
+            auth: service_api
+```
+
+Checked YAML flow file:
+
+<!-- theater-doc: source id=reusable-auth-flow-yaml kind=yaml path=../../examples/reusable-auth/theater/flows/sample-ready.yaml pair=reusable-auth-flow checks=validate -->
+```yaml
+id: reusable-auth-sample
+scenarios: []
+scenario_calls:
+  - id: run-sample
+    scenario_id: service/sample-ready
+    bindings:
+      session_token:
+        kind: env
+        name: THEATER_DOC_SERVICE_SESSION_TOKEN
 ```
 
 For a task recipe, use [HTTP Sessions](../../how-to/use-http-sessions.md).

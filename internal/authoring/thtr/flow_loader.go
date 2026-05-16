@@ -1,14 +1,17 @@
 package thtr
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/alex-poliushkin/theater"
+	"github.com/alex-poliushkin/theater/internal/authoring/flowauth"
 	authoringyaml "github.com/alex-poliushkin/theater/internal/authoring/yaml"
 )
 
@@ -130,6 +133,8 @@ func assembleFlowStageDetailed(
 	}
 
 	mergedSourceMap := cloneSourceMap(flowResult.sourceMap)
+	flowAuthNames := flowauth.DeclaredHTTPAuthNames(flowSpec.HTTP)
+	composedAuthOwners := make(map[string]string)
 	for i := range selectedFiles {
 		libraryResult, err := loadLibraryDetailed(selectedFiles[i], matchers, libraryOverlay)
 		if err != nil {
@@ -150,12 +155,25 @@ func assembleFlowStageDetailed(
 			assembled.Scenarios = append(assembled.Scenarios, scenario)
 		}
 
-		mergedSourceMap = mergeRebasedScenarioSourceMaps(
+		selectedAuthNames := flowauth.SelectedScenarioHTTPAuthNames(librarySpec.Scenarios, selectedScenarioIDs)
+		if err := flowauth.ValidateSelectedLibraryHTTPAuth(
+			librarySpec,
+			selectedScenarioIDs,
+			flowAuthNames,
+			composedAuthOwners,
+			selectedFiles[i],
+		); err != nil {
+			return LoadResult{}, newSelectedLibraryHTTPAuthDiagnosticError(libraryResult, librarySpec.ID, err)
+		}
+		flowauth.ComposeSelectedLibraryHTTPAuth(&assembled, librarySpec, selectedAuthNames)
+
+		mergedSourceMap = mergeRebasedSelectedLibrarySourceMaps(
 			mergedSourceMap,
 			libraryResult.sourceMap,
 			librarySpec.ID,
 			flowSpec.ID,
 			selectedScenarioIDs,
+			selectedAuthNames,
 		)
 	}
 
@@ -175,12 +193,47 @@ func cloneFlowStage(flowSpec theater.StageSpec) theater.StageSpec {
 	return theater.StageSpec{
 		ID:            flowSpec.ID,
 		Name:          flowSpec.Name,
-		HTTP:          flowSpec.HTTP,
-		State:         flowSpec.State,
+		HTTP:          flowSpec.HTTP.Clone(),
+		State:         flowSpec.State.Clone(),
 		Scenarios:     append([]theater.ScenarioSpec(nil), flowSpec.Scenarios...),
 		ScenarioCalls: append([]theater.ScenarioCallSpec(nil), flowSpec.ScenarioCalls...),
 		SourceSpan:    flowSpec.SourceSpan,
 	}
+}
+
+func newSelectedLibraryHTTPAuthDiagnosticError(
+	libraryResult LoadResult,
+	libraryStageID string,
+	err error,
+) error {
+	var selectedAuthErr *flowauth.SelectedLibraryAuthError
+	if !errors.As(err, &selectedAuthErr) {
+		return err
+	}
+
+	codec := sourcePathCodec{}
+	libraryPath := httpEntryPath(codec.Join("stage", libraryStageID), "auth", selectedAuthErr.AuthName)
+	if selectedAuthErr.AttachmentIndex >= 0 {
+		libraryPath = fmt.Sprintf("%s/attach[%d]", libraryPath, selectedAuthErr.AttachmentIndex)
+	}
+
+	diagnostic := theater.Diagnostic{
+		Code:     selectedAuthErr.Code,
+		Path:     libraryPath,
+		Severity: theater.SeverityError,
+		Summary:  selectedAuthErr.Summary,
+	}
+	if libraryResult.sourceMap != nil {
+		if entry, ok := libraryResult.sourceMap.LookupSpecPath(libraryPath); ok {
+			diagnostic.Span = theater.SourceRef{
+				File:   entry.Source.File,
+				Line:   entry.Source.StartLine,
+				Column: entry.Source.StartColumn,
+			}
+		}
+	}
+
+	return &DiagnosticError{diagnostic: diagnostic}
 }
 
 func buildFlowLibraryIndex(libraryFiles []string) (flowLibraryIndex, error) {
@@ -366,14 +419,15 @@ func cloneSourceMapEntries(entries []sourceMapEntry) []sourceMapEntry {
 	return cloned
 }
 
-func mergeRebasedScenarioSourceMaps(
+func mergeRebasedSelectedLibrarySourceMaps(
 	base *sourceMap,
 	library *sourceMap,
 	libraryStageID string,
 	flowStageID string,
 	selectedScenarioIDs map[string]struct{},
+	selectedAuthNames map[string]struct{},
 ) *sourceMap {
-	if library == nil || len(selectedScenarioIDs) == 0 {
+	if library == nil || (len(selectedScenarioIDs) == 0 && len(selectedAuthNames) == 0) {
 		return base
 	}
 
@@ -404,6 +458,14 @@ func mergeRebasedScenarioSourceMaps(
 			selectedScenarioIDs,
 		)
 		if !ok {
+			entry, ok = rebaseHTTPAuthSourceMapEntry(
+				library.Entries[i],
+				libraryStagePath,
+				flowStagePath,
+				selectedAuthNames,
+			)
+		}
+		if !ok {
 			continue
 		}
 		if _, exists := merged.bySpecPath[entry.SpecPath]; exists {
@@ -415,6 +477,59 @@ func mergeRebasedScenarioSourceMaps(
 	}
 
 	return merged
+}
+
+func rebaseHTTPAuthSourceMapEntry(
+	entry sourceMapEntry,
+	libraryStagePath string,
+	flowStagePath string,
+	selectedAuthNames map[string]struct{},
+) (sourceMapEntry, bool) {
+	for authName := range selectedAuthNames {
+		libraryAuthPath := httpEntryPath(libraryStagePath, "auth", authName)
+		if entry.SpecPath != libraryAuthPath &&
+			!strings.HasPrefix(entry.SpecPath, libraryAuthPath+"/") {
+			continue
+		}
+
+		rebased := entry
+		rebased.SpecPath = flowStagePath + strings.TrimPrefix(entry.SpecPath, libraryStagePath)
+		rebased.NodeID = rebased.SpecPath
+		rebased.YAML = nil
+		rebased.locator = selectedHTTPAuthYAMLLocator(authName, strings.TrimPrefix(entry.SpecPath, libraryAuthPath))
+		return rebased, true
+	}
+
+	return sourceMapEntry{}, false
+}
+
+func selectedHTTPAuthYAMLLocator(authName, suffix string) []yamlPathStep {
+	base := yamlKeyPath("http", "auth", authName)
+	if suffix == "" {
+		return base
+	}
+
+	index, ok := parseHTTPAuthAttachSuffix(suffix)
+	if !ok {
+		return nil
+	}
+	return appendYAMLPath(base, yamlKey("attach"), yamlIndex(index))
+}
+
+func parseHTTPAuthAttachSuffix(suffix string) (int, bool) {
+	const (
+		prefix    = "/attach["
+		suffixEnd = "]"
+	)
+	if !strings.HasPrefix(suffix, prefix) || !strings.HasSuffix(suffix, suffixEnd) {
+		return 0, false
+	}
+
+	index, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(suffix, prefix), suffixEnd))
+	if err != nil {
+		return 0, false
+	}
+	return index, true
 }
 
 func rebaseScenarioSourceMapEntry(

@@ -1,4 +1,4 @@
-id: reference-dynamic-http-auth
+id: reusable-auth-service-lib
 http:
   auth:
     service_api:
@@ -20,18 +20,11 @@ scenarios:
             kind: ref
             ref: session_token
     acts:
-      - id: get-sample-resource
+      - id: get-sample
         action:
           use: action.http
           with:
             method: GET
-            url: https://api.example.test/sample-resource
+            url: https://api.example.test/sample
             session: none
             auth: service_api
-scenario_calls:
-  - id: run-sample
-    scenario_id: service/sample-ready
-    bindings:
-      session_token:
-        kind: env
-        name: THEATER_DOC_SERVICE_SESSION_TOKEN

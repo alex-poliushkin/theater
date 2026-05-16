@@ -131,16 +131,46 @@ func buildHTTPSourceMap(builder *sourceMapBuilder, stagePath string, section sta
 		entry := section.Entries[i]
 		var locator []yamlPathStep
 		switch entry.Kind {
-		case "session":
+		case sectionHTTPSession:
 			locator = yamlKeyPath("http", "sessions", entry.ID)
-		case "auth":
+		case sectionHTTPAuth:
 			locator = yamlKeyPath("http", "auth", entry.ID)
-		case "identity":
+		case sectionHTTPIdentity:
 			locator = yamlKeyPath("http", "identities", entry.ID)
 		default:
 			continue
 		}
-		builder.record(httpEntryPath(stagePath, entry.Kind, entry.ID), entry.Span, locator)
+		entryPath := httpEntryPath(stagePath, entry.Kind, entry.ID)
+		builder.record(entryPath, entry.Span, locator)
+		if entry.Kind == sectionHTTPAuth {
+			recordHTTPAuthAttachmentSourceMap(builder, entryPath, locator, entry)
+		}
+	}
+}
+
+func recordHTTPAuthAttachmentSourceMap(
+	builder *sourceMapBuilder,
+	authPath string,
+	authLocator []yamlPathStep,
+	entry stageSectionEntrySyntax,
+) {
+	attachArg, ok := findArgument(entry.Call.Args, "attach")
+	if !ok {
+		return
+	}
+
+	list, ok := ungroupExpression(attachArg.Value).(listExpressionSyntax)
+	if !ok {
+		return
+	}
+
+	attachLocator := appendYAMLPath(authLocator, yamlKey("attach"))
+	for i := range list.Items {
+		builder.record(
+			fmt.Sprintf("%s/attach[%d]", authPath, i),
+			list.Items[i].ExpressionSpan(),
+			appendYAMLPath(attachLocator, yamlIndex(i)),
+		)
 	}
 }
 

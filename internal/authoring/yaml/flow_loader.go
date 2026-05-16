@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/alex-poliushkin/theater"
+	"github.com/alex-poliushkin/theater/internal/authoring/flowauth"
 )
 
 const (
@@ -122,6 +123,8 @@ func assembleFlowStage(
 		return theater.StageSpec{}, err
 	}
 
+	flowAuthNames := flowauth.DeclaredHTTPAuthNames(flowSpec.HTTP)
+	composedAuthOwners := make(map[string]string)
 	for _, libraryFile := range selectedFiles {
 		librarySpec, err := loadLibraryStage(libraryFile, matchers)
 		if err != nil {
@@ -132,14 +135,27 @@ func assembleFlowStage(
 			return theater.StageSpec{}, fmt.Errorf("library file %s must not declare scenario_calls", libraryFile)
 		}
 
+		selectedScenarioIDs := make(map[string]struct{})
 		for i := range librarySpec.Scenarios {
 			scenario := librarySpec.Scenarios[i]
 			if _, needed := neededScenarioIDs[scenario.ID]; !needed {
 				continue
 			}
 
+			selectedScenarioIDs[scenario.ID] = struct{}{}
 			assembled.Scenarios = append(assembled.Scenarios, scenario)
 		}
+		selectedAuthNames := flowauth.SelectedScenarioHTTPAuthNames(librarySpec.Scenarios, selectedScenarioIDs)
+		if err := flowauth.ValidateSelectedLibraryHTTPAuth(
+			librarySpec,
+			selectedScenarioIDs,
+			flowAuthNames,
+			composedAuthOwners,
+			libraryFile,
+		); err != nil {
+			return theater.StageSpec{}, err
+		}
+		flowauth.ComposeSelectedLibraryHTTPAuth(&assembled, librarySpec, selectedAuthNames)
 	}
 
 	return assembled, nil
@@ -149,8 +165,8 @@ func cloneFlowStage(flowSpec theater.StageSpec) theater.StageSpec {
 	return theater.StageSpec{
 		ID:            flowSpec.ID,
 		Name:          flowSpec.Name,
-		HTTP:          flowSpec.HTTP,
-		State:         flowSpec.State,
+		HTTP:          flowSpec.HTTP.Clone(),
+		State:         flowSpec.State.Clone(),
 		Scenarios:     append([]theater.ScenarioSpec(nil), flowSpec.Scenarios...),
 		ScenarioCalls: append([]theater.ScenarioCallSpec(nil), flowSpec.ScenarioCalls...),
 		SourceSpan:    flowSpec.SourceSpan,

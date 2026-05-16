@@ -261,42 +261,42 @@ func TestLoadFlowFilePreservesDynamicHTTPAuthBindings(t *testing.T) {
 	t.Parallel()
 
 	repoRoot := createFlowLoaderRepo(t)
-	flowPath := writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "flows", "mobile", "dashboard.yaml"), `
-id: mobile-dashboard
+	flowPath := writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "flows", "service", "sample.yaml"), `
+id: service-sample
 http:
   auth:
-    mobile_api:
+    service_api:
       attach:
         - bearer:
-            token_slot: access_token
+            token_slot: session_token
 scenarios:
-  - id: mobile/dashboard-ready
+  - id: service/sample-ready
     inputs:
-      access_token:
+      session_token:
         type: string
         required: true
         sensitivity: secret
         capture: omit
     auth_bindings:
-      mobile_api:
+      service_api:
         slots:
-          access_token:
+          session_token:
             kind: ref
-            ref: access_token
+            ref: session_token
     acts:
-      - id: wait-customer
+      - id: get-sample
         action:
           use: action.http
           with:
             method: GET
-            url: https://gateway.example.test/customer
+            url: https://api.example.test/sample
             session: none
-            auth: mobile_api
+            auth: service_api
 scenario_calls:
-  - id: mobile-dashboard-ready
-    scenario_id: mobile/dashboard-ready
+  - id: run-sample
+    scenario_id: service/sample-ready
     bindings:
-      access_token: issued-token
+      session_token: token-from-runtime
 `)
 
 	spec, err := LoadFlowFile(flowPath, flowLoaderTestMatcherResolver{})
@@ -304,20 +304,477 @@ scenario_calls:
 		t.Fatalf("load flow file failed: %v", err)
 	}
 
-	bearer := spec.HTTP.Auth["mobile_api"].Attach[0].Bearer
+	bearer := spec.HTTP.Auth["service_api"].Attach[0].Bearer
 	if bearer == nil {
-		t.Fatal("mobile_api bearer attachment must be preserved")
+		t.Fatal("service_api bearer attachment must be preserved")
 	}
-	if got, want := bearer.TokenSlot, "access_token"; got != want {
+	if got, want := bearer.TokenSlot, "session_token"; got != want {
 		t.Fatalf("bearer token slot mismatch: got %q want %q", got, want)
 	}
 
-	binding := spec.Scenarios[0].AuthBindings["mobile_api"].Slots["access_token"]
+	binding := spec.Scenarios[0].AuthBindings["service_api"].Slots["session_token"]
 	if binding.Ref == nil {
 		t.Fatal("auth binding slot ref must be preserved")
 	}
-	if got, want := binding.Ref.Name, "access_token"; got != want {
+	if got, want := binding.Ref.Name, "session_token"; got != want {
 		t.Fatalf("auth binding ref mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestLoadFlowFileComposesSelectedLibrarySlotBackedHTTPAuth(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := createFlowLoaderRepo(t)
+	flowPath := writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "flows", "service", "sample.yaml"), `
+id: sample-flow
+scenarios: []
+scenario_calls:
+  - id: run-sample
+    scenario_id: service/sample-ready
+    bindings:
+      session_token: token-from-runtime
+`)
+	writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "lib", "service", "sample.yaml"), `
+id: service-lib
+http:
+  auth:
+    service_api:
+      attach:
+        - bearer:
+            token_slot: session_token
+scenarios:
+  - id: service/sample-ready
+    inputs:
+      session_token:
+        type: string
+        required: true
+        sensitivity: secret
+        capture: omit
+    auth_bindings:
+      service_api:
+        slots:
+          session_token:
+            kind: ref
+            ref: session_token
+    acts:
+      - id: get-sample
+        action:
+          use: action.http
+          with:
+            method: GET
+            url: https://api.example.test/sample
+            auth: service_api
+`)
+
+	spec, err := LoadFlowFile(flowPath, flowLoaderTestMatcherResolver{})
+	if err != nil {
+		t.Fatalf("load flow file failed: %v", err)
+	}
+
+	if spec.HTTP == nil {
+		t.Fatal("selected library auth must create assembled http registry")
+	}
+	bearer := spec.HTTP.Auth["service_api"].Attach[0].Bearer
+	if bearer == nil {
+		t.Fatal("service_api bearer attachment must be composed")
+	}
+	if got, want := bearer.TokenSlot, "session_token"; got != want {
+		t.Fatalf("bearer token slot mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestLoadFlowFileComposesSelectedLibraryAuthUsedByHTTPInventory(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := createFlowLoaderRepo(t)
+	flowPath := writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "flows", "service", "sample.yaml"), `
+id: sample-flow
+scenarios: []
+scenario_calls:
+  - id: run-sample
+    scenario_id: service/sample-ready
+`)
+	writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "lib", "service", "sample.yaml"), `
+id: service-lib
+http:
+  auth:
+    service_api:
+      attach:
+        - header_slot:
+            name: X-Session-Token
+            slot: session_token
+scenarios:
+  - id: service/sample-ready
+    acts:
+      - id: load-sample
+        properties:
+          sample:
+            inventory:
+              use: inventory.http.get
+              with:
+                url: https://api.example.test/sample
+                auth: service_api
+        action:
+          use: action.generate
+          with:
+            outputs:
+              ok: true
+`)
+
+	spec, err := LoadFlowFile(flowPath, flowLoaderTestMatcherResolver{})
+	if err != nil {
+		t.Fatalf("load flow file failed: %v", err)
+	}
+
+	if spec.HTTP == nil {
+		t.Fatal("selected inventory auth must create assembled http registry")
+	}
+	headerSlot := spec.HTTP.Auth["service_api"].Attach[0].HeaderSlot
+	if headerSlot == nil {
+		t.Fatal("service_api header slot attachment must be composed")
+	}
+	if got, want := headerSlot.Slot, "session_token"; got != want {
+		t.Fatalf("header slot mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestLoadFlowFileLeavesUndeclaredSelectedLibraryAuthForValidation(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := createFlowLoaderRepo(t)
+	flowPath := writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "flows", "service", "sample.yaml"), `
+id: sample-flow
+scenarios: []
+scenario_calls:
+  - id: run-sample
+    scenario_id: service/sample-ready
+`)
+	writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "lib", "service", "sample.yaml"), `
+id: service-lib
+scenarios:
+  - id: service/sample-ready
+    acts:
+      - id: get-sample
+        action:
+          use: action.http
+          with:
+            method: GET
+            url: https://api.example.test/sample
+            auth: service_api
+`)
+
+	spec, err := LoadFlowFile(flowPath, flowLoaderTestMatcherResolver{})
+	if err != nil {
+		t.Fatalf("load flow file failed: %v", err)
+	}
+
+	diagnostics := theater.NewValidator(nil, nil).Validate(spec)
+	if !hasDiagnosticCode(diagnostics, "unknown_http_auth_ref") {
+		t.Fatalf("expected unknown_http_auth_ref diagnostic, got %#v", diagnostics)
+	}
+}
+
+func TestLoadFlowFileIgnoresUnselectedLibraryHTTPAuth(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := createFlowLoaderRepo(t)
+	flowPath := writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "flows", "service", "sample.yaml"), `
+id: sample-flow
+scenarios: []
+scenario_calls:
+  - id: run-sample
+    scenario_id: service/sample-ready
+    bindings:
+      session_token: token-from-runtime
+`)
+	writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "lib", "service", "sample.yaml"), `
+id: service-lib
+http:
+  auth:
+    service_api:
+      attach:
+        - bearer:
+            token_slot: session_token
+scenarios:
+  - id: service/sample-ready
+    inputs:
+      session_token:
+        type: string
+        required: true
+    auth_bindings:
+      service_api:
+        slots:
+          session_token:
+            kind: ref
+            ref: session_token
+    acts:
+      - id: get-sample
+        action:
+          use: action.http
+          with:
+            auth: service_api
+`)
+	writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "lib", "ops", "report.yaml"), `
+id: ops-lib
+http:
+  auth:
+    service_api:
+      attach:
+        - bearer:
+            token: unselected-secret
+scenarios:
+  - id: ops/report
+    acts:
+      - id: collect
+        action:
+          use: action.http
+`)
+
+	spec, err := LoadFlowFile(flowPath, flowLoaderTestMatcherResolver{})
+	if err != nil {
+		t.Fatalf("load flow file failed: %v", err)
+	}
+
+	bearer := spec.HTTP.Auth["service_api"].Attach[0].Bearer
+	if got, want := bearer.TokenSlot, "session_token"; got != want {
+		t.Fatalf("selected auth mismatch: got token_slot %q want %q", got, want)
+	}
+}
+
+func TestLoadFlowFileRejectsDuplicateSelectedLibraryHTTPAuth(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := createFlowLoaderRepo(t)
+	flowPath := writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "flows", "service", "sample.yaml"), `
+id: sample-flow
+scenarios: []
+scenario_calls:
+  - id: run-sample
+    scenario_id: service/sample-ready
+  - id: run-check
+    scenario_id: check/sample-ready
+`)
+	writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "lib", "service", "sample.yaml"), `
+id: service-lib
+http:
+  auth:
+    service_api:
+      attach:
+        - bearer:
+            token_slot: session_token
+scenarios:
+  - id: service/sample-ready
+    auth_bindings:
+      service_api:
+        slots:
+          session_token:
+            kind: ref
+            ref: session_token
+    acts:
+      - id: get-sample
+        action:
+          use: action.http
+          with:
+            auth: service_api
+`)
+	writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "lib", "check", "sample.yaml"), `
+id: check-lib
+http:
+  auth:
+    service_api:
+      attach:
+        - bearer:
+            token_slot: session_token
+scenarios:
+  - id: check/sample-ready
+    auth_bindings:
+      service_api:
+        slots:
+          session_token:
+            kind: ref
+            ref: session_token
+    acts:
+      - id: check-sample
+        action:
+          use: action.http
+          with:
+            auth: service_api
+`)
+
+	_, err := LoadFlowFile(flowPath, flowLoaderTestMatcherResolver{})
+	if err == nil {
+		t.Fatal("expected duplicate selected library auth error, got nil")
+	}
+
+	errtest.RequireContains(t, err, `http auth "service_api" is declared by multiple selected library files`)
+}
+
+func TestLoadFlowFileRejectsFlowAndLibraryHTTPAuthDuplicate(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := createFlowLoaderRepo(t)
+	flowPath := writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "flows", "service", "sample.yaml"), `
+id: sample-flow
+http:
+  auth:
+    service_api:
+      attach:
+        - bearer:
+            token_slot: session_token
+scenarios: []
+scenario_calls:
+  - id: run-sample
+    scenario_id: service/sample-ready
+`)
+	writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "lib", "service", "sample.yaml"), `
+id: service-lib
+http:
+  auth:
+    service_api:
+      attach:
+        - bearer:
+            token_slot: session_token
+scenarios:
+  - id: service/sample-ready
+    auth_bindings:
+      service_api:
+        slots:
+          session_token:
+            kind: ref
+            ref: session_token
+    acts:
+      - id: get-sample
+        action:
+          use: action.http
+          with:
+            auth: service_api
+`)
+
+	_, err := LoadFlowFile(flowPath, flowLoaderTestMatcherResolver{})
+	if err == nil {
+		t.Fatal("expected flow/library auth duplicate error, got nil")
+	}
+
+	errtest.RequireContains(t, err, `http auth "service_api" is declared by both flow and selected library file`)
+}
+
+func TestLoadFlowFileRejectsSelectedLibraryStaticHTTPAuth(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := createFlowLoaderRepo(t)
+	flowPath := writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "flows", "service", "sample.yaml"), `
+id: sample-flow
+scenarios: []
+scenario_calls:
+  - id: run-sample
+    scenario_id: service/sample-ready
+`)
+	writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "lib", "service", "sample.yaml"), `
+id: service-lib
+http:
+  auth:
+    service_api:
+      attach:
+        - bearer:
+            token: selected-library-secret
+scenarios:
+  - id: service/sample-ready
+    acts:
+      - id: get-sample
+        action:
+          use: action.http
+          with:
+            auth: service_api
+`)
+
+	_, err := LoadFlowFile(flowPath, flowLoaderTestMatcherResolver{})
+	if err == nil {
+		t.Fatal("expected selected library static auth error, got nil")
+	}
+
+	errtest.RequireContains(t, err, `selected library http auth "service_api" must use slot-backed attachments`)
+	if strings.Contains(err.Error(), "selected-library-secret") {
+		t.Fatalf("static credential value leaked in error: %v", err)
+	}
+}
+
+func TestLoadFlowFileRejectsSelectedLibraryStaticHTTPAuthDeterministically(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := createFlowLoaderRepo(t)
+	flowPath := writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "flows", "service", "sample.yaml"), `
+id: sample-flow
+scenarios: []
+scenario_calls:
+  - id: run-sample
+    scenario_id: service/sample-ready
+`)
+	writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "lib", "service", "sample.yaml"), `
+id: service-lib
+http:
+  auth:
+    zeta_api:
+      attach:
+        - bearer:
+            token: zeta-secret
+    alpha_api:
+      attach:
+        - bearer:
+            token: alpha-secret
+scenarios:
+  - id: service/sample-ready
+    acts:
+      - id: get-sample
+        action:
+          use: action.http
+`)
+
+	_, err := LoadFlowFile(flowPath, flowLoaderTestMatcherResolver{})
+	if err == nil {
+		t.Fatal("expected selected library static auth error, got nil")
+	}
+
+	errtest.RequireContains(t, err, `selected library http auth "alpha_api" must use slot-backed attachments`)
+	if strings.Contains(err.Error(), "alpha-secret") || strings.Contains(err.Error(), "zeta-secret") {
+		t.Fatalf("static credential value leaked in error: %v", err)
+	}
+}
+
+func TestLoadFlowFileRejectsUnusedSelectedLibraryStaticHTTPAuth(t *testing.T) {
+	t.Parallel()
+
+	repoRoot := createFlowLoaderRepo(t)
+	flowPath := writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "flows", "service", "sample.yaml"), `
+id: sample-flow
+scenarios: []
+scenario_calls:
+  - id: run-sample
+    scenario_id: service/sample-ready
+`)
+	writeFlowLoaderFile(t, repoRoot, filepath.Join("theater", "lib", "service", "sample.yaml"), `
+id: service-lib
+http:
+  auth:
+    service_api:
+      attach:
+        - bearer:
+            token: selected-library-secret
+scenarios:
+  - id: service/sample-ready
+    acts:
+      - id: get-sample
+        action:
+          use: action.http
+`)
+
+	_, err := LoadFlowFile(flowPath, flowLoaderTestMatcherResolver{})
+	if err == nil {
+		t.Fatal("expected selected library static auth error, got nil")
+	}
+
+	errtest.RequireContains(t, err, `selected library http auth "service_api" must use slot-backed attachments`)
+	if strings.Contains(err.Error(), "selected-library-secret") {
+		t.Fatalf("static credential value leaked in error: %v", err)
 	}
 }
 
@@ -415,4 +872,13 @@ func equalStrings(got, want []string) bool {
 	}
 
 	return true
+}
+
+func hasDiagnosticCode(diagnostics []theater.Diagnostic, code string) bool {
+	for i := range diagnostics {
+		if diagnostics[i].Code == code {
+			return true
+		}
+	}
+	return false
 }
