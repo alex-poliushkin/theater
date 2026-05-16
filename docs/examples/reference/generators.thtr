@@ -9,6 +9,8 @@ scenario inspect
         uuid_default: generate.uuid()
         timestamp_value: generate.timestamp(format: "rfc3339", offset: "5m")
         timestamp_default: generate.timestamp()
+        date_value: generate.date(format: "basic", offset: "15h")
+        date_default: generate.date()
         string_value: generate.string(length: 12, alphabet: "abcdef0123456789")
         digits_value: generate.digits(length: 6)
         email_value: generate.email(prefix: "demo", domain: "example.test")

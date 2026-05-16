@@ -226,6 +226,130 @@ scenario_calls:
 	}
 }
 
+func TestRunValidateReportsDateGeneratorDiagnosticsWithArgumentSource(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		fileName   string
+		source     string
+		wantPath   string
+		wantError  string
+		wantSource string
+	}{
+		{
+			name:     "thtr unsupported format",
+			fileName: "stage.thtr",
+			source: `stage invalid-date
+scenario inspect
+  act generate-values
+    do action.generate
+      outputs:
+        start_date: generate.date(format: "rfc3339")
+call run = inspect()
+`,
+			wantPath:   "binding.start_date/binding.format",
+			wantError:  `format "rfc3339" is not supported`,
+			wantSource: "source: <stage-file>:6:35",
+		},
+		{
+			name:     "thtr invalid offset",
+			fileName: "stage.thtr",
+			source: `stage invalid-date
+scenario inspect
+  act generate-values
+    do action.generate
+      outputs:
+        start_date: generate.date(offset: "soon")
+call run = inspect()
+`,
+			wantPath:   "binding.start_date/binding.offset",
+			wantError:  `offset "soon" is invalid`,
+			wantSource: "source: <stage-file>:6:35",
+		},
+		{
+			name:     "yaml unsupported format",
+			fileName: "stage.yaml",
+			source: `id: invalid-date
+scenarios:
+  - id: inspect
+    acts:
+      - id: generate-values
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                start_date:
+                  kind: generate
+                  generator: date
+                  format: rfc3339
+scenario_calls:
+  - id: run
+    scenario_id: inspect
+`,
+			wantPath:   "binding.start_date/binding.format",
+			wantError:  `format "rfc3339" is not supported`,
+			wantSource: "source: <stage-file>:15:27",
+		},
+		{
+			name:     "yaml invalid offset",
+			fileName: "stage.yaml",
+			source: `id: invalid-date
+scenarios:
+  - id: inspect
+    acts:
+      - id: generate-values
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                start_date:
+                  kind: generate
+                  generator: date
+                  offset: soon
+scenario_calls:
+  - id: run
+    scenario_id: inspect
+`,
+			wantPath:   "binding.start_date/binding.offset",
+			wantError:  `offset "soon" is invalid`,
+			wantSource: "source: <stage-file>:15:27",
+		},
+	}
+
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := writeStageFile(t, test.fileName, test.source)
+			var stdout strings.Builder
+			var stderr strings.Builder
+
+			code := run([]string{"validate", "-file", path}, &stdout, &stderr)
+			if got, want := code, 1; got != want {
+				t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+			}
+			if got := strings.TrimSpace(stderr.String()); got != "" {
+				t.Fatalf("stderr mismatch: got %q want empty", got)
+			}
+
+			output := normalizeRunOutput(stdout.String(), map[string]string{
+				path: "<stage-file>",
+			})
+			for _, want := range []string{test.wantPath, test.wantError, test.wantSource} {
+				if !strings.Contains(output, want) {
+					t.Fatalf("output missing %q: %q", want, output)
+				}
+			}
+		})
+	}
+}
+
 func TestValidationExitCodeTreatsOnlyHintsAsNonFatalDiagnostics(t *testing.T) {
 	t.Parallel()
 

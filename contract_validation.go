@@ -23,6 +23,23 @@ type contractValidator struct {
 	matchers MatcherResolver
 }
 
+type bindingContractPathError struct {
+	path string
+	err  error
+}
+
+type generatorArgValidationError interface {
+	GeneratorArg() string
+}
+
+func (e bindingContractPathError) Error() string {
+	return e.err.Error()
+}
+
+func (e bindingContractPathError) Unwrap() error {
+	return e.err
+}
+
 func validateActionBindings(
 	path string,
 	bindings map[string]bindingPlan,
@@ -46,11 +63,14 @@ func validateActionBindings(
 		}
 
 		if err := validateBindingContractWithResolver(resolver, matchers, decorators, binding, spec); err != nil {
+			diagnosticPath := bindingContractDiagnosticPath(bindingPath(path, key), err)
+			sourceSpan := bindingSourceForDiagnosticPath(binding, diagnosticPath)
 			diagnostics = append(diagnostics, Diagnostic{
 				Code:     "incompatible_action_arg",
-				Path:     bindingPath(path, key),
+				Path:     diagnosticPath,
 				Severity: SeverityError,
 				Summary:  fmt.Sprintf("action input %q %v", key, err),
+				Span:     sourceRefValue(sourceSpan),
 			})
 		}
 	}
@@ -73,6 +93,70 @@ func validateActionBindings(
 	}
 
 	return diagnostics
+}
+
+func bindingSourceForDiagnosticPath(binding bindingPlan, path string) *SourceRef {
+	if binding.Path == path {
+		return cloneSourceRef(binding.SourceSpan)
+	}
+
+	for key := range binding.Object {
+		if source := bindingSourceForDiagnosticPath(binding.Object[key], path); source != nil {
+			return source
+		}
+	}
+	for i := range binding.List {
+		if source := bindingSourceForDiagnosticPath(binding.List[i], path); source != nil {
+			return source
+		}
+	}
+	for i := range binding.Parts {
+		if source := bindingSourceForDiagnosticPath(binding.Parts[i], path); source != nil {
+			return source
+		}
+	}
+	for key := range binding.Args {
+		if source := bindingSourceForDiagnosticPath(binding.Args[key], path); source != nil {
+			return source
+		}
+	}
+	for i := range binding.Candidates {
+		if source := bindingSourceForDiagnosticPath(binding.Candidates[i], path); source != nil {
+			return source
+		}
+	}
+
+	return nil
+}
+
+func sourceRefValue(source *SourceRef) SourceRef {
+	if source == nil {
+		return SourceRef{}
+	}
+
+	return *source
+}
+
+func bindingContractDiagnosticPath(defaultPath string, err error) string {
+	var pathErr bindingContractPathError
+	if errors.As(err, &pathErr) && pathErr.path != "" {
+		return pathErr.path
+	}
+
+	return defaultPath
+}
+
+func withBindingContractPath(path string, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var pathErr bindingContractPathError
+	if errors.As(err, &pathErr) && pathErr.path != "" {
+		return bindingContractPathError{path: pathErr.path, err: err}
+	}
+
+	return bindingContractPathError{path: path, err: err}
 }
 
 func validateActionOutputs(
@@ -618,7 +702,7 @@ func validateObjectBindingContract(
 		}
 
 		if err := validateBindingContractWithResolver(resolver, matchers, decorators, child, fieldSpec); err != nil {
-			return fmt.Errorf("field %q: %w", key, err)
+			return withBindingContractPath(child.Path, fmt.Errorf("field %q: %w", key, err))
 		}
 	}
 
@@ -652,7 +736,7 @@ func validateListBindingContract(
 
 	for i := range binding.List {
 		if err := validateBindingContractWithResolver(resolver, matchers, decorators, binding.List[i], *spec.Elem); err != nil {
-			return fmt.Errorf("item %d: %w", i, err)
+			return withBindingContractPath(binding.List[i].Path, fmt.Errorf("item %d: %w", i, err))
 		}
 	}
 
@@ -678,7 +762,7 @@ func validateStringBindingContract(
 	}
 	for i := range binding.Parts {
 		if err := validateBindingContractWithResolver(resolver, matchers, decorators, binding.Parts[i], stringPartContract); err != nil {
-			return fmt.Errorf("part %d: %w", i, err)
+			return withBindingContractPath(binding.Parts[i].Path, fmt.Errorf("part %d: %w", i, err))
 		}
 	}
 
@@ -702,11 +786,11 @@ func validateGenerateBindingContract(
 	}
 
 	if err := validateGeneratorBindingArgs(resolver, matchers, decorators, binding, def.Contract); err != nil {
-		return err
+		return withBindingContractPath(binding.Path, err)
 	}
 
 	if err := validateStaticGenerateBindingArgs(def, binding.Args); err != nil {
-		return err
+		return withBindingContractPath(binding.Path, err)
 	}
 
 	if spec.Supports(ValueKindAny) {
@@ -748,7 +832,7 @@ func validateCoalesceBindingContract(
 ) error {
 	for i := range binding.Candidates {
 		if err := validateBindingContractWithResolver(resolver, matchers, decorators, binding.Candidates[i], spec); err != nil {
-			return fmt.Errorf("candidate %d: %w", i, err)
+			return withBindingContractPath(binding.Candidates[i].Path, fmt.Errorf("candidate %d: %w", i, err))
 		}
 	}
 
@@ -766,14 +850,29 @@ func validateStaticGenerateBindingArgs(def GeneratorDef, args map[string]binding
 	}
 
 	if err := validateResolvedGeneratorArgs(def.Contract, Args(resolved)); err != nil {
-		return err
+		return generatorArgContractError(args, err)
 	}
 
 	if def.Validate != nil {
-		return def.Validate(cloneValues(resolved))
+		return generatorArgContractError(args, def.Validate(cloneValues(resolved)))
 	}
 
 	return nil
+}
+
+func generatorArgContractError(args map[string]bindingPlan, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var argErr generatorArgValidationError
+	if errors.As(err, &argErr) {
+		if binding, ok := args[argErr.GeneratorArg()]; ok {
+			return withBindingContractPath(binding.Path, err)
+		}
+	}
+
+	return err
 }
 
 func resolveStaticBindings(bindings map[string]bindingPlan) (Values, error) {
@@ -1018,11 +1117,11 @@ func validateGeneratorBindingArgs(
 		child := binding.Args[key]
 		spec, ok := specs[key]
 		if !ok {
-			return fmt.Errorf("generator %q does not support arg %q", binding.Generator, key)
+			return withBindingContractPath(child.Path, fmt.Errorf("generator %q does not support arg %q", binding.Generator, key))
 		}
 
 		if err := validateBindingContractWithResolver(resolver, matchers, decorators, child, spec.Accepts); err != nil {
-			return fmt.Errorf("generator %q arg %q %w", binding.Generator, key, err)
+			return withBindingContractPath(child.Path, fmt.Errorf("generator %q arg %q %w", binding.Generator, key, err))
 		}
 	}
 

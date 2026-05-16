@@ -47,6 +47,9 @@ object ThtrCompletions {
 
 		candidates += stateBackendIDCompletions(context, symbols)
 		if (candidates.isEmpty()) {
+			candidates += dateFormatValueCompletions(context)
+		}
+		if (candidates.isEmpty()) {
 			candidates += argumentCompletions(context, capabilities)
 		}
 		if (candidates.isEmpty()) {
@@ -132,6 +135,26 @@ private fun argumentCompletions(
 		val type = if (parameter.required) "required argument" else "optional argument"
 		ThtrCompletionItem(parameter.name, type, parameter.valueType)
 	}
+}
+
+private fun dateFormatValueCompletions(context: CompletionContext): List<ThtrCompletionItem> {
+	val callStart = context.linePrefix.lastIndexOf("generate.date(")
+	if (callStart < 0) {
+		return emptyList()
+	}
+	val argsPrefix = context.linePrefix.substring(callStart + "generate.date(".length)
+	val currentArgPrefix = argsPrefix.substringAfterLast(',')
+	if (!currentArgPrefix.contains("format:")) {
+		return emptyList()
+	}
+	val afterFormat = currentArgPrefix.substringAfter("format:").trimStart()
+	if (!afterFormat.startsWith("\"")) {
+		return emptyList()
+	}
+	return listOf(
+		ThtrCompletionItem("iso", "date format", "YYYY-MM-DD"),
+		ThtrCompletionItem("basic", "date format", "YYYYMMDD"),
+	)
 }
 
 private fun referenceCompletions(

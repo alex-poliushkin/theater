@@ -192,6 +192,7 @@ scenario login
 call run = login(
   email: generate.email(domain: "example.test"),
   external_id: generate.acme.identity.email(domain: "example.test"),
+  start_date: generate.date(format: "basic", offset: "240h"),
 )
 `), nil)
 	if err != nil {
@@ -204,6 +205,15 @@ call run = login(
 	}
 	if got, want := bindings["external_id"].Generator, "acme.identity.email"; got != want {
 		t.Fatalf("dotted generator ref mismatch: got %q want %q", got, want)
+	}
+	if got, want := bindings["start_date"].Generator, "date"; got != want {
+		t.Fatalf("date generator ref mismatch: got %q want %q", got, want)
+	}
+	if got, want := bindings["start_date"].Args["format"].Value, "basic"; got != want {
+		t.Fatalf("date format arg mismatch: got %#v want %#v", got, want)
+	}
+	if got, want := bindings["start_date"].Args["offset"].Value, "240h"; got != want {
+		t.Fatalf("date offset arg mismatch: got %#v want %#v", got, want)
 	}
 }
 

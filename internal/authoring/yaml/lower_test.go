@@ -361,6 +361,33 @@ stem:
 	}
 }
 
+func TestDecodeBindingSpecOrLiteralLowersDateGenerateBinding(t *testing.T) {
+	t.Parallel()
+
+	binding, err := decodeBindingSpecOrLiteralWithSource(mustParseYAMLNode(t, `
+kind: generate
+generator: date
+format: basic
+offset: 240h
+`), "")
+	if err != nil {
+		t.Fatalf("decode date generator binding failed: %v", err)
+	}
+
+	if got, want := binding.Kind, theater.BindingKindGenerate; got != want {
+		t.Fatalf("binding kind mismatch: got %q want %q", got, want)
+	}
+	if got, want := binding.Generator, "date"; got != want {
+		t.Fatalf("binding generator mismatch: got %q want %q", got, want)
+	}
+	if got, want := binding.Args["format"].Value, "basic"; got != want {
+		t.Fatalf("format arg mismatch: got %#v want %#v", got, want)
+	}
+	if got, want := binding.Args["offset"].Value, "240h"; got != want {
+		t.Fatalf("offset arg mismatch: got %#v want %#v", got, want)
+	}
+}
+
 func TestDecodeBindingSpecOrLiteralLowersCoalesceBinding(t *testing.T) {
 	t.Parallel()
 

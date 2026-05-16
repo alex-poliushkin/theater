@@ -661,7 +661,7 @@ func TestCompleteCommandUsesMetadata(t *testing.T) {
 		{name: "root", args: []string{commandComplete, "pl"}, want: []string{commandPlugins}},
 		{name: "help targets", args: []string{commandComplete, commandHelp, ""}, want: []string{commandInit, commandRun, commandValidate, commandExplain, commandDoctor, commandPlugins, commandReport, "environment", "exit-codes", "formats", "debug-selectors", "compatibility", "migration"}},
 		{name: "explain targets", args: []string{commandComplete, commandExplain, ""}, want: []string{"action", "actions", "inventory", "formats", "output-format", "state-backend"}},
-		{name: "explain generator targets", args: []string{commandComplete, commandExplain, "generator", ""}, want: []string{"email", "uuid", "timestamp"}},
+		{name: "explain generator targets", args: []string{commandComplete, commandExplain, "generator", ""}, want: []string{"date", "email", "uuid", "timestamp"}},
 		{name: "explain action targets", args: []string{commandComplete, commandExplain, "action", ""}, want: []string{"http", "generate", "action.http", "action.generate"}},
 		{name: "plugins", args: []string{commandComplete, commandPlugins, ""}, want: []string{commandPluginsDigest, commandPluginsInspect, commandPluginsLock, commandPluginsDoctor}},
 		{name: "plugins digest flags", args: []string{commandComplete, commandPlugins, commandPluginsDigest, "--"}, want: []string{"--manifest", "--write"}},

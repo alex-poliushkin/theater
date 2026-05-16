@@ -11,9 +11,14 @@ Source of truth:
 
 ## Checked Generator Catalog
 
-<!-- theater-doc: command id=reference-generator-family cwd=../../.. expect-stdout="Capabilities (8):" expect-stdout-2="uuid" expect-stdout-3="timestamp" -->
+<!-- theater-doc: command id=reference-generator-family cwd=../../.. expect-stdout="Capabilities (9):" expect-stdout-2="uuid" expect-stdout-3="timestamp" expect-stdout-4="date" -->
 ```sh
 go run ./cmd/theater explain generator
+```
+
+<!-- theater-doc: command id=reference-generator-date cwd=../../.. expect-stdout="Capability: date" expect-stdout-2="UTC date string" expect-stdout-3="format" expect-stdout-4="Produces:" -->
+```sh
+go run ./cmd/theater explain generator date
 ```
 
 <!-- theater-doc: command id=reference-generator-uuid cwd=../../.. expect-stdout="Capability: uuid" expect-stdout-2="version  string" expect-stdout-3="Produces:" -->
@@ -25,6 +30,7 @@ go run ./cmd/theater explain generator uuid
 
 | Ref | Produces |
 | --- | --- |
+| `date` | UTC date string with `iso` or `basic` format and optional offset |
 | `digits` | deterministic pseudo-random digit string |
 | `email` | unique-looking email per binding and scenario invocation |
 | `phone` | deterministic phone-like string with finite suffix space and optional shuffled suffix order |
@@ -59,6 +65,8 @@ scenario inspect
         uuid_default: generate.uuid()
         timestamp_value: generate.timestamp(format: "rfc3339", offset: "5m")
         timestamp_default: generate.timestamp()
+        date_value: generate.date(format: "basic", offset: "15h")
+        date_default: generate.date()
         string_value: generate.string(length: 12, alphabet: "abcdef0123456789")
         digits_value: generate.digits(length: 6)
         email_value: generate.email(prefix: "demo", domain: "example.test")
@@ -105,6 +113,14 @@ scenarios:
                 timestamp_default:
                   kind: generate
                   generator: timestamp
+                date_value:
+                  kind: generate
+                  generator: date
+                  format: basic
+                  offset: 15h
+                date_default:
+                  kind: generate
+                  generator: date
                 string_value:
                   kind: generate
                   generator: string
@@ -147,6 +163,33 @@ scenario_calls:
   - id: run
     scenario_id: inspect
 ```
+
+### `date`
+
+Theater DSL binding: `start_date: generate.date(format: "basic", offset: "15h")`
+
+Use `start_date: generate.date()` for the run base date in the default `iso`
+format. The date is calculated from the stage run base time plus the optional
+duration offset, converted to UTC, and rendered as a string.
+
+Supported formats:
+
+| Format | Output shape |
+| --- | --- |
+| `iso` | `YYYY-MM-DD` |
+| `basic` | `YYYYMMDD` |
+
+The `format` argument is a closed enum. It does not accept Go layouts, PHP date
+tokens, Java/ICU patterns, or arbitrary pattern strings. Use `timestamp` when a
+full RFC3339 instant is required.
+
+YAML binding:
+
+    start_date:
+      kind: generate
+      generator: date
+      format: basic
+      offset: 15h
 
 ### `digits`
 

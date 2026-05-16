@@ -135,6 +135,11 @@ func TestExplainCommandShowsDetailAcrossFamilies(t *testing.T) {
 			want: []string{"Capability: email", "Args:", "domain", "required", "Produces:", "string"},
 		},
 		{
+			name: "date generator",
+			args: []string{commandExplain, "generator", "date"},
+			want: []string{"Capability: date", "UTC date string", "iso or basic", "format", "offset", "Produces:", "string"},
+		},
+		{
 			name: "state backend",
 			args: []string{commandExplain, "state-backend", "file"},
 			want: []string{"Capability: state.backend.file", "Params:", "root", "State behavior:", "guarantee: local-atomic"},

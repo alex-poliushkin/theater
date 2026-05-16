@@ -16,6 +16,8 @@ class ThtrDocumentationTest : BasePlatformTestCase() {
 			scenario api
 			  act get
 			    do action.http<caret>(method: "GET", url: "/health")
+			  act prepare
+			    prop start_date = generate.date(format: "basic")
 			""".trimIndent(),
 		)
 		val leaf = findLeaf(file, "action.http")
@@ -26,6 +28,12 @@ class ThtrDocumentationTest : BasePlatformTestCase() {
 
 		val documentation = target.computeDocumentation().toString()
 		assertTrue(documentation.contains("action.http(method: string, url: string, timeout?: duration)"))
+
+		val dateLeaf = findLeaf(file, "generate.date")
+		val dateTarget = ThtrDocumentationTargetProvider().documentationTarget(dateLeaf, dateLeaf)
+		assertNotNull(dateTarget)
+		assertTrue(dateTarget!!.computeDocumentationHint()?.contains("built-in generator") == true)
+		assertTrue(dateTarget.computeDocumentation().toString().contains("generate.date(format?: iso|basic, offset?: duration)"))
 	}
 
 	fun testQuickDocumentationTargetsDescriptorBackedPluginRefs() {

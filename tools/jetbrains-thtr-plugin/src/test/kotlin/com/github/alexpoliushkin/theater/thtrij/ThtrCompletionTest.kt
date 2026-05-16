@@ -208,6 +208,7 @@ class ThtrCompletionTest : BasePlatformTestCase() {
 			).contains("matcher.smoke.equal"),
 		)
 		assertTrue(completionLabels("stage smoke\nscenario gen\n  act create\n    prop email = generate.e<caret>").contains("generate.email"))
+		assertTrue(completionLabels("stage smoke\nscenario gen\n  act create\n    prop start_date = generate.d<caret>").contains("generate.date"))
 		assertTrue(completionLabels("stage smoke\nscenario gen\n  act create\n    prop email = c<caret>").contains("coalesce"))
 		assertTrue(completionLabels("stage smoke\nscenario gen\n  act create\n    prop email = coalesce(e<caret>").contains("env"))
 	}
@@ -229,6 +230,24 @@ class ThtrCompletionTest : BasePlatformTestCase() {
 
 		assertTrue(myFixture.file.text.contains("    export"))
 		assertFalse(myFixture.file.text.contains("exexport"))
+	}
+
+	fun testDateFormatCompletionInsertsValueInsideExistingQuotes() {
+		myFixture.configureByText(
+			ThtrFileType.INSTANCE,
+			"""
+			stage smoke
+			scenario gen
+			  act create
+			    prop start_date = generate.date(format: "<caret>")
+			""".trimIndent(),
+		)
+
+		val iso = myFixture.completeBasic().first { it.lookupString == "iso" }
+		myFixture.lookup.currentItem = iso
+		myFixture.finishLookup(Lookup.NORMAL_SELECT_CHAR)
+
+		assertTrue(myFixture.file.text.contains("""generate.date(format: "iso")"""))
 	}
 
 	fun testDescriptorArgumentNamesCompleteFromCapabilityContracts() {
@@ -263,6 +282,28 @@ class ThtrCompletionTest : BasePlatformTestCase() {
 			""",
 		)
 		assertTrue(selectorTransformLabels.contains("prefix"))
+
+		val dateArgLabels = completionLabels(
+			"""
+			stage smoke
+			scenario gen
+			  act create
+			    prop start_date = generate.date(<caret>
+			""",
+		)
+		assertTrue(dateArgLabels.contains("format"))
+		assertTrue(dateArgLabels.contains("offset"))
+
+		val dateFormatLabels = completionLabels(
+			"""
+			stage smoke
+			scenario gen
+			  act create
+			    prop start_date = generate.date(format: "<caret>
+			""",
+		)
+		assertTrue(dateFormatLabels.contains("iso"))
+		assertTrue(dateFormatLabels.contains("basic"))
 	}
 
 	private fun completionLabels(source: String): Set<String> {

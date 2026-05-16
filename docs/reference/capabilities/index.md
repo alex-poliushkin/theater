@@ -29,7 +29,7 @@ go run ./cmd/theater explain http
 | `action` | 9 | [Actions](actions.md) |
 | `inventory` | 5 | [Inventories](inventories.md) |
 | `transform` | 2 | [Decorators And Transforms](decorators.md) |
-| `generator` | 8 | [Generators](generators.md) |
+| `generator` | 9 | [Generators](generators.md) |
 | `matcher` | 17 | [Matchers](matchers.md) |
 | `state-backend` | 1 | [State](state.md) |
 | `report-exporter` | 0 built in | Plugin-provided only |

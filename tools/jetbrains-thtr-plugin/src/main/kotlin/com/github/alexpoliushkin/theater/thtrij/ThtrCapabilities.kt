@@ -511,7 +511,18 @@ private fun builtinCapabilities(): List<ThtrCapability> {
 	).map {
 		ThtrCapability(ThtrCapabilityKind.MATCHER, it, "Evaluate a Theater expectation.", ThtrCapabilityProvider.BUILTIN)
 	}
-	val generators = listOf("sequence", "uuid", "timestamp", "string", "digits", "email", "phone", "slug").map {
+	val generators = listOf(
+		ThtrCapability(
+			ThtrCapabilityKind.GENERATOR,
+			"date",
+			"Generate a UTC date string.",
+			ThtrCapabilityProvider.BUILTIN,
+			listOf(
+				ThtrCapabilityParameter("format", "iso|basic", false),
+				ThtrCapabilityParameter("offset", "duration", false),
+			),
+		),
+	) + listOf("sequence", "uuid", "timestamp", "string", "digits", "email", "phone", "slug").map {
 		ThtrCapability(ThtrCapabilityKind.GENERATOR, it, "Generate a value for authoring-time data.", ThtrCapabilityProvider.BUILTIN)
 	}
 	return (builtins + matchers + generators).sortedWith(compareBy({ it.kind.ordinal }, { it.completionLabel }))

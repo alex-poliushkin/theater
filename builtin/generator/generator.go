@@ -13,6 +13,7 @@ import (
 
 	"github.com/alex-poliushkin/theater"
 	"github.com/alex-poliushkin/theater/internal/runtimevalue"
+	"github.com/alex-poliushkin/theater/internal/temporalfmt"
 )
 
 // Stable refs for built-in generators.
@@ -20,6 +21,7 @@ const (
 	SequenceRef  = "sequence"
 	UUIDRef      = "uuid"
 	TimestampRef = "timestamp"
+	DateRef      = "date"
 	StringRef    = "string"
 	DigitsRef    = "digits"
 	EmailRef     = "email"
@@ -30,6 +32,7 @@ const (
 const (
 	defaultStringAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 	defaultTimestampFmt   = "rfc3339"
+	defaultDateFmt        = temporalfmt.DateFormatISO
 	defaultUUIDVersion    = "v4"
 	uuidVersionV7         = "v7"
 	defaultEmailStem      = "user"
@@ -42,6 +45,7 @@ func descriptors() map[string]theater.GeneratorDef {
 		SequenceRef:  sequenceDef(),
 		UUIDRef:      uuidDef(),
 		TimestampRef: timestampDef(),
+		DateRef:      dateDef(),
 		StringRef:    stringDef(),
 		DigitsRef:    digitsDef(),
 		EmailRef:     emailDef(),
@@ -91,6 +95,21 @@ func timestampDef() theater.GeneratorDef {
 		},
 		Validate: validateTimestampArgs,
 		Generate: generateTimestamp,
+	}
+}
+
+func dateDef() theater.GeneratorDef {
+	return theater.GeneratorDef{
+		Contract: theater.GeneratorContract{
+			Summary: "UTC date string with iso or basic format and optional offset",
+			Args: []theater.ArgSpec{
+				stringArg("format", false),
+				stringArg("offset", false),
+			},
+			Produces: theater.ValueContract{Kind: theater.ValueKindString, Required: true},
+		},
+		Validate: validateDateArgs,
+		Generate: generateDate,
 	}
 }
 
@@ -217,26 +236,32 @@ func validateSequenceArgs(args theater.Values) error {
 func validateUUIDArgs(args theater.Values) error {
 	version := stringArgValue(theater.Args(args), "version", defaultUUIDVersion)
 	if version != defaultUUIDVersion && version != uuidVersionV7 {
-		return fmt.Errorf("version %q is not supported", version)
+		return generatorArgError("version", fmt.Errorf("version %q is not supported", version))
 	}
 
 	return nil
 }
 
 func validateTimestampArgs(args theater.Values) error {
-	if _, ok := args["offset"]; ok {
-		offset := stringArgValue(theater.Args(args), "offset", "")
-		if _, err := time.ParseDuration(offset); err != nil {
-			return fmt.Errorf("offset %q is invalid: %w", offset, err)
-		}
+	if err := validateDurationArg(theater.Args(args), "offset"); err != nil {
+		return err
 	}
 
 	format := stringArgValue(theater.Args(args), "format", defaultTimestampFmt)
 	if format != defaultTimestampFmt {
-		return fmt.Errorf("format %q is not supported", format)
+		return generatorArgError("format", fmt.Errorf("format %q is not supported", format))
 	}
 
 	return nil
+}
+
+func validateDateArgs(args theater.Values) error {
+	if err := validateDurationArg(theater.Args(args), "offset"); err != nil {
+		return err
+	}
+
+	format := stringArgValue(theater.Args(args), "format", defaultDateFmt)
+	return generatorArgError("format", temporalfmt.ValidateDateFormat(format))
 }
 
 func validateStringArgs(args theater.Values) error {
@@ -367,10 +392,9 @@ func generateUUID(request theater.GeneratorRequest) (any, error) {
 }
 
 func generateTimestamp(request theater.GeneratorRequest) (any, error) {
-	offsetText := stringArgValue(request.Args, "offset", "0s")
-	offset, err := time.ParseDuration(offsetText)
+	offset, err := durationArg(request.Args, "offset")
 	if err != nil {
-		return nil, fmt.Errorf("offset %q is invalid: %w", offsetText, err)
+		return nil, err
 	}
 
 	format := stringArgValue(request.Args, "format", defaultTimestampFmt)
@@ -381,6 +405,16 @@ func generateTimestamp(request theater.GeneratorRequest) (any, error) {
 	default:
 		return nil, fmt.Errorf("format %q is not supported", format)
 	}
+}
+
+func generateDate(request theater.GeneratorRequest) (any, error) {
+	offset, err := durationArg(request.Args, "offset")
+	if err != nil {
+		return nil, err
+	}
+
+	format := stringArgValue(request.Args, "format", defaultDateFmt)
+	return temporalfmt.FormatDate(request.Generation.BaseTime.Add(offset), format)
 }
 
 func generateString(request theater.GeneratorRequest) (any, error) {
@@ -542,6 +576,50 @@ func stringArgValue(args theater.Args, key, defaultValue string) string {
 	}
 
 	return text
+}
+
+func validateDurationArg(args theater.Args, key string) error {
+	if _, ok := args[key]; !ok {
+		return nil
+	}
+
+	_, err := durationArg(args, key)
+	return generatorArgError(key, err)
+}
+
+func durationArg(args theater.Args, key string) (time.Duration, error) {
+	offsetText := stringArgValue(args, key, "0s")
+	offset, err := time.ParseDuration(offsetText)
+	if err != nil {
+		return 0, fmt.Errorf("%s %q is invalid: %w", key, offsetText, err)
+	}
+
+	return offset, nil
+}
+
+type argValidationError struct {
+	arg string
+	err error
+}
+
+func (e argValidationError) Error() string {
+	return e.err.Error()
+}
+
+func (e argValidationError) Unwrap() error {
+	return e.err
+}
+
+func (e argValidationError) GeneratorArg() string {
+	return e.arg
+}
+
+func generatorArgError(arg string, err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return argValidationError{arg: arg, err: err}
 }
 
 func randomString(rng *randv2.Rand, alphabet string, length int64) string {

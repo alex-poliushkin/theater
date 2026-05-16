@@ -29,6 +29,14 @@ scenarios:
                 timestamp_default:
                   kind: generate
                   generator: timestamp
+                date_value:
+                  kind: generate
+                  generator: date
+                  format: basic
+                  offset: 15h
+                date_default:
+                  kind: generate
+                  generator: date
                 string_value:
                   kind: generate
                   generator: string

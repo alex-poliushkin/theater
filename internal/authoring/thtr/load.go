@@ -44,6 +44,9 @@ func (r LoadResult) RewriteDiagnostics(diagnostics []theater.Diagnostic) []theat
 	}
 
 	for i := range rewritten {
+		if rewritten[i].Span.Line != 0 {
+			continue
+		}
 		entry, ok := r.sourceMap.LookupSpecPath(rewritten[i].Path)
 		if !ok {
 			continue
