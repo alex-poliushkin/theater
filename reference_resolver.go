@@ -132,7 +132,11 @@ func (r referenceResolver) ExportValuesContext(ctx context.Context, exports []ex
 	for _, export := range exports {
 		value, err := r.ResolveExportContext(ctx, export)
 		if err != nil {
-			return nil, err
+			return nil, exportResolutionError{
+				path:  export.Path,
+				alias: exportAlias(export),
+				cause: err,
+			}
 		}
 
 		exported[exportAlias(export)] = value
@@ -575,6 +579,38 @@ func (r referenceResolver) compilePickWhereClausesContext(
 type compiledPickWhereClause struct {
 	Subject relativeSubjectPlan
 	Matcher Matcher
+}
+
+type exportResolutionError struct {
+	path  string
+	alias string
+	cause error
+}
+
+func (e exportResolutionError) Error() string {
+	if e.alias == "" {
+		return e.cause.Error()
+	}
+
+	return fmt.Sprintf("export %q: %v", e.alias, e.cause)
+}
+
+func (e exportResolutionError) Unwrap() error {
+	return e.cause
+}
+
+func exportResolutionPath(err error, parentPath string) string {
+	var exportErr exportResolutionError
+	if errors.As(err, &exportErr) {
+		if exportErr.alias != "" {
+			return exportPath(parentPath, exportErr.alias)
+		}
+		if exportErr.path != "" {
+			return exportErr.path
+		}
+	}
+
+	return parentPath
 }
 
 func pickWhereItemMatches(ctx context.Context, item any, clauses []compiledPickWhereClause) (bool, error) {

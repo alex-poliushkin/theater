@@ -70,6 +70,10 @@ surface uses the forms in this table.
 the current item and must start with `path(...)` or `decode(...)`; when both are
 used, `decode(...)` comes before `path(...)`.
 
+`has item where` and `all items where` are assertion forms. They do not export
+or bind the matching item. Use the selector form `pick where` when a later
+pipeline step needs to read from the selected object.
+
 Both `lacks key(K)` and `has no key(K)` are accepted; `theater fmt` renders the
 canonical `lacks key(K)` spelling. Negation wraps the inner matcher without
 changing its validation rules.

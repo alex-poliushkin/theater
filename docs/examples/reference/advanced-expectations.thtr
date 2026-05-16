@@ -4,9 +4,22 @@ scenario inspect
   act read
     do action.generate
       outputs:
-        users: list [ object { id: "user-123", email: "demo@example.test" } ]
-        code: "A123"
-    expect user: field(values) | path("/users") has item where path("/id") == "user-123"
-    export code = field(values) | path("/code") matches r"^[A-Z][0-9]{3}$"
+        items: list [
+          object { id: "item-123", kind: "sample", status: "ready", label: "Primary" },
+          object { id: "item-456", kind: "sample", status: "blocked", label: "Secondary" }
+        ]
+    expect item-present: field(values) | path("/items") has item where (
+      path("/id") == "item-123",
+      path("/kind") == "sample"
+    )
+    export selected_status = (
+      field(values)
+      | path("/items")
+      | pick where (
+        path("/id") == "item-123",
+        path("/kind") == "sample"
+      )
+      | path("/status")
+    )
 
 call run = inspect()

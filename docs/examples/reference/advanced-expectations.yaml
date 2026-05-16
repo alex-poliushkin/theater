@@ -9,35 +9,56 @@ scenarios:
             outputs:
               kind: object
               object:
-                users:
+                items:
                   kind: list
                   list:
                     - kind: object
                       object:
-                        id: user-123
-                        email: demo@example.test
-                code: A123
+                        id: item-123
+                        kind: sample
+                        status: ready
+                        label: Primary
+                    - kind: object
+                      object:
+                        id: item-456
+                        kind: sample
+                        status: blocked
+                        label: Secondary
         expectations:
-          - id: user
+          - id: item-present
             subject:
               field: values
-              path: /users
+              path: /items
             assert:
               has_item:
                 - subject:
                     path: /id
                   assert:
-                    eq: user-123
-          - id: code
-            subject:
-              field: values
-              path: /code
-            assert:
-              matches: '^[A-Z][0-9]{3}$'
+                    eq: item-123
+                - subject:
+                    path: /kind
+                  assert:
+                    eq: sample
         exports:
-          - as: code
+          - as: selected_status
             field: values
-            path: /code
+            path: /items
+            through:
+              - pick:
+                  where:
+                    - subject:
+                        path: /id
+                      assert:
+                        ref: expectation.equal
+                        args:
+                          expected: item-123
+                    - subject:
+                        path: /kind
+                      assert:
+                        ref: expectation.equal
+                        args:
+                          expected: sample
+              - path: /status
 scenario_calls:
   - id: run
     scenario_id: inspect

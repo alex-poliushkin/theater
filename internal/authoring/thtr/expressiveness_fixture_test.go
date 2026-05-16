@@ -84,14 +84,14 @@ func TestExpressivenessStressRuntimeFailureFixtures(t *testing.T) {
 		{
 			name:        "runtime-pick-zero.thtr",
 			wantCause:   "pick matched no items",
-			wantFailure: theater.FailureKindInternal,
-			wantActPath: "stage.pick-zero/call.wait/act.poll",
+			wantFailure: theater.FailureKindObservation,
+			wantActPath: "stage.pick-zero/call.wait/act.fetch",
 		},
 		{
 			name:        "runtime-pick-multiple.thtr",
 			wantCause:   "pick matched multiple items",
-			wantFailure: theater.FailureKindInternal,
-			wantActPath: "stage.pick-multiple/call.wait/act.poll",
+			wantFailure: theater.FailureKindObservation,
+			wantActPath: "stage.pick-multiple/call.wait/act.fetch",
 		},
 		{
 			name:        "runtime-missing-null-matrix.thtr",
@@ -300,7 +300,7 @@ func registerExpressivenessActions(t *testing.T, catalog *theater.Catalog) {
 		t.Fatalf("register smoke action failed: %v", err)
 	}
 
-	if err := catalog.RegisterAction("action.fixture.notifications", &testkit.ScriptedAction{
+	if err := catalog.RegisterAction("action.fixture.items", &testkit.ScriptedAction{
 		ContractValue: theater.ActionContract{
 			Inputs: map[string]theater.ValueContract{
 				"case": {Kind: theater.ValueKindString, Required: true},
@@ -312,15 +312,15 @@ func registerExpressivenessActions(t *testing.T, catalog *theater.Catalog) {
 		RunFunc: func(args theater.Args) (theater.Outputs, error) {
 			switch args["case"] {
 			case "zero":
-				return theater.Outputs{"body": `{"items":[{"receiverAddress":"other@example.test","subject":"Verification Code","body":"Code 111111"}]}`}, nil
+				return theater.Outputs{"body": `{"items":[{"id":"item-999","kind":"sample","status":"ready","label":"Other"}]}`}, nil
 			case "multiple":
-				return theater.Outputs{"body": `{"items":[{"receiverAddress":"demo@example.test","subject":"Verification Code","body":"Code 111111"},{"receiverAddress":"demo@example.test","subject":"Verification Code","body":"Code 222222"}]}`}, nil
+				return theater.Outputs{"body": `{"items":[{"id":"item-123","kind":"sample","status":"ready","label":"Primary"},{"id":"item-123","kind":"sample","status":"blocked","label":"Duplicate"}]}`}, nil
 			default:
-				return nil, fmt.Errorf("unknown notifications fixture case %q", args["case"])
+				return nil, fmt.Errorf("unknown items fixture case %q", args["case"])
 			}
 		},
 	}); err != nil {
-		t.Fatalf("register notifications action failed: %v", err)
+		t.Fatalf("register items action failed: %v", err)
 	}
 
 	if err := catalog.RegisterAction("action.fixture.profile", &testkit.ScriptedAction{

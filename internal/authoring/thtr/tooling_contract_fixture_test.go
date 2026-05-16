@@ -58,14 +58,14 @@ func TestToolingContractFixtureRoundTripFormatLowerValidateAndMap(t *testing.T) 
 	requireToolingSourceMapRange(t, result, "stage.tooling-smoke/scenario.verify-items/act.fetch/action/binding.headers.x-trace.id", sourceRange{
 		startLine: 13, startColumn: 9, endLine: 13, endColumn: 32,
 	})
-	requireToolingSourceMapRange(t, result, "stage.tooling-smoke/scenario.verify-items/act.fetch/expectation.has-notification/assert/binding.where", sourceRange{
-		startLine: 15, startColumn: 83, endLine: 18, endColumn: 6,
+	requireToolingSourceMapRange(t, result, "stage.tooling-smoke/scenario.verify-items/act.fetch/expectation.has-item/assert/binding.where", sourceRange{
+		startLine: 15, startColumn: 75, endLine: 18, endColumn: 6,
 	})
-	requireToolingSourceMapRange(t, result, "stage.tooling-smoke/scenario.verify-items/act.fetch/export.otp/through[0]/pick/where[0]/subject/path", sourceRange{
-		startLine: 20, startColumn: 7, endLine: 20, endColumn: 31,
+	requireToolingSourceMapRange(t, result, "stage.tooling-smoke/scenario.verify-items/act.fetch/export.item_label/through[0]/pick/where[0]/subject/path", sourceRange{
+		startLine: 20, startColumn: 7, endLine: 20, endColumn: 18,
 	})
-	requireToolingSourceMapRange(t, result, "stage.tooling-smoke/scenario.verify-items/act.fetch/export.otp/through[2]", sourceRange{
-		startLine: 22, startColumn: 25, endLine: 22, endColumn: 65,
+	requireToolingSourceMapRange(t, result, "stage.tooling-smoke/scenario.verify-items/act.fetch/export.item_label/through[2]", sourceRange{
+		startLine: 22, startColumn: 26, endLine: 22, endColumn: 69,
 	})
 }
 

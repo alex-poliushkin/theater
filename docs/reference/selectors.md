@@ -80,5 +80,35 @@ Transform selector steps do not publish values into scope. They only convert the
 selected value before the next selector step, expectation, export, log, or
 binding use.
 
+## Collection Checks And Selection
+
+`has item where` is a matcher form. It asserts that a selected list contains at
+least one item matching the relative clauses, but it does not expose the matched
+item to later selector steps.
+
+`pick where` is a selector step. It selects exactly one list item matching the
+same relative clause shape, then the pipeline can continue through ordinary
+selector steps:
+
+```
+field(body) | decode(json) | path("/items") | pick where path("/id") == $item_id | path("/status")
+```
+
+Use `has item where` when the flow only needs to prove existence. Use
+`pick where` when a later expectation, export, log, or binding must read from
+the selected object. `pick where` fails if the input is not a list, if no item
+matches, or if multiple items match. Theater does not silently choose the first
+matching item.
+
+The compact exact-one selector is still available for a single equality check:
+
+```
+field(body) | decode(json) | path("/items") | pick(at: "/id", equals: $item_id) | path("/status")
+```
+
+If `pick where` succeeds and a later selector step fails, the report cause names
+the later step, for example a missing `path("/status")`, rather than reporting a
+selection failure.
+
 For a runnable selector example, use
 [Check Values](../tutorial/05-check-values.md).

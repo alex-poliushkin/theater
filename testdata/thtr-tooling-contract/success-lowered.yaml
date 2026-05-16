@@ -2,14 +2,14 @@ id: tooling-smoke
 scenarios:
     - id: verify-items
       inputs:
-        email:
+        item_id:
             type: string
             kinds: {}
             required: true
       acts:
         - id: fetch
           properties:
-            notifications:
+            item_list:
                 inventory:
                     use: inventory.http.get
                     with:
@@ -18,7 +18,7 @@ scenarios:
                             value: none
                         url:
                             kind: literal
-                            value: https://api.example.test/notifications
+                            value: https://api.example.test/items
                 decorators:
                     - use: json.decode
           action:
@@ -41,9 +41,9 @@ scenarios:
                     value: none
                 url:
                     kind: literal
-                    value: https://api.example.test/notifications
+                    value: https://api.example.test/items
           expectations:
-            - id: has-notification
+            - id: has-item
               subject:
                 field: body
                 decode: json
@@ -65,7 +65,7 @@ scenarios:
                                                 expected:
                                                     kind: ref
                                                     ref:
-                                                        name: email
+                                                        name: item_id
                                                         decode: ""
                                                         path: ""
                                                         through: []
@@ -77,7 +77,7 @@ scenarios:
                                     object:
                                         path:
                                             kind: literal
-                                            value: /receiverAddress
+                                            value: /id
                             - kind: object
                               object:
                                 assert:
@@ -88,18 +88,18 @@ scenarios:
                                             object:
                                                 expected:
                                                     kind: literal
-                                                    value: Verification
+                                                    value: sample
                                         ref:
                                             kind: literal
-                                            value: expectation.contains
+                                            value: expectation.equal
                                 subject:
                                     kind: object
                                     object:
                                         path:
                                             kind: literal
-                                            value: /subject
+                                            value: /kind
           exports:
-            - as: otp
+            - as: item_label
               ref: null
               field: body
               decode: json
@@ -108,33 +108,33 @@ scenarios:
                 - pick:
                     where:
                         - subject:
-                            path: /receiverAddress
+                            path: /id
                           assert:
                             ref: expectation.equal
                             args:
                                 expected:
                                     kind: ref
                                     ref:
-                                        name: email
+                                        name: item_id
                                         decode: ""
                                         path: ""
                                         through: []
                         - subject:
-                            path: /subject
+                            path: /kind
                           assert:
-                            ref: expectation.contains
+                            ref: expectation.equal
                             args:
                                 expected:
                                     kind: literal
-                                    value: Verification
-                - path: /body
+                                    value: sample
+                - path: /label
                 - regexp:
-                    pattern: ([0-9]{6})
+                    pattern: ^([A-Za-z]+)$
                     group: 1
 scenario_calls:
     - id: verify
       scenario_id: verify-items
       bindings:
-        email:
+        item_id:
             kind: literal
-            value: demo@example.test
+            value: item-123

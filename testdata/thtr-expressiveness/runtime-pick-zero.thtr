@@ -1,11 +1,11 @@
 stage pick-zero
 
-scenario mail/wait(email: string!)
-  act poll
-    do action.fixture.notifications(case: "zero")
-    export otp = field(body) | decode(json) | path("/items") | pick where (
-      path("/receiverAddress") == $email,
-      path("/subject") contains "Verification Code"
-    ) | path("/body") | regexp(pattern: r"([0-9]{6})", group: 1)
+scenario select-item(item_id: string!)
+  act fetch
+    do action.fixture.items(case: "zero")
+    export selected_status = field(body) | decode(json) | path("/items") | pick where (
+      path("/id") == $item_id,
+      path("/kind") == "sample"
+    ) | path("/status")
 
-call wait = mail/wait(email: "demo@example.test")
+call wait = select-item(item_id: "item-123")

@@ -3317,6 +3317,149 @@ func TestRunEventuallyRetriesInventorySetupFailureUntilSuccess(t *testing.T) {
 	}
 }
 
+func TestRunEventuallyRetriesActExportSelectorFailureUntilSuccess(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "select-item",
+			Acts: []theater.ActSpec{
+				{
+					ID:         "wait-item",
+					Eventually: &theater.EventuallySpec{Timeout: "1s", Interval: "1ms"},
+					Action:     theater.ActionSpec{Use: "action.find", Repeatable: true},
+					Exports: []theater.ExportSpec{{
+						As:    "selected_status",
+						Field: "items",
+						Through: []theater.ThroughStepSpec{
+							pickWhereIDEqualsRef("target"),
+							{Path: theater.JSONPointer("/status")},
+						},
+					}},
+					Expectations: []theater.ExpectationSpec{{
+						ID:      "action-ready",
+						Subject: theater.SubjectSpec{Field: "ready"},
+						Assert: theater.AssertSpec{
+							Ref: builtinexpectation.EqualRef,
+							Args: map[string]theater.BindingSpec{
+								"expected": {Kind: theater.BindingKindLiteral, Value: true},
+							},
+						},
+					}},
+					Transitions: []theater.TransitionSpec{{On: theater.TransitionOnPass, To: "verify"}},
+				},
+				{
+					ID: "verify",
+					Action: theater.ActionSpec{
+						Use: "action.verify",
+						With: map[string]theater.BindingSpec{
+							"status": {Kind: theater.BindingKindRef, Ref: &theater.RefSpec{Name: "selected_status"}},
+						},
+					},
+				},
+			},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{ID: "run", ScenarioID: "select-item"}},
+	}
+
+	actionCalls := 0
+	findAction := &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Outputs: map[string]theater.ValueContract{
+				"target": {Kind: theater.ValueKindString},
+				"items":  {Kind: theater.ValueKindAny},
+				"ready":  {Kind: theater.ValueKindBool},
+			},
+		},
+		RunFunc: func(theater.Args) (theater.Outputs, error) {
+			actionCalls++
+			item := map[string]any{"id": "item-100", "kind": "sample", "label": "alpha"}
+			if actionCalls >= 2 {
+				item["status"] = "ready"
+			}
+
+			return theater.Outputs{
+				"target": "item-100",
+				"items":  []any{item},
+				"ready":  true,
+			}, nil
+		},
+	}
+	verifyAction := &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Inputs: map[string]theater.ValueContract{
+				"status": {Kind: theater.ValueKindString, Required: true},
+			},
+		},
+		CheckFunc: func(args theater.Args) error {
+			if got, want := args["status"], "ready"; got != want {
+				t.Fatalf("status arg mismatch: got %v want %v", got, want)
+			}
+
+			return nil
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.find", findAction); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	if err := catalog.RegisterAction("action.verify", verifyAction); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(context.Background(), spec, catalog, matcherCatalog(t, builtinexpectation.Descriptors()...))
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+
+	if got, want := result.Report.Status, theater.StatusPassed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q diagnostics=%v failure=%v", got, want, result.Diagnostics, result.Report.Failure)
+	}
+	if got, want := len(findAction.Calls), 2; got != want {
+		t.Fatalf("find action call count mismatch: got %d want %d", got, want)
+	}
+	if got, want := len(verifyAction.Calls), 1; got != want {
+		t.Fatalf("verify action call count mismatch: got %d want %d", got, want)
+	}
+
+	actNode := findNodeReport(t, result.Report, theater.NodeKindAct, "stage.main/call.run/act.wait-item")
+	if actNode.Eventually == nil {
+		t.Fatal("eventually report is nil")
+	}
+	if got, want := actNode.Eventually.TerminationReason, theater.TerminationReasonConverged; got != want {
+		t.Fatalf("termination reason mismatch: got %q want %q", got, want)
+	}
+	if got, want := actNode.Eventually.SuccessAttempt, 2; got != want {
+		t.Fatalf("success attempt mismatch: got %d want %d", got, want)
+	}
+	if got, want := len(actNode.Eventually.AttemptTimeline), 2; got != want {
+		t.Fatalf("attempt timeline length mismatch: got %d want %d", got, want)
+	}
+	firstAttempt := actNode.Eventually.AttemptTimeline[0]
+	requireFailure(t, firstAttempt.Failure, theater.FailureKindObservation, "act export failed", `path "/status" target is missing`)
+	if got, want := firstAttempt.Failure.At, "stage.main/call.run/act.wait-item/export.selected_status"; got != want {
+		t.Fatalf("first attempt failure path mismatch: got %q want %q", got, want)
+	}
+	if got := firstAttempt.FailureSummary; !strings.Contains(got, `path "/status" target is missing`) {
+		t.Fatalf("first attempt failure summary mismatch: got %q", got)
+	}
+	if got, want := firstAttempt.Status, theater.StatusFailed; got != want {
+		t.Fatalf("first attempt status mismatch: got %q want %q", got, want)
+	}
+	if !firstAttempt.Retryable {
+		t.Fatal("first attempt must be retryable")
+	}
+	if got, want := actNode.Eventually.AttemptTimeline[1].Status, theater.StatusPassed; got != want {
+		t.Fatalf("second attempt status mismatch: got %q want %q", got, want)
+	}
+	requireFailure(t, actNode.Eventually.LastObservedFailure, theater.FailureKindObservation, "act export failed", `path "/status" target is missing`)
+	if got, want := actNode.Eventually.LastObservedFailure.At, "stage.main/call.run/act.wait-item/export.selected_status"; got != want {
+		t.Fatalf("last observed failure path mismatch: got %q want %q", got, want)
+	}
+}
+
 func TestRunEventuallyTimeoutAfterExpectationMismatch(t *testing.T) {
 	t.Parallel()
 
@@ -5377,6 +5520,171 @@ func TestRunFieldExportSelectorCanReferenceActionOutput(t *testing.T) {
 	}
 }
 
+func TestRunReportsPickWhereExpectationSelectorFailures(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name      string
+		target    string
+		items     []any
+		wantCause string
+	}{
+		{
+			name:   "no match",
+			target: "item-404",
+			items: []any{
+				map[string]any{"id": "item-100", "kind": "sample", "status": "ready"},
+			},
+			wantCause: "pick matched no items",
+		},
+		{
+			name:   "later selector step fails",
+			target: "item-100",
+			items: []any{
+				map[string]any{"id": "item-100", "kind": "sample", "label": "alpha"},
+			},
+			wantCause: `path "/status" target is missing`,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			spec := theater.StageSpec{
+				ID: "main",
+				Scenarios: []theater.ScenarioSpec{{
+					ID: "select-item",
+					Acts: []theater.ActSpec{{
+						ID:     "fetch",
+						Action: theater.ActionSpec{Use: "action.find"},
+						Expectations: []theater.ExpectationSpec{{
+							ID: "selected-ready",
+							Subject: theater.SubjectSpec{
+								Field: "items",
+								Through: []theater.ThroughStepSpec{
+									pickWhereIDEqualsRef("target"),
+									{Path: theater.JSONPointer("/status")},
+								},
+							},
+							Assert: theater.AssertSpec{
+								Ref: builtinexpectation.EqualRef,
+								Args: map[string]theater.BindingSpec{
+									"expected": {Kind: theater.BindingKindLiteral, Value: "ready"},
+								},
+							},
+						}},
+					}},
+				}},
+				ScenarioCalls: []theater.ScenarioCallSpec{
+					{ID: "run", ScenarioID: "select-item"},
+				},
+			}
+
+			catalog := theater.NewCatalog()
+			if err := catalog.RegisterAction("action.find", scriptedItemAction(testCase.target, testCase.items)); err != nil {
+				t.Fatalf("register action failed: %v", err)
+			}
+
+			result, err := runStage(context.Background(), spec, catalog, matcherCatalog(t, builtinexpectation.Descriptors()...))
+			if err != nil {
+				t.Fatalf("run stage failed: %v", err)
+			}
+
+			requireReportFailure(t, result.Report, theater.FailureKindObservation, "observation failed", "stage.main/call.run/act.fetch/expectation.selected-ready", testCase.wantCause)
+			expectationNode := findNodeReport(t, result.Report, theater.NodeKindExpectation, "stage.main/call.run/act.fetch/expectation.selected-ready")
+			requireNodeFailure(t, expectationNode, theater.FailureKindObservation, "observation failed", testCase.wantCause)
+		})
+	}
+}
+
+func TestRunReportsPickWhereActExportSelectorFailure(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "select-item",
+			Acts: []theater.ActSpec{{
+				ID:     "fetch",
+				Action: theater.ActionSpec{Use: "action.find"},
+				Exports: []theater.ExportSpec{{
+					As:    "selected_status",
+					Field: "items",
+					Through: []theater.ThroughStepSpec{
+						pickWhereIDEqualsRef("target"),
+						{Path: theater.JSONPointer("/status")},
+					},
+				}},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "run", ScenarioID: "select-item"},
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.find", scriptedItemAction("item-100", []any{
+		map[string]any{"id": "item-100", "kind": "sample", "status": "ready"},
+		map[string]any{"id": "item-100", "kind": "sample", "status": "blocked"},
+	})); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(context.Background(), spec, catalog, matcherCatalog(t, builtinexpectation.Descriptors()...))
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+
+	requireReportFailure(t, result.Report, theater.FailureKindObservation, "act export failed", "stage.main/call.run/act.fetch/export.selected_status", "pick matched multiple items")
+	actionNode := findNodeReport(t, result.Report, theater.NodeKindAction, "stage.main/call.run/act.fetch/action")
+	if got, want := actionNode.Status, theater.StatusPassed; got != want {
+		t.Fatalf("action node status mismatch: got %q want %q", got, want)
+	}
+	actNode := findNodeReport(t, result.Report, theater.NodeKindAct, "stage.main/call.run/act.fetch")
+	requireNodeFailure(t, actNode, theater.FailureKindObservation, "act export failed", `export "selected_status": pick matched multiple items`)
+}
+
+func TestRunReportsPickWhereLogSelectorFailure(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "select-item",
+			Acts: []theater.ActSpec{{
+				ID:     "fetch",
+				Action: theater.ActionSpec{Use: "action.find"},
+				Logs: []theater.LogSpec{{
+					ID:       "selected-status",
+					Value:    theater.LogValueSpec{Field: "items", Through: []theater.ThroughStepSpec{pickWhereIDEqualsRef("target")}},
+					Required: true,
+				}},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{
+			{ID: "run", ScenarioID: "select-item"},
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.find", scriptedItemAction("item-100", map[string]any{"id": "item-100"})); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(context.Background(), spec, catalog, matcherCatalog(t, builtinexpectation.Descriptors()...))
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+
+	requireReportFailure(t, result.Report, theater.FailureKindObservation, "log evaluation failed", "stage.main/call.run/act.fetch/log.selected-status", "pick requires list input")
+	log := findLogRecord(t, result.Report, "selected-status")
+	if got, want := log.Status, theater.LogStatusError; got != want {
+		t.Fatalf("log status mismatch: got %q want %q", got, want)
+	}
+	requireFailure(t, log.Failure, theater.FailureKindObservation, "log evaluation failed", "pick requires list input")
+}
+
 func TestRunCoalesceUsesFallbackForOmittedOptionalInput(t *testing.T) {
 	t.Parallel()
 
@@ -5662,6 +5970,61 @@ func TestRunBindsAndExportsBetweenScenarioCalls(t *testing.T) {
 	if got, want := result.Report.Status, theater.StatusPassed; got != want {
 		t.Fatalf("report status mismatch: got %q want %q", got, want)
 	}
+}
+
+func TestRunReportsPickWhereScenarioCallExportSelectorFailure(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "collect-items",
+			Acts: []theater.ActSpec{{
+				ID:     "fetch",
+				Action: theater.ActionSpec{Use: "action.find"},
+				Exports: []theater.ExportSpec{
+					{Field: "target"},
+					{Field: "items"},
+				},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{
+			ID:         "collect",
+			ScenarioID: "collect-items",
+			Exports: []theater.ExportSpec{{
+				As:  "selected_status",
+				Ref: &theater.RefSpec{Name: "items"},
+				Through: []theater.ThroughStepSpec{
+					pickWhereIDEqualsRef("target"),
+					{Path: theater.JSONPointer("/status")},
+				},
+			}},
+		}},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.find", scriptedItemAction("item-100", []any{
+		map[string]any{"id": "item-100", "kind": "sample", "label": "alpha"},
+	})); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(context.Background(), spec, catalog, matcherCatalog(t, builtinexpectation.Descriptors()...))
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+
+	requireReportFailure(t, result.Report, theater.FailureKindObservation, "scenario export failed", "stage.main/call.collect/export.selected_status", `path "/status" target is missing`)
+	actionNode := findNodeReport(t, result.Report, theater.NodeKindAction, "stage.main/call.collect/act.fetch/action")
+	if got, want := actionNode.Status, theater.StatusPassed; got != want {
+		t.Fatalf("action node status mismatch: got %q want %q", got, want)
+	}
+	actNode := findNodeReport(t, result.Report, theater.NodeKindAct, "stage.main/call.collect/act.fetch")
+	if got, want := actNode.Status, theater.StatusPassed; got != want {
+		t.Fatalf("act node status mismatch: got %q want %q", got, want)
+	}
+	scenarioNode := findNodeReport(t, result.Report, theater.NodeKindScenario, "stage.main/call.collect")
+	requireNodeFailure(t, scenarioNode, theater.FailureKindObservation, "scenario export failed", `export "selected_status": path "/status" target is missing`)
 }
 
 func TestRunResolvesActPropertiesBeforeAction(t *testing.T) {
@@ -6358,4 +6721,80 @@ func findLogRecord(t *testing.T, report theater.Report, id string) theater.LogRe
 
 	t.Fatalf("log %q not found", id)
 	return theater.LogRecord{}
+}
+
+func scriptedItemAction(target string, items any) *testkit.ScriptedAction {
+	return &testkit.ScriptedAction{
+		ContractValue: theater.ActionContract{
+			Outputs: map[string]theater.ValueContract{
+				"target": {Kind: theater.ValueKindString},
+				"items":  {Kind: theater.ValueKindAny},
+			},
+		},
+		Output: theater.Outputs{
+			"target": target,
+			"items":  items,
+		},
+	}
+}
+
+func pickWhereIDEqualsRef(ref string) theater.ThroughStepSpec {
+	return theater.ThroughStepSpec{
+		Pick: &theater.PickStepSpec{
+			Where: []theater.PickWhereClauseSpec{{
+				Subject: theater.RelativeSubjectSpec{Path: theater.JSONPointer("/id")},
+				Assert: theater.AssertSpec{
+					Ref: builtinexpectation.EqualRef,
+					Args: map[string]theater.BindingSpec{
+						"expected": {Kind: theater.BindingKindRef, Ref: &theater.RefSpec{Name: ref}},
+					},
+				},
+			}},
+		},
+	}
+}
+
+func requireReportFailure(
+	t *testing.T,
+	report theater.Report,
+	kind theater.FailureKind,
+	summary string,
+	at string,
+	cause string,
+) {
+	t.Helper()
+
+	if got, want := report.Status, theater.StatusFailed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+	requireFailure(t, report.Failure, kind, summary, cause)
+	if got, want := report.Failure.At, at; got != want {
+		t.Fatalf("failure path mismatch: got %q want %q", got, want)
+	}
+}
+
+func requireNodeFailure(t *testing.T, node theater.NodeReport, kind theater.FailureKind, summary string, cause string) {
+	t.Helper()
+
+	if got, want := node.Status, theater.StatusFailed; got != want {
+		t.Fatalf("node status mismatch: got %q want %q", got, want)
+	}
+	requireFailure(t, node.Failure, kind, summary, cause)
+}
+
+func requireFailure(t *testing.T, failure *theater.Failure, kind theater.FailureKind, summary string, cause string) {
+	t.Helper()
+
+	if failure == nil {
+		t.Fatal("failure must be present")
+	}
+	if got, want := failure.Kind, kind; got != want {
+		t.Fatalf("failure kind mismatch: got %q want %q", got, want)
+	}
+	if got, want := failure.Summary, summary; got != want {
+		t.Fatalf("failure summary mismatch: got %q want %q", got, want)
+	}
+	if got := failure.Message(); !strings.Contains(got, cause) {
+		t.Fatalf("failure cause mismatch: got %q want contains %q", got, cause)
+	}
 }

@@ -153,6 +153,16 @@ func setupFailure(path string, err error) *Failure {
 	}
 }
 
+func exportObservationFailure(path, summary string, err error) *Failure {
+	return &Failure{
+		Kind:    FailureKindObservation,
+		Phase:   PhaseRun,
+		At:      path,
+		Summary: summary,
+		Cause:   err,
+	}
+}
+
 func summarizeStage(stage *stagePlan, states map[string]scenarioState) (status Status, failure *Failure) {
 	allSkipped := len(states) > 0
 	sawCanceled := false

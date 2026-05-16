@@ -325,7 +325,8 @@ func (r *scenarioRunner) Run(ctx context.Context) (scenarioState, error) {
 		withMatchers(r.matchers).
 		ExportValuesContext(ctx, r.call.Exports)
 	if err != nil {
-		return r.finish(ctx, StatusFailed, internalFailure(r.call.Path, "scenario export failed", err))
+		failure := exportObservationFailure(exportResolutionPath(err, r.call.Path), "scenario export failed", err)
+		return r.finish(ctx, StatusFailed, failure)
 	}
 
 	if err := r.recordScenarioFinished(ctx, StatusPassed, nil, exported); err != nil {
@@ -766,6 +767,28 @@ func (r *actRunner) finishPassed(
 	endedAt time.Time,
 	eventually *EventuallyReport,
 ) (actOutcome, error) {
+	exported, failure := r.resolvePassedActExports(ctx, actionOutputs, propertyValues)
+	if failure != nil {
+		return actOutcome{status: StatusFailed, failure: failure}, r.recordTerminal(
+			ctx,
+			attempt,
+			StatusFailed,
+			failure,
+			eventually,
+			startedAt,
+			endedAt,
+			nil,
+		)
+	}
+
+	return r.finishPassedWithExports(ctx, attempt, exported, propertyValues, startedAt, endedAt, eventually)
+}
+
+func (r *actRunner) resolvePassedActExports(
+	ctx context.Context,
+	actionOutputs Values,
+	propertyValues Values,
+) (exported Values, failure *Failure) {
 	refSource := layeredValueLookup{
 		primary:  mapValueLookup(propertyValues),
 		fallback: r.scenarioScope,
@@ -781,19 +804,22 @@ func (r *actRunner) finishPassed(
 		withMatchers(r.matchers).
 		ExportValuesContext(ctx, r.act.Exports)
 	if err != nil {
-		failure := internalFailure(r.path(), "act export failed", err)
-		return actOutcome{status: StatusFailed, failure: failure}, r.recordTerminal(
-			ctx,
-			attempt,
-			StatusFailed,
-			failure,
-			eventually,
-			startedAt,
-			endedAt,
-			nil,
-		)
+		failure := exportObservationFailure(exportResolutionPath(err, r.path()), "act export failed", err)
+		return nil, failure
 	}
 
+	return exported, nil
+}
+
+func (r *actRunner) finishPassedWithExports(
+	ctx context.Context,
+	attempt int,
+	exported Values,
+	propertyValues Values,
+	startedAt time.Time,
+	endedAt time.Time,
+	eventually *EventuallyReport,
+) (actOutcome, error) {
 	if err := r.recordTerminal(ctx, attempt, StatusPassed, nil, eventually, startedAt, endedAt, exported); err != nil {
 		return actOutcome{}, err
 	}
@@ -839,6 +865,9 @@ func (r *actRunner) runEventually(ctx context.Context) (actOutcome, error) {
 		outcome, attemptReport, err := r.runAttempt(actCtx, attempt)
 		if err != nil {
 			return actOutcome{}, err
+		}
+		if outcome.status == StatusPassed {
+			outcome, attemptReport = r.resolveEventuallyAttemptExports(actCtx, outcome, attemptReport)
 		}
 
 		retryable, updatedTimeline, observedFailure, observedBoundary := recordEventuallyAttempt(
@@ -906,6 +935,25 @@ func (r *actRunner) runEventually(ctx context.Context) (actOutcome, error) {
 	}
 }
 
+func (r *actRunner) resolveEventuallyAttemptExports(
+	ctx context.Context,
+	outcome actOutcome,
+	attemptReport AttemptReport,
+) (updatedOutcome actOutcome, updatedReport AttemptReport) {
+	exported, failure := r.resolvePassedActExports(ctx, outcome.values, outcome.properties)
+	if failure != nil {
+		outcome = actOutcome{
+			status:     StatusFailed,
+			failure:    failure,
+			properties: outcome.properties,
+		}
+	} else {
+		outcome.values = exported
+	}
+
+	return outcome, finalizeAttemptReport(attemptReport, outcome)
+}
+
 func (r *actRunner) emitDebugTerminalFailure(ctx context.Context, outcome actOutcome) error {
 	if r == nil || r.debug == nil || outcome.debugTerminalBoundary == nil {
 		return nil
@@ -918,7 +966,7 @@ func (r *actRunner) finishEventuallyPassed(
 	ctx context.Context,
 	attempt int,
 	startedAt time.Time,
-	actionOutputs Values,
+	exported Values,
 	propertyValues Values,
 	lastObservedFailure *Failure,
 	timeline []AttemptReport,
@@ -935,10 +983,10 @@ func (r *actRunner) finishEventuallyPassed(
 		attempt,
 	)
 
-	return r.finishPassed(
+	return r.finishPassedWithExports(
 		ctx,
 		attempt,
-		actionOutputs,
+		exported,
 		propertyValues,
 		startedAt,
 		timeline[len(timeline)-1].EndedAt,

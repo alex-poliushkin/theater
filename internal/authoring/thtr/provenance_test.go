@@ -163,18 +163,18 @@ scenario inspect
 func TestSourceMapRecordsPickWhereClausePaths(t *testing.T) {
 	t.Parallel()
 
-	lowered := mustLowerDocumentWithSourceMap(t, `stage otp-smoke
-scenario verify-email(email: string!)
-  act poll-notifications
-    do action.http(method: "GET", url: "/notifications")
-    export otp = field(body) | decode(json) | path("/items") | pick where (
-      path("/receiverAddress") == $email,
-      path("/subject") contains "Verification Code"
-    )
+	lowered := mustLowerDocumentWithSourceMap(t, `stage item-smoke
+scenario select-item(item_id: string!)
+  act fetch
+    do action.http(method: "GET", url: "/items")
+    export selected_status = field(body) | decode(json) | path("/items") | pick where (
+      path("/id") == $item_id,
+      path("/kind") == "sample"
+    ) | path("/status")
 `)
 
 	whereEntry, ok := lowered.SourceMap.LookupSpecPath(
-		"stage.otp-smoke/scenario.verify-email/act.poll-notifications/export.otp/through[0]/pick/where",
+		"stage.item-smoke/scenario.select-item/act.fetch/export.selected_status/through[0]/pick/where",
 	)
 	if !ok {
 		t.Fatal("pick where source map entry must be present")
@@ -182,9 +182,18 @@ scenario verify-email(email: string!)
 	if got, want := whereEntry.Source.StartLine, 5; got != want {
 		t.Fatalf("pick where line mismatch: got %d want %d", got, want)
 	}
+	if got, want := whereEntry.Source.StartColumn, 81; got != want {
+		t.Fatalf("pick where start column mismatch: got %d want %d", got, want)
+	}
+	if got, want := whereEntry.Source.EndLine, 8; got != want {
+		t.Fatalf("pick where end line mismatch: got %d want %d", got, want)
+	}
+	if got, want := whereEntry.Source.EndColumn, 6; got != want {
+		t.Fatalf("pick where end column mismatch: got %d want %d", got, want)
+	}
 
 	subjectEntry, ok := lowered.SourceMap.LookupSpecPath(
-		"stage.otp-smoke/scenario.verify-email/act.poll-notifications/export.otp/through[0]/pick/where[0]/subject/path",
+		"stage.item-smoke/scenario.select-item/act.fetch/export.selected_status/through[0]/pick/where[0]/subject/path",
 	)
 	if !ok {
 		t.Fatal("pick where subject path source map entry must be present")
@@ -192,15 +201,126 @@ scenario verify-email(email: string!)
 	if got, want := subjectEntry.Source.StartLine, 6; got != want {
 		t.Fatalf("pick where subject path line mismatch: got %d want %d", got, want)
 	}
+	if got, want := subjectEntry.Source.StartColumn, 7; got != want {
+		t.Fatalf("pick where subject path start column mismatch: got %d want %d", got, want)
+	}
+	if got, want := subjectEntry.Source.EndLine, 6; got != want {
+		t.Fatalf("pick where subject path end line mismatch: got %d want %d", got, want)
+	}
+	if got, want := subjectEntry.Source.EndColumn, 18; got != want {
+		t.Fatalf("pick where subject path end column mismatch: got %d want %d", got, want)
+	}
 
 	assertEntry, ok := lowered.SourceMap.LookupSpecPath(
-		"stage.otp-smoke/scenario.verify-email/act.poll-notifications/export.otp/through[0]/pick/where[0]/assert/binding.expected",
+		"stage.item-smoke/scenario.select-item/act.fetch/export.selected_status/through[0]/pick/where[0]/assert/binding.expected",
 	)
 	if !ok {
 		t.Fatal("pick where assert arg source map entry must be present")
 	}
 	if got, want := assertEntry.Source.StartLine, 6; got != want {
 		t.Fatalf("pick where assert arg line mismatch: got %d want %d", got, want)
+	}
+	if got, want := assertEntry.Source.StartColumn, 22; got != want {
+		t.Fatalf("pick where assert arg start column mismatch: got %d want %d", got, want)
+	}
+	if got, want := assertEntry.Source.EndLine, 6; got != want {
+		t.Fatalf("pick where assert arg end line mismatch: got %d want %d", got, want)
+	}
+	if got, want := assertEntry.Source.EndColumn, 30; got != want {
+		t.Fatalf("pick where assert arg end column mismatch: got %d want %d", got, want)
+	}
+
+	nextEntry, ok := lowered.SourceMap.LookupSpecPath(
+		"stage.item-smoke/scenario.select-item/act.fetch/export.selected_status/through[1]",
+	)
+	if !ok {
+		t.Fatal("path after pick where source map entry must be present")
+	}
+	if got, want := nextEntry.Source.StartLine, 8; got != want {
+		t.Fatalf("path after pick where start line mismatch: got %d want %d", got, want)
+	}
+	if got, want := nextEntry.Source.StartColumn, 9; got != want {
+		t.Fatalf("path after pick where start column mismatch: got %d want %d", got, want)
+	}
+	if got, want := nextEntry.Source.EndLine, 8; got != want {
+		t.Fatalf("path after pick where end line mismatch: got %d want %d", got, want)
+	}
+	if got, want := nextEntry.Source.EndColumn, 24; got != want {
+		t.Fatalf("path after pick where end column mismatch: got %d want %d", got, want)
+	}
+}
+
+func TestSourceMapRecordsCompactPickAndFollowingStepPaths(t *testing.T) {
+	t.Parallel()
+
+	lowered := mustLowerDocumentWithSourceMap(t, `stage item-smoke
+scenario select-item(item_id: string!)
+  act fetch
+    do action.http(method: "GET", url: "/items")
+    export selected_status = (
+      field(body)
+      | decode(json)
+      | path("/items")
+      | pick(at: "/id", equals: $item_id)
+      | path("/status")
+    )
+`)
+
+	pickEntry, ok := lowered.SourceMap.LookupSpecPath(
+		"stage.item-smoke/scenario.select-item/act.fetch/export.selected_status/through[0]",
+	)
+	if !ok {
+		t.Fatal("compact pick source map entry must be present")
+	}
+	if got, want := pickEntry.Source.StartLine, 9; got != want {
+		t.Fatalf("compact pick start line mismatch: got %d want %d", got, want)
+	}
+	if got, want := pickEntry.Source.StartColumn, 9; got != want {
+		t.Fatalf("compact pick start column mismatch: got %d want %d", got, want)
+	}
+	if got, want := pickEntry.Source.EndLine, 9; got != want {
+		t.Fatalf("compact pick end line mismatch: got %d want %d", got, want)
+	}
+	if got, want := pickEntry.Source.EndColumn, 42; got != want {
+		t.Fatalf("compact pick end column mismatch: got %d want %d", got, want)
+	}
+
+	equalsEntry, ok := lowered.SourceMap.LookupSpecPath(
+		"stage.item-smoke/scenario.select-item/act.fetch/export.selected_status/through[0]/pick/equals",
+	)
+	if !ok {
+		t.Fatal("compact pick equals source map entry must be present")
+	}
+	if got, want := equalsEntry.Source.StartLine, 9; got != want {
+		t.Fatalf("compact pick equals start line mismatch: got %d want %d", got, want)
+	}
+	if got, want := equalsEntry.Source.StartColumn, 25; got != want {
+		t.Fatalf("compact pick equals start column mismatch: got %d want %d", got, want)
+	}
+	if got, want := equalsEntry.Source.EndLine, 9; got != want {
+		t.Fatalf("compact pick equals end line mismatch: got %d want %d", got, want)
+	}
+	if got, want := equalsEntry.Source.EndColumn, 41; got != want {
+		t.Fatalf("compact pick equals end column mismatch: got %d want %d", got, want)
+	}
+
+	nextEntry, ok := lowered.SourceMap.LookupSpecPath(
+		"stage.item-smoke/scenario.select-item/act.fetch/export.selected_status/through[1]",
+	)
+	if !ok {
+		t.Fatal("path after compact pick source map entry must be present")
+	}
+	if got, want := nextEntry.Source.StartLine, 10; got != want {
+		t.Fatalf("path after compact pick start line mismatch: got %d want %d", got, want)
+	}
+	if got, want := nextEntry.Source.StartColumn, 9; got != want {
+		t.Fatalf("path after compact pick start column mismatch: got %d want %d", got, want)
+	}
+	if got, want := nextEntry.Source.EndLine, 10; got != want {
+		t.Fatalf("path after compact pick end line mismatch: got %d want %d", got, want)
+	}
+	if got, want := nextEntry.Source.EndColumn, 24; got != want {
+		t.Fatalf("path after compact pick end column mismatch: got %d want %d", got, want)
 	}
 }
 
