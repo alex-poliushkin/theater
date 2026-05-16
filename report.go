@@ -27,6 +27,8 @@ const (
 	NodeKindExpectation NodeKind = reportmodel.NodeKindExpectation
 	NodeKindLog         NodeKind = reportmodel.NodeKindLog
 
+	NodeDiagnosticKindHTTP NodeDiagnosticKind = reportmodel.NodeDiagnosticKindHTTP
+
 	LogStatusEmitted LogStatus = reportmodel.LogStatusEmitted
 	LogStatusOmitted LogStatus = reportmodel.LogStatusOmitted
 	LogStatusError   LogStatus = reportmodel.LogStatusError
@@ -60,6 +62,9 @@ type Capture = reportmodel.Capture
 // NodeKind identifies the logical node represented in final reports.
 type NodeKind = reportmodel.NodeKind
 
+// NodeDiagnosticKind identifies the typed diagnostic attached to a report node.
+type NodeDiagnosticKind = reportmodel.NodeDiagnosticKind
+
 // LogStatus identifies how one scenario-authored log record was handled.
 type LogStatus = reportmodel.LogStatus
 
@@ -83,6 +88,12 @@ type Contrast = reportmodel.Contrast
 
 // NodeAddress identifies a logical runtime node within a scenario call.
 type NodeAddress = reportmodel.NodeAddress
+
+// NodeDiagnostic is one typed report-safe diagnostic attached to a report node.
+type NodeDiagnostic = reportmodel.NodeDiagnostic
+
+// HTTPDiagnostic is the report-safe summary of one HTTP exchange.
+type HTTPDiagnostic = reportmodel.HTTPDiagnostic
 
 // AttemptReport summarizes one eventually attempt.
 type AttemptReport = reportmodel.AttemptReport

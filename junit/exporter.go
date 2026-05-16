@@ -24,6 +24,12 @@ const (
 	runtimeName         = "run-abort"
 	failureElement      = "failure"
 	errorElement        = "error"
+
+	diagnosticPreviewEmpty           = "<empty>"
+	diagnosticPreviewRedacted        = "<redacted>"
+	diagnosticPreviewUnavailable     = "<unavailable>"
+	diagnosticPreviewRedactedSuffix  = " (redacted)"
+	diagnosticPreviewTruncatedSuffix = " (truncated)"
 )
 
 // Exporter writes theater run documents as JUnit XML.
@@ -334,6 +340,9 @@ func renderFailed(projection *reportview.Projection, scenario reportview.Scenari
 	if observationLines := formatObservationLines(failureNode.Observations); len(observationLines) != 0 {
 		lines = append(lines, observationLines...)
 	}
+	if diagnosticLines := formatNodeDiagnosticLines(failureNode.Diagnostics); len(diagnosticLines) != 0 {
+		lines = append(lines, diagnosticLines...)
+	}
 
 	element = errorElement
 	if failure != nil && failure.Kind == reportmodel.FailureKindExpectation {
@@ -457,6 +466,77 @@ func formatObservationLines(observations *reportmodel.ActionObservations) []stri
 	}
 
 	return lines
+}
+
+func formatNodeDiagnosticLines(diagnostics []reportmodel.NodeDiagnostic) []string {
+	lines := make([]string, 0)
+	for i := range diagnostics {
+		if diagnostics[i].Kind != reportmodel.NodeDiagnosticKindHTTP || diagnostics[i].HTTP == nil {
+			continue
+		}
+		lines = append(lines, formatHTTPDiagnosticLines(*diagnostics[i].HTTP)...)
+	}
+
+	return lines
+}
+
+func formatHTTPDiagnosticLines(diagnostic reportmodel.HTTPDiagnostic) []string {
+	lines := make([]string, 0, 5)
+	request := strings.TrimSpace(diagnostic.Method + " " + diagnostic.URL)
+	if request != "" {
+		lines = append(lines, "http.request: "+boundedSingleLine(request, bodyLimit))
+	}
+	if diagnostic.StatusCode != 0 || diagnostic.Status != "" {
+		response := strings.TrimSpace(fmt.Sprintf("%d %s", diagnostic.StatusCode, diagnostic.Status))
+		lines = append(lines, "http.response: "+boundedSingleLine(response, bodyLimit))
+	}
+	if diagnostic.DurationMs >= 0 {
+		lines = append(lines, fmt.Sprintf("http.duration_ms: %d", diagnostic.DurationMs))
+	}
+	for _, key := range orderedHTTPHeaderKeys(diagnostic.ResponseHeaders) {
+		value := strings.Join(diagnostic.ResponseHeaders[key], ", ")
+		lines = append(lines, fmt.Sprintf("http.header.%s: %s", key, boundedSingleLine(value, bodyLimit)))
+	}
+	if diagnostic.ResponsePreview != nil {
+		lines = append(lines, "http.body: "+formatHTTPDiagnosticPreview(diagnostic.ResponsePreview))
+	}
+
+	return lines
+}
+
+func formatHTTPDiagnosticPreview(preview *reportmodel.Preview) string {
+	if preview == nil {
+		return diagnosticPreviewUnavailable
+	}
+
+	var rendered string
+	switch {
+	case preview.Text != "":
+		rendered = boundedSingleLine(preview.Text, bodyLimit)
+	case preview.OmittedReason != "":
+		rendered = "<" + preview.OmittedReason + ">"
+	case preview.Redacted:
+		rendered = diagnosticPreviewRedacted
+	default:
+		rendered = diagnosticPreviewEmpty
+	}
+	if preview.Redacted && preview.Text != "" {
+		rendered += diagnosticPreviewRedactedSuffix
+	}
+	if preview.Truncated {
+		rendered += diagnosticPreviewTruncatedSuffix
+	}
+
+	return rendered
+}
+
+func orderedHTTPHeaderKeys(headers map[string][]string) []string {
+	keys := make([]string, 0, len(headers))
+	for key := range headers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func firstObservedLine(prefix string, values map[string]reportmodel.ObservedValue) (string, bool) {

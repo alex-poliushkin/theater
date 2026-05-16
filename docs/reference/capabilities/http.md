@@ -54,6 +54,30 @@ Examples: `field(status_code) == 200`,
 `field(body) | decode(json) | path("/data/id")`,
 and `field(headers) | path("/Content-Type/0")`.
 
+### Failure Diagnostics Contract
+
+The v0.4 report contract emits HTTP failure diagnostics as node-scoped report
+data. They are not `action.http` output fields and cannot be selected with
+`field(...)`.
+
+When emitted, an HTTP diagnostic can describe a failed transport or request
+assembly on the failed action node, or a failed expectation that inspected a
+completed HTTP response on the failed expectation node. The diagnostic includes
+the HTTP action address and uses report-safe data: method, redacted resolved
+URL, status and duration when available, allowlisted response headers, and a
+bounded response preview. Request bodies, authorization headers, cookies, typed
+auth material, session state, and raw response bodies are not diagnostic
+carriers.
+
+URL path segment values and query values are redacted by default, userinfo is
+hidden, and URL fragments are omitted. Response header projection is
+allowlist-based and excludes authorization, proxy authorization, cookie,
+set-cookie, unknown header values, and credential-like values even under
+allowlisted header names. Body previews use report `Preview` semantics. Content
+type or valid UTF-8 alone is not enough to expose response text; unclassified
+textual bodies, binary bodies, and unknown bodies use metadata-only previews by
+default.
+
 ## `inventory.http.get`
 
 `inventory.http.get` fetches a remote resource body as `bytes`. It accepts

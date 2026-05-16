@@ -113,6 +113,34 @@ func TestExporterPrefersLatestEventuallyFailureObservations(t *testing.T) {
 	}
 }
 
+func TestExporterRendersHTTPDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	exporter := junit.NewExporter()
+	got, err := exporter.Marshal(httpDiagnosticFailureDocument())
+	if err != nil {
+		t.Fatalf("marshal junit failed: %v", err)
+	}
+
+	xmlText := string(got)
+	for _, want := range []string{
+		"http.request: GET https://api.example.test/redacted?token=redacted",
+		"http.response: 502 Bad Gateway",
+		"http.header.x-request-id: req-123",
+		"http.body:",
+		"retry later",
+		"[redacted]",
+		"(redacted)",
+	} {
+		if !strings.Contains(xmlText, want) {
+			t.Fatalf("junit output missing %q: %s", want, xmlText)
+		}
+	}
+	if strings.Contains(xmlText, "credential-secret") {
+		t.Fatalf("junit output leaked secret: %s", xmlText)
+	}
+}
+
 func passedDocument() theater.RunDocument {
 	startedAt := fixedTime(0)
 	endedAt := fixedTime(1000)
@@ -220,6 +248,90 @@ func expectationFailureDocument() theater.RunDocument {
 					StartedAt:      scenarioStartedAt,
 					EndedAt:        scenarioEndedAt,
 					DurationMs:     scenarioEndedAt.Sub(scenarioStartedAt).Milliseconds(),
+				},
+			},
+		},
+	}
+}
+
+func httpDiagnosticFailureDocument() theater.RunDocument {
+	scenarioPath := "stage.main/call.probe"
+	expectationPath := scenarioPath + "/act.fetch/expectation.status"
+	failure := &theater.Failure{
+		Kind:    theater.FailureKindExpectation,
+		Phase:   theater.PhaseRun,
+		At:      expectationPath,
+		Summary: "status mismatch",
+	}
+
+	return theater.RunDocument{
+		SchemaVersion: theater.RunDocumentSchemaVersion,
+		Report: theater.Report{
+			StageID:   "main",
+			StagePath: "stage.main",
+			Status:    theater.StatusFailed,
+			Failure:   failure,
+			Summary: theater.Summary{
+				TotalScenarios:  1,
+				FailedScenarios: 1,
+			},
+			Nodes: []theater.NodeReport{
+				{
+					Kind:           theater.NodeKindExpectation,
+					StageID:        "main",
+					Path:           expectationPath,
+					ScenarioID:     "http/probe",
+					ScenarioCallID: "probe",
+					ScenarioPath:   scenarioPath,
+					Attempt:        1,
+					ScenarioSeq:    1,
+					Status:         theater.StatusFailed,
+					Failure:        failure,
+					Address: &theater.NodeAddress{
+						ScenarioCallPath: scenarioPath,
+						ActID:            "fetch",
+						Kind:             theater.NodeKindExpectation,
+						NodeRef:          "status",
+					},
+					Diagnostics: []theater.NodeDiagnostic{
+						{
+							Kind: theater.NodeDiagnosticKindHTTP,
+							HTTP: &theater.HTTPDiagnostic{
+								ActionAddress: &theater.NodeAddress{
+									ScenarioCallPath: scenarioPath,
+									ActID:            "fetch",
+									Kind:             theater.NodeKindAction,
+								},
+								Method:     "GET",
+								URL:        "https://api.example.test/redacted?token=redacted",
+								StatusCode: 502,
+								Status:     "Bad Gateway",
+								DurationMs: 15,
+								ResponseHeaders: map[string][]string{
+									"x-request-id": {"req-123"},
+								},
+								ResponsePreview: &theater.Preview{
+									Kind:        "json",
+									Text:        `{"message":"retry later","token":"[redacted]"}`,
+									SizeHint:    96,
+									Redacted:    true,
+									ContentType: "application/json",
+								},
+							},
+						},
+					},
+				},
+				{
+					Kind:           theater.NodeKindScenario,
+					StageID:        "main",
+					Path:           scenarioPath,
+					ScenarioID:     "http/probe",
+					ScenarioCallID: "probe",
+					ScenarioPath:   scenarioPath,
+					Attempt:        1,
+					ScenarioSeq:    1,
+					Status:         theater.StatusFailed,
+					Failure:        failure,
 				},
 			},
 		},

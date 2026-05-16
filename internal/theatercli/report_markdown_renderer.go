@@ -16,9 +16,11 @@ const (
 	reportMarkdownLogLimit      = 256
 	reportMarkdownPreviewLimit  = 500
 
-	reportMarkdownEmpty       = "<empty>"
-	reportMarkdownRedacted    = "<redacted>"
-	reportMarkdownUnavailable = "<unavailable>"
+	renderPreviewEmpty           = "<empty>"
+	renderPreviewRedacted        = "<redacted>"
+	renderPreviewUnavailable     = "<unavailable>"
+	renderPreviewRedactedSuffix  = " (redacted)"
+	renderPreviewTruncatedSuffix = " (truncated)"
 )
 
 type reportMarkdownRenderer struct{}
@@ -57,7 +59,7 @@ func (v reportMarkdownView) String() string {
 	renderMarkdownDiagnostics(&builder, v.document.Diagnostics)
 	if v.document.Report.Failure != nil && !v.projection.HasFailedScenario() {
 		builder.WriteString("\n## Run Failure\n\n")
-		renderMarkdownFailure(&builder, "", nil, v.document.Report.Failure, nil)
+		renderMarkdownFailure(&builder, "", nil, v.document.Report.Failure, nil, false)
 	}
 	v.renderScenarios(&builder)
 	return builder.String()
@@ -140,9 +142,16 @@ func (v reportMarkdownView) renderScenario(builder *strings.Builder, scenario re
 		fmt.Fprintf(builder, "- Duration: %s\n", markdownCode(humanDuration(node.DurationMs)))
 	}
 	if scenario.PrimaryFailure != nil && scenario.PrimaryFailure.Failure != nil {
-		renderMarkdownFailure(builder, "", scenario.PrimaryFailure, scenario.PrimaryFailure.Failure, scenario.PrimaryFailure.Observations)
+		renderMarkdownFailure(
+			builder,
+			"",
+			scenario.PrimaryFailure,
+			scenario.PrimaryFailure.Failure,
+			scenario.PrimaryFailure.Observations,
+			false,
+		)
 	} else if node.Failure != nil {
-		renderMarkdownFailure(builder, "", &node, node.Failure, node.Observations)
+		renderMarkdownFailure(builder, "", &node, node.Failure, node.Observations, false)
 	}
 
 	v.renderScenarioNodes(builder, key)
@@ -162,6 +171,18 @@ func (v reportMarkdownView) renderScenarioNodes(builder *strings.Builder, scenar
 		actID := markdownNodeActID(act)
 		renderMarkdownAct(builder, act)
 		renderedNodes++
+
+		actions := filterMarkdownNodes(nodes, reportmodel.NodeKindAction, actID)
+		for j := range actions {
+			if renderedNodes >= reportMarkdownNodeLimit {
+				break
+			}
+			if !shouldRenderMarkdownAction(actions[j]) {
+				continue
+			}
+			renderMarkdownAction(builder, actions[j])
+			renderedNodes++
+		}
 
 		expectations := filterMarkdownNodes(nodes, reportmodel.NodeKindExpectation, actID)
 		for j := range expectations {
@@ -204,8 +225,23 @@ func renderMarkdownAct(builder *strings.Builder, node reportmodel.NodeReport) {
 		fmt.Fprintf(builder, "  - Eventually: %s\n", renderMarkdownEventually(*node.Eventually))
 	}
 	if node.Failure != nil {
-		renderMarkdownFailure(builder, "  ", &node, node.Failure, node.Observations)
+		renderMarkdownFailure(builder, "  ", &node, node.Failure, node.Observations, true)
 	}
+}
+
+func renderMarkdownAction(builder *strings.Builder, node reportmodel.NodeReport) {
+	fmt.Fprintf(builder, "  - Action %s %s\n", markdownCode(emptyFallback(markdownNodeActID(node), node.Path)), node.Status)
+	if node.DurationMs > 0 {
+		fmt.Fprintf(builder, "    - Duration: %s\n", markdownCode(humanDuration(node.DurationMs)))
+	}
+	if source := formatSourceSpan(node.SourceSpan); source != "" {
+		fmt.Fprintf(builder, "    - Source: %s\n", markdownCode(source))
+	}
+	if node.Failure != nil {
+		renderMarkdownFailure(builder, "    ", &node, node.Failure, node.Observations, true)
+		return
+	}
+	renderMarkdownNodeDiagnostics(builder, "    ", node.Diagnostics)
 }
 
 func renderMarkdownExpectation(builder *strings.Builder, node reportmodel.NodeReport) {
@@ -214,7 +250,7 @@ func renderMarkdownExpectation(builder *strings.Builder, node reportmodel.NodeRe
 		fmt.Fprintf(builder, "    - Source: %s\n", markdownCode(source))
 	}
 	if node.Failure != nil {
-		renderMarkdownFailure(builder, "    ", &node, node.Failure, node.Observations)
+		renderMarkdownFailure(builder, "    ", &node, node.Failure, node.Observations, true)
 	}
 }
 
@@ -234,6 +270,7 @@ func renderMarkdownFailure(
 	node *reportmodel.NodeReport,
 	failure *reportmodel.Failure,
 	observations *reportmodel.ActionObservations,
+	includeDiagnostics bool,
 ) {
 	if failure == nil {
 		return
@@ -256,6 +293,70 @@ func renderMarkdownFailure(
 		renderMarkdownObservedMap(builder, indent, "Output", filteredObservedValues(observations.Outputs, observations.Streams))
 		renderMarkdownObservedStreams(builder, indent, observations.Streams)
 	}
+	if includeDiagnostics && node != nil {
+		renderMarkdownNodeDiagnostics(builder, indent, node.Diagnostics)
+	}
+}
+
+func renderMarkdownNodeDiagnostics(builder *strings.Builder, indent string, diagnostics []reportmodel.NodeDiagnostic) {
+	for i := range diagnostics {
+		if diagnostics[i].Kind != reportmodel.NodeDiagnosticKindHTTP || diagnostics[i].HTTP == nil {
+			continue
+		}
+		renderMarkdownHTTPDiagnostic(builder, indent, *diagnostics[i].HTTP)
+	}
+}
+
+func renderMarkdownHTTPDiagnostic(builder *strings.Builder, indent string, diagnostic reportmodel.HTTPDiagnostic) {
+	request := strings.TrimSpace(diagnostic.Method + " " + diagnostic.URL)
+	if request != "" {
+		fmt.Fprintf(builder, "%s- HTTP request: %s\n", indent, markdownCode(request))
+	}
+	if diagnostic.StatusCode != 0 || diagnostic.Status != "" {
+		response := strings.TrimSpace(fmt.Sprintf("%d %s", diagnostic.StatusCode, diagnostic.Status))
+		fmt.Fprintf(builder, "%s- HTTP response: %s\n", indent, markdownCode(response))
+	}
+	if diagnostic.DurationMs >= 0 {
+		fmt.Fprintf(builder, "%s- HTTP duration: %s\n", indent, markdownCode(humanDuration(diagnostic.DurationMs)))
+	}
+	for _, key := range orderedHeaderKeys(diagnostic.ResponseHeaders) {
+		fmt.Fprintf(
+			builder,
+			"%s- HTTP header %s: %s\n",
+			indent,
+			markdownCode(key),
+			markdownCode(strings.Join(diagnostic.ResponseHeaders[key], ", ")),
+		)
+	}
+	if diagnostic.ResponsePreview != nil {
+		fmt.Fprintf(builder, "%s- HTTP body: %s\n", indent, renderMarkdownHTTPPreview(diagnostic.ResponsePreview))
+	}
+}
+
+func renderMarkdownHTTPPreview(preview *reportmodel.Preview) string {
+	if preview == nil {
+		return renderPreviewUnavailable
+	}
+
+	var rendered string
+	switch {
+	case preview.Text != "":
+		rendered = markdownCode(preview.Text)
+	case preview.OmittedReason != "":
+		rendered = "<" + preview.OmittedReason + ">"
+	case preview.Redacted:
+		rendered = renderPreviewRedacted
+	default:
+		rendered = renderPreviewEmpty
+	}
+	if preview.Redacted && preview.Text != "" {
+		rendered += renderPreviewRedactedSuffix
+	}
+	if preview.Truncated {
+		rendered += renderPreviewTruncatedSuffix
+	}
+
+	return rendered
 }
 
 func renderMarkdownContrast(builder *strings.Builder, indent string, contrast *reportmodel.Contrast) {
@@ -324,22 +425,22 @@ func renderMarkdownEventually(eventually reportmodel.EventuallyReport) string {
 
 func renderMarkdownPreview(preview *reportmodel.Preview, truncated bool) string {
 	if preview == nil {
-		return reportMarkdownUnavailable
+		return renderPreviewUnavailable
 	}
 
 	var rendered string
 	switch {
 	case preview.Redacted:
-		rendered = reportMarkdownRedacted
+		rendered = renderPreviewRedacted
 	case preview.OmittedReason != "":
 		rendered = "<" + preview.OmittedReason + ">"
 	case preview.Text != "":
 		rendered = markdownCode(preview.Text)
 	default:
-		rendered = reportMarkdownEmpty
+		rendered = renderPreviewEmpty
 	}
 	if truncated || preview.Truncated {
-		rendered += " (truncated)"
+		rendered += renderPreviewTruncatedSuffix
 	}
 	return rendered
 }
@@ -389,6 +490,10 @@ func filterMarkdownNodes(nodes []reportmodel.NodeReport, kind reportmodel.NodeKi
 		filtered = append(filtered, node)
 	}
 	return filtered
+}
+
+func shouldRenderMarkdownAction(node reportmodel.NodeReport) bool {
+	return node.Status != reportmodel.StatusPassed || len(node.Diagnostics) != 0
 }
 
 func filterMarkdownLogs(logs []reportmodel.LogRecord, actID string) []reportmodel.LogRecord {
@@ -481,7 +586,7 @@ func markdownNodeRef(node reportmodel.NodeReport) string {
 func markdownCode(value string) string {
 	value = boundedMarkdownText(value)
 	if value == "" {
-		value = reportMarkdownEmpty
+		value = renderPreviewEmpty
 	}
 	if strings.Contains(value, "`") {
 		return "`` " + strings.ReplaceAll(value, "`", "'") + " ``"
@@ -498,5 +603,5 @@ func boundedMarkdownText(value string) string {
 	if len(value) <= reportMarkdownPreviewLimit {
 		return value
 	}
-	return value[:reportMarkdownPreviewLimit] + "... (truncated)"
+	return value[:reportMarkdownPreviewLimit] + "..." + renderPreviewTruncatedSuffix
 }

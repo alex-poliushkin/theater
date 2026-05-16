@@ -1,0 +1,90 @@
+{
+  "file": "docs/examples/reference/failed-http-run.json",
+  "result": {
+    "schema_version": "v1alpha1",
+    "report": {
+      "stage_id": "docs-http-diagnostics",
+      "stage_path": "stage.docs-http-diagnostics",
+      "status": "failed",
+      "failure": {
+        "kind": "expectation",
+        "phase": "run",
+        "at": "stage.docs-http-diagnostics/call.probe/act.fetch/expectation.status",
+        "summary": "status mismatch"
+      },
+      "nodes": [
+        {
+          "kind": "expectation",
+          "path": "stage.docs-http-diagnostics/call.probe/act.fetch/expectation.status",
+          "scenario_id": "http/probe",
+          "scenario_call_id": "probe",
+          "scenario_path": "stage.docs-http-diagnostics/call.probe",
+          "attempt": 1,
+          "scenario_seq": 1,
+          "status": "failed",
+          "failure": {
+            "kind": "expectation",
+            "phase": "run",
+            "at": "stage.docs-http-diagnostics/call.probe/act.fetch/expectation.status",
+            "summary": "status mismatch"
+          },
+          "address": {
+            "scenario_call_path": "stage.docs-http-diagnostics/call.probe",
+            "act_id": "fetch",
+            "kind": "expectation",
+            "node_ref": "status"
+          },
+          "diagnostics": [
+            {
+              "kind": "http",
+              "http": {
+                "action_addr": {
+                  "scenario_call_path": "stage.docs-http-diagnostics/call.probe",
+                  "act_id": "fetch",
+                  "kind": "action"
+                },
+                "method": "GET",
+                "url": "https://api.example.test/redacted?token=redacted",
+                "status_code": 502,
+                "status": "Bad Gateway",
+                "duration_ms": 15,
+                "response_headers": {
+                  "x-request-id": [
+                    "req-123"
+                  ]
+                },
+                "response_preview": {
+                  "kind": "json",
+                  "text": "{\"message\":\"retry later\",\"token\":\"[redacted]\"}",
+                  "size_hint": 96,
+                  "redacted": true,
+                  "content_type": "application/json"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "kind": "scenario",
+          "path": "stage.docs-http-diagnostics/call.probe",
+          "scenario_id": "http/probe",
+          "scenario_call_id": "probe",
+          "scenario_path": "stage.docs-http-diagnostics/call.probe",
+          "attempt": 1,
+          "scenario_seq": 1,
+          "status": "failed",
+          "failure": {
+            "kind": "expectation",
+            "phase": "run",
+            "at": "stage.docs-http-diagnostics/call.probe/act.fetch/expectation.status",
+            "summary": "status mismatch"
+          }
+        }
+      ],
+      "summary": {
+        "total_scenarios": 1,
+        "failed_scenarios": 1
+      }
+    }
+  }
+}

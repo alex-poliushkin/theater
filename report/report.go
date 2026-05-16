@@ -31,6 +31,8 @@ const (
 	NodeKindExpectation NodeKind = "expectation"
 	NodeKindLog         NodeKind = "log"
 
+	NodeDiagnosticKindHTTP NodeDiagnosticKind = "http"
+
 	LogStatusEmitted LogStatus = "emitted"
 	LogStatusOmitted LogStatus = "omitted"
 	LogStatusError   LogStatus = "error"
@@ -64,6 +66,9 @@ type Capture string
 
 // NodeKind identifies the logical node represented in final reports.
 type NodeKind string
+
+// NodeDiagnosticKind identifies the typed diagnostic attached to a report node.
+type NodeDiagnosticKind string
 
 // LogStatus identifies how one scenario-authored log record was handled.
 type LogStatus string
@@ -122,6 +127,24 @@ type NodeAddress struct {
 	NodeRef          string   `json:"node_ref,omitempty"`
 	Phase            string   `json:"phase,omitempty"`
 	AttemptIndex     int      `json:"attempt_index,omitempty"`
+}
+
+// NodeDiagnostic is one typed report-safe diagnostic attached to a report node.
+type NodeDiagnostic struct {
+	Kind NodeDiagnosticKind `json:"kind"`
+	HTTP *HTTPDiagnostic    `json:"http,omitempty"`
+}
+
+// HTTPDiagnostic is the report-safe summary of one HTTP exchange.
+type HTTPDiagnostic struct {
+	ActionAddress   *NodeAddress        `json:"action_addr,omitempty"`
+	Method          string              `json:"method,omitempty"`
+	URL             string              `json:"url,omitempty"`
+	StatusCode      int                 `json:"status_code,omitempty"`
+	Status          string              `json:"status,omitempty"`
+	DurationMs      int64               `json:"duration_ms,omitempty"`
+	ResponseHeaders map[string][]string `json:"response_headers,omitempty"`
+	ResponsePreview *Preview            `json:"response_preview,omitempty"`
 }
 
 // AttemptReport summarizes one eventually attempt.
@@ -219,6 +242,7 @@ type Event struct {
 	Preview        *Preview            `json:"preview,omitempty"`
 	Contrast       *Contrast           `json:"contrast,omitempty"`
 	Observations   *ActionObservations `json:"observations,omitempty"`
+	Diagnostics    []NodeDiagnostic    `json:"diagnostics,omitempty"`
 	Eventually     *EventuallyReport   `json:"eventually,omitempty"`
 	Address        *NodeAddress        `json:"address,omitempty"`
 	Payload        *PayloadMetadata    `json:"payload,omitempty"`
@@ -257,6 +281,7 @@ type NodeReport struct {
 	Artifacts      []ArtifactRef       `json:"artifacts,omitempty"`
 	Contrast       *Contrast           `json:"contrast,omitempty"`
 	Observations   *ActionObservations `json:"observations,omitempty"`
+	Diagnostics    []NodeDiagnostic    `json:"diagnostics,omitempty"`
 	Eventually     *EventuallyReport   `json:"eventually,omitempty"`
 	Payload        *PayloadMetadata    `json:"payload,omitempty"`
 }
@@ -325,6 +350,15 @@ func (k NodeKind) Valid() bool {
 	}
 }
 
+func (k NodeDiagnosticKind) Valid() bool {
+	switch k {
+	case NodeDiagnosticKindHTTP:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s LogStatus) Valid() bool {
 	switch s {
 	case LogStatusEmitted, LogStatusOmitted, LogStatusError:
@@ -363,6 +397,40 @@ func (a NodeAddress) Validate() error {
 
 	if a.AttemptIndex < 0 {
 		return fmt.Errorf("attempt_index %d is invalid", a.AttemptIndex)
+	}
+
+	return nil
+}
+
+func (d NodeDiagnostic) Validate() error {
+	if !d.Kind.Valid() {
+		return fmt.Errorf("diagnostic kind %q is invalid", d.Kind)
+	}
+
+	switch d.Kind {
+	case NodeDiagnosticKindHTTP:
+		if d.HTTP == nil {
+			return errors.New("http diagnostic is required")
+		}
+		return d.HTTP.Validate()
+	default:
+		return nil
+	}
+}
+
+func (d HTTPDiagnostic) Validate() error {
+	if d.DurationMs < 0 {
+		return fmt.Errorf("duration_ms %d is invalid", d.DurationMs)
+	}
+
+	if d.StatusCode < 0 {
+		return fmt.Errorf("status_code %d is invalid", d.StatusCode)
+	}
+
+	if d.ActionAddress != nil {
+		if err := d.ActionAddress.Validate(); err != nil {
+			return fmt.Errorf("action_addr is invalid: %w", err)
+		}
 	}
 
 	return nil
@@ -417,12 +485,8 @@ func (e Event) Validate() error {
 		return fmt.Errorf("event timing is invalid: %w", err)
 	}
 
-	if e.Status.IsTerminal() {
-		if err := ValidateTerminalOutcome(e.Status, e.Failure); err != nil {
-			return err
-		}
-	} else if e.Failure != nil {
-		return fmt.Errorf("non-terminal status %q must not carry failure", e.Status)
+	if err := validateEventOutcome(e.Status, e.Failure); err != nil {
+		return err
 	}
 
 	if err := validateEventPayload(e.Payload); err != nil {
@@ -439,6 +503,10 @@ func (e Event) Validate() error {
 		if err := e.Observations.Validate(); err != nil {
 			return fmt.Errorf("event observations are invalid: %w", err)
 		}
+	}
+
+	if err := validateNodeDiagnostics("event", e.Diagnostics); err != nil {
+		return err
 	}
 
 	if e.Address != nil {
@@ -611,6 +679,10 @@ func (n NodeReport) Validate() error {
 		}
 	}
 
+	if err := validateNodeDiagnostics("node", n.Diagnostics); err != nil {
+		return err
+	}
+
 	if n.Payload == nil {
 		return validateNodeArtifacts(n.Artifacts)
 	}
@@ -712,6 +784,28 @@ func (r Report) Validate() error {
 
 		if r.Failures[i].Failure == nil {
 			return fmt.Errorf("report failure index %d is invalid: failure is required", i)
+		}
+	}
+
+	return nil
+}
+
+func validateEventOutcome(status Status, failure *Failure) error {
+	if status.IsTerminal() {
+		return ValidateTerminalOutcome(status, failure)
+	}
+
+	if failure != nil {
+		return fmt.Errorf("non-terminal status %q must not carry failure", status)
+	}
+
+	return nil
+}
+
+func validateNodeDiagnostics(owner string, diagnostics []NodeDiagnostic) error {
+	for i := range diagnostics {
+		if err := diagnostics[i].Validate(); err != nil {
+			return fmt.Errorf("%s diagnostic %d is invalid: %w", owner, i, err)
 		}
 	}
 

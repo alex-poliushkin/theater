@@ -39,6 +39,7 @@ type executionNodeResult struct {
 	preview      *Preview
 	contrast     *Contrast
 	observations *ActionObservations
+	diagnostics  []NodeDiagnostic
 	eventually   *EventuallyReport
 	payload      *PayloadMetadata
 }
@@ -129,6 +130,7 @@ func (n executionNode) finished(attempt int, result executionNodeResult) error {
 		Preview:        result.preview,
 		Contrast:       result.contrast,
 		Observations:   result.observations,
+		Diagnostics:    cloneNodeDiagnostics(result.diagnostics),
 		Eventually:     result.eventually,
 		Payload:        result.payload,
 	}, result.startedAt, result.endedAt))

@@ -36,6 +36,16 @@ go run ./cmd/theater run docs/examples/reference/logs.thtr --live off --format j
 go run ./cmd/theater report render --input docs/examples/reference/saved-run.json --format markdown
 ```
 
+<!-- theater-doc: command id=reference-report-http-diagnostics-markdown cwd=../.. expect-stdout="HTTP request" expect-stdout-2="api.example.test/redacted?token=redacted" expect-stdout-3="HTTP body:" expect-stdout-4="retry later" reject-stdout=credential-secret -->
+```sh
+go run ./cmd/theater report render --input docs/examples/reference/failed-http-run.json --format markdown
+```
+
+<!-- theater-doc: command id=reference-report-http-diagnostics-junit cwd=../.. expect-stdout=http.request expect-stdout-2="retry later" expect-stdout-3="[redacted]" reject-stdout=credential-secret -->
+```sh
+go run ./cmd/theater report render --input docs/examples/reference/failed-http-run.json --format junit
+```
+
 ## Run Document
 
 `run --format json` wraps the run document with the file path:
@@ -162,6 +172,54 @@ payload preview. Zero counters are omitted from JSON.
 | `source_span` | Source file, line, and column when available |
 | `preview`, `artifacts`, `contrast`, `observations`, `payload` | Report-safe observed data |
 | `eventually` | Retry summary for an act with `eventually` |
+| `diagnostics` | Node-level collection of typed report-safe diagnostics |
+
+## HTTP Failure Diagnostics Contract
+
+The v0.4 report contract emits node-scoped HTTP diagnostics for failed
+`action.http` exchanges and for expectations that fail after inspecting a
+completed HTTP response. Run documents without HTTP diagnostic evidence simply
+omit the diagnostic fields.
+
+HTTP diagnostics are report data. They are not top-level
+`RunDocument.Diagnostics`, not renderer-only text, and not `action.http`
+outputs. Scenario authors cannot read them with `field(...)`, selectors, or
+exports.
+
+When emitted, an HTTP diagnostic is attached to the failed node that owns the
+runtime failure. Transport and request-assembly failures attach to the failed
+action node and carry request metadata only. Expectation failures after a
+completed HTTP response attach to the failed expectation node and include the
+address of the HTTP action that produced the exchange. Parent act, scenario,
+text, Markdown, and JUnit views may summarize that diagnostic, but they are not
+the canonical storage owner.
+
+The typed diagnostic records:
+
+| Field | Meaning |
+| --- | --- |
+| kind | HTTP diagnostic kind |
+| action address | Node address or path for the HTTP action that produced the exchange |
+| method | Request method |
+| URL | Resolved URL with userinfo hidden, path segment values redacted by default, fragments omitted, and query values redacted |
+| status | Response status code and status text when a response exists |
+| duration | Measured exchange duration |
+| response headers | Allowlisted response headers such as content type and correlation ids |
+| response preview | Bounded `Preview` for classified and redacted textual bodies, or metadata-only preview for binary, unknown, or unclassified textual bodies |
+
+Response header projection is allowlist-based. Authorization, proxy
+authorization, cookie, and set-cookie values are excluded by default, and
+unknown headers are omitted rather than guessed safe. Credential-like values are
+excluded even when they appear under an allowlisted header name.
+
+Body previews use the same `Preview` semantics as the rest of the report:
+content type, size hint, truncation, redacted state, omitted state, and bounded
+text. Content type or valid UTF-8 alone is not enough to expose response text;
+the body must pass pre-preview classification and redaction first. Unclassified
+textual bodies use metadata-only or omitted previews by default. These preview
+bounds are a reporting and privacy contract. They do not promise a transport
+read limit unless a future implementation explicitly adds bounded response
+reads.
 
 ## Failure Fields
 

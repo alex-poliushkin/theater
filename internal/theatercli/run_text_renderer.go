@@ -190,6 +190,7 @@ func renderFailedScenarioCard(builder *strings.Builder, card reportview.Scenario
 		)
 		renderObservedStreamBlock(builder, "streams", card.PrimaryFailure.Observations.Streams)
 	}
+	renderNodeDiagnostics(builder, card.PrimaryFailure.Diagnostics)
 }
 
 func renderObservedBlock(builder *strings.Builder, title string, observed map[string]reportmodel.ObservedValue) {
@@ -272,6 +273,71 @@ func renderObservedStreamValue(observed reportmodel.ObservedStream) string {
 	}
 
 	return fmt.Sprintf("%s (live drops=%d)", value, observed.DroppedChunks)
+}
+
+func renderNodeDiagnostics(builder *strings.Builder, diagnostics []reportmodel.NodeDiagnostic) {
+	for i := range diagnostics {
+		if diagnostics[i].Kind != reportmodel.NodeDiagnosticKindHTTP || diagnostics[i].HTTP == nil {
+			continue
+		}
+		renderHTTPDiagnostic(builder, *diagnostics[i].HTTP)
+	}
+}
+
+func renderHTTPDiagnostic(builder *strings.Builder, diagnostic reportmodel.HTTPDiagnostic) {
+	builder.WriteString("  http:\n")
+	if diagnostic.Method != "" || diagnostic.URL != "" {
+		fmt.Fprintf(builder, "    request: %s %s\n", diagnostic.Method, diagnostic.URL)
+	}
+	if diagnostic.StatusCode != 0 || diagnostic.Status != "" {
+		fmt.Fprintf(builder, "    response: %d %s\n", diagnostic.StatusCode, diagnostic.Status)
+	}
+	if diagnostic.DurationMs >= 0 {
+		fmt.Fprintf(builder, "    duration: %s\n", humanDuration(diagnostic.DurationMs))
+	}
+	for _, key := range orderedHeaderKeys(diagnostic.ResponseHeaders) {
+		fmt.Fprintf(builder, "    header.%s: %s\n", key, strings.Join(diagnostic.ResponseHeaders[key], ", "))
+	}
+	if diagnostic.ResponsePreview != nil {
+		builder.WriteString("    body: ")
+		builder.WriteString(renderHTTPDiagnosticPreview(diagnostic.ResponsePreview))
+		builder.WriteByte('\n')
+	}
+}
+
+func renderHTTPDiagnosticPreview(preview *reportmodel.Preview) string {
+	if preview == nil {
+		return renderPreviewUnavailable
+	}
+
+	var rendered string
+	switch {
+	case preview.Text != "":
+		rendered = preview.Text
+	case preview.OmittedReason != "":
+		rendered = "<" + preview.OmittedReason + ">"
+	case preview.Redacted:
+		rendered = renderPreviewRedacted
+	default:
+		rendered = renderPreviewEmpty
+	}
+	if preview.Redacted && preview.Text != "" {
+		rendered += renderPreviewRedactedSuffix
+	}
+	if preview.Truncated {
+		rendered += renderPreviewTruncatedSuffix
+	}
+
+	return rendered
+}
+
+func orderedHeaderKeys(headers map[string][]string) []string {
+	keys := make([]string, 0, len(headers))
+	for key := range headers {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func filteredObservedValues(

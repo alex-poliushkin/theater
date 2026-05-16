@@ -51,10 +51,12 @@ func (httpAction) Run(ctx context.Context, request theater.ActionRequest) (theat
 
 	response, err := builtinhttp.Do(ctx, request.Resources, request.HTTP, httpRequest)
 	if err != nil {
+		recordHTTPDiagnosticFromError(request.Diagnostics, err)
 		return theater.Outputs{}, err
 	}
 
 	outputs := builtinhttp.Outputs(response)
+	recordHTTPDiagnostic(request.Diagnostics, response.Diagnostic)
 	if request.HTTPCapture != nil {
 		if err := builtinhttp.CaptureAuth(request.Resources, request.HTTP, *request.HTTPCapture, response); err != nil {
 			return outputs, httpActionError{
@@ -66,6 +68,26 @@ func (httpAction) Run(ctx context.Context, request theater.ActionRequest) (theat
 	}
 
 	return outputs, nil
+}
+
+func recordHTTPDiagnosticFromError(recorder theater.DiagnosticRecorder, err error) {
+	diagnostic, ok := builtinhttp.HTTPDiagnosticFromError(err)
+	if !ok {
+		return
+	}
+
+	recordHTTPDiagnostic(recorder, diagnostic)
+}
+
+func recordHTTPDiagnostic(recorder theater.DiagnosticRecorder, diagnostic theater.HTTPDiagnostic) {
+	if recorder == nil {
+		return
+	}
+
+	recorder.RecordDiagnostic(theater.NodeDiagnostic{
+		Kind: theater.NodeDiagnosticKindHTTP,
+		HTTP: &diagnostic,
+	})
 }
 
 type httpActionError struct {

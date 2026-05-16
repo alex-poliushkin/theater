@@ -108,6 +108,7 @@ func nodeReportFromEvent(event Event) (NodeReport, bool) {
 		Artifacts:      artifactRefsFromEvent(event),
 		Contrast:       cloneContrast(event.Contrast),
 		Observations:   cloneActionObservations(event.Observations),
+		Diagnostics:    cloneNodeDiagnostics(event.Diagnostics),
 		Eventually:     cloneEventuallyReport(event.Eventually),
 		Payload:        clonePayloadMetadata(event.Payload),
 	}, true
@@ -319,6 +320,37 @@ func cloneNodeAddress(address *NodeAddress) *NodeAddress {
 
 	cloned := *address
 	return &cloned
+}
+
+func cloneNodeDiagnostics(diagnostics []NodeDiagnostic) []NodeDiagnostic {
+	if len(diagnostics) == 0 {
+		return nil
+	}
+
+	cloned := make([]NodeDiagnostic, len(diagnostics))
+	for i := range diagnostics {
+		cloned[i] = cloneNodeDiagnostic(diagnostics[i])
+	}
+
+	return cloned
+}
+
+func cloneNodeDiagnostic(diagnostic NodeDiagnostic) NodeDiagnostic {
+	cloned := diagnostic
+	if diagnostic.HTTP != nil {
+		httpDiagnostic := *diagnostic.HTTP
+		httpDiagnostic.ActionAddress = cloneNodeAddress(diagnostic.HTTP.ActionAddress)
+		httpDiagnostic.ResponsePreview = clonePreview(diagnostic.HTTP.ResponsePreview)
+		if len(diagnostic.HTTP.ResponseHeaders) != 0 {
+			httpDiagnostic.ResponseHeaders = make(map[string][]string, len(diagnostic.HTTP.ResponseHeaders))
+			for key, values := range diagnostic.HTTP.ResponseHeaders {
+				httpDiagnostic.ResponseHeaders[key] = append([]string(nil), values...)
+			}
+		}
+		cloned.HTTP = &httpDiagnostic
+	}
+
+	return cloned
 }
 
 func cloneLogRecord(record LogRecord) LogRecord {

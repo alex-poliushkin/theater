@@ -406,6 +406,7 @@ func TestRunExpectationEmitsFinishedNodeWhenMatcherIsMissing(t *testing.T) {
 		},
 		newValueScope(nil),
 		Values{"token": "issued-token"},
+		nil,
 		1,
 	)
 	if err != nil {
@@ -464,6 +465,7 @@ func TestRunExpectationEmitsFinishedNodeWhenBindingResolutionFails(t *testing.T)
 		},
 		newValueScope(nil),
 		Values{"token": "issued-token"},
+		nil,
 		1,
 	)
 	if err != nil {
@@ -516,6 +518,7 @@ func TestRunExpectationEmitsFinishedNodeWhenMatcherCompileFails(t *testing.T) {
 		},
 		newValueScope(nil),
 		Values{"token": "issued-token"},
+		nil,
 		1,
 	)
 	if err != nil {
@@ -1028,6 +1031,7 @@ func TestRunExpectationReturnsInternalFailureWhenMatcherPanics(t *testing.T) {
 				testCase.expectation,
 				newValueScope(nil),
 				Values{"token": "issued-token"},
+				nil,
 				1,
 			)
 			if err != nil {

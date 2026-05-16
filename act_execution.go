@@ -86,7 +86,7 @@ func (e actExecution) Run(ctx context.Context, attempt int) (actOutcome, error) 
 		return *terminal, nil
 	}
 
-	outcome, err = e.runExpectations(ctx, actScope, outcome.values, attempt)
+	outcome, err = e.runExpectations(ctx, actScope, outcome.values, outcome.diagnostics, attempt)
 	outcome.logs = logs
 	if err == nil && outcome.status == StatusPassed {
 		outcome.properties = currentActPropertyValues(e.act, actScope)
@@ -98,6 +98,7 @@ func (e actExecution) actionResult(
 	status Status,
 	failure *Failure,
 	observations *ActionObservations,
+	diagnostics []NodeDiagnostic,
 	startedAt time.Time,
 	endedAt time.Time,
 ) executionNodeResult {
@@ -108,6 +109,7 @@ func (e actExecution) actionResult(
 		endedAt:      endedAt,
 		sourceSpan:   cloneSourceRef(e.act.Action.SourceSpan),
 		observations: observations,
+		diagnostics:  diagnostics,
 	}
 }
 
@@ -115,15 +117,17 @@ func (e actExecution) expectationResult(
 	expectation expectationPlan,
 	status Status,
 	failure *Failure,
+	diagnostics []NodeDiagnostic,
 	startedAt time.Time,
 	endedAt time.Time,
 ) executionNodeResult {
 	return executionNodeResult{
-		status:     status,
-		failure:    failure,
-		startedAt:  startedAt,
-		endedAt:    endedAt,
-		sourceSpan: cloneSourceRef(expectation.SourceSpan),
+		status:      status,
+		failure:     failure,
+		startedAt:   startedAt,
+		endedAt:     endedAt,
+		sourceSpan:  cloneSourceRef(expectation.SourceSpan),
+		diagnostics: diagnostics,
 	}
 }
 
@@ -246,6 +250,7 @@ func (e actExecution) prepareActionExecution(
 			StatusFailed,
 			failure,
 			nil,
+			nil,
 			startedAt,
 			scopeSection,
 			debugSnapshotSection{},
@@ -273,6 +278,7 @@ func (e actExecution) prepareActionExecution(
 			StatusFailed,
 			failure,
 			nil,
+			nil,
 			startedAt,
 			scopeSection,
 			debugSnapshotSection{},
@@ -299,6 +305,7 @@ func (e actExecution) prepareActionExecution(
 			StatusFailed,
 			failure,
 			observations,
+			nil,
 			startedAt,
 			scopeSection,
 			inputSection,
@@ -346,6 +353,7 @@ func (e actExecution) prepareExpectationExecution(
 	expectation expectationPlan,
 	actScope *valueScope,
 	actionOutputs Values,
+	actionDiagnostics []NodeDiagnostic,
 	expectationNode executionNode,
 	attempt int,
 	startedAt time.Time,
@@ -360,6 +368,7 @@ func (e actExecution) prepareExpectationExecution(
 			expectationNode,
 			attempt,
 			failure,
+			nil,
 			startedAt,
 			scopeSection,
 		)
@@ -374,6 +383,7 @@ func (e actExecution) prepareExpectationExecution(
 			expectationNode,
 			attempt,
 			expectationObservationFailure(path, err),
+			actionDiagnostics,
 			startedAt,
 			scopeSection,
 		)
@@ -389,6 +399,7 @@ func (e actExecution) prepareExpectationExecution(
 			expectationNode,
 			attempt,
 			failure,
+			nil,
 			startedAt,
 			scopeSection,
 		)
@@ -412,6 +423,7 @@ func (e actExecution) prepareExpectationExecution(
 			expectationNode,
 			attempt,
 			failure,
+			nil,
 			startedAt,
 			scopeSection,
 			debugSnapshotSection{},
@@ -491,6 +503,7 @@ func (e actExecution) runAction(ctx context.Context, actScope *valueScope, attem
 
 	live := newPanicCapturingSink(e.live, e.actionPath)
 	publisher, requestReporter := e.newActionReporter(ctx, live, actionNode, attempt, prepared)
+	diagnosticCollector := &actionDiagnosticCollector{}
 	outputs, err := invokeBoundary("action", e.act.Action.Use, func() (Outputs, error) {
 		return prepared.runner.Run(ctx, ActionRequest{
 			Args:        prepared.protectedArgs,
@@ -498,6 +511,7 @@ func (e actExecution) runAction(ctx context.Context, actScope *valueScope, attem
 			State:       e.state,
 			HTTPCapture: compiledHTTPAuthCapture(e.act.Action.Use, e.act.CaptureAuth),
 			Reporter:    requestReporter,
+			Diagnostics: diagnosticCollector,
 			Paths: PathContext{
 				StagePath:    e.identity.stagePath,
 				ScenarioPath: e.identity.scenarioPath,
@@ -510,6 +524,7 @@ func (e actExecution) runAction(ctx context.Context, actScope *valueScope, attem
 	if checkpointErr := publisher.Failure(); checkpointErr != nil {
 		return actOutcome{}, checkpointErr
 	}
+	actionDiagnostics := actionDiagnosticsForNode(diagnosticCollector.Snapshot(), actionNode, attempt)
 	streamObservations := buildStreamObservations(publisher.Snapshot())
 	if outcome, handled, err := e.handleActionLiveSinkFailure(
 		ctx,
@@ -524,6 +539,7 @@ func (e actExecution) runAction(ctx context.Context, actScope *valueScope, attem
 		outputs,
 		err,
 		streamObservations,
+		nil,
 		live.Failure(),
 	); handled {
 		return outcome, err
@@ -539,6 +555,7 @@ func (e actExecution) runAction(ctx context.Context, actScope *valueScope, attem
 			prepared.contract,
 			prepared.inputObservations,
 			streamObservations,
+			actionDiagnostics,
 			err,
 		)
 	}
@@ -556,6 +573,7 @@ func (e actExecution) runAction(ctx context.Context, actScope *valueScope, attem
 			StatusFailed,
 			failure,
 			observations,
+			actionDiagnostics,
 			startedAt,
 			prepared.scopeSection,
 			prepared.inputSection,
@@ -579,6 +597,7 @@ func (e actExecution) runAction(ctx context.Context, actScope *valueScope, attem
 		StatusPassed,
 		nil,
 		observations,
+		nil,
 		startedAt,
 		prepared.scopeSection,
 		prepared.inputSection,
@@ -587,7 +606,7 @@ func (e actExecution) runAction(ctx context.Context, actScope *valueScope, attem
 		return actOutcome{}, err
 	}
 
-	return actOutcome{status: StatusPassed, values: Values(protectedOutputs)}, nil
+	return actOutcome{status: StatusPassed, values: Values(protectedOutputs), diagnostics: actionDiagnostics}, nil
 }
 
 func (e actExecution) newActionReporter(
@@ -658,6 +677,7 @@ func (e actExecution) runExpectation(
 	expectation expectationPlan,
 	actScope *valueScope,
 	actionOutputs Values,
+	actionDiagnostics []NodeDiagnostic,
 	attempt int,
 ) (actOutcome, error) {
 	expectationNode := e.recorder.expectation(e.act.ID, expectation.ID)
@@ -668,6 +688,7 @@ func (e actExecution) runExpectation(
 		expectation,
 		actScope,
 		actionOutputs,
+		actionDiagnostics,
 		expectationNode,
 		attempt,
 		startedAt,
@@ -690,6 +711,7 @@ func (e actExecution) runExpectation(
 				expectationNode,
 				attempt,
 				failure,
+				actionDiagnostics,
 				startedAt,
 				prepared.scopeSection,
 				prepared.inputSection,
@@ -705,6 +727,7 @@ func (e actExecution) runExpectation(
 			attempt,
 			status,
 			failure,
+			actionDiagnostics,
 			startedAt,
 			prepared.scopeSection,
 			prepared.inputSection,
@@ -724,6 +747,7 @@ func (e actExecution) runExpectation(
 		attempt,
 		StatusPassed,
 		nil,
+		nil,
 		startedAt,
 		prepared.scopeSection,
 		prepared.inputSection,
@@ -739,10 +763,11 @@ func (e actExecution) runExpectations(
 	ctx context.Context,
 	actScope *valueScope,
 	actionOutputs Values,
+	actionDiagnostics []NodeDiagnostic,
 	attempt int,
 ) (actOutcome, error) {
 	for i := range e.act.Expectations {
-		outcome, err := e.runExpectation(ctx, e.act.Expectations[i], actScope, actionOutputs, attempt)
+		outcome, err := e.runExpectation(ctx, e.act.Expectations[i], actScope, actionOutputs, actionDiagnostics, attempt)
 		if err != nil || outcome.status != StatusPassed {
 			return outcome, err
 		}
@@ -758,6 +783,7 @@ func (e actExecution) recordActionFinished(
 	status Status,
 	failure *Failure,
 	observations *ActionObservations,
+	diagnostics []NodeDiagnostic,
 	startedAt time.Time,
 	scope debugSnapshotSection,
 	inputs debugSnapshotSection,
@@ -781,7 +807,7 @@ func (e actExecution) recordActionFinished(
 
 	return boundaryState, actionNode.finished(
 		attempt,
-		e.actionResult(status, failure, observations, startedAt, endedAt),
+		e.actionResult(status, failure, observations, diagnostics, startedAt, endedAt),
 	)
 }
 
@@ -792,6 +818,7 @@ func (e actExecution) recordExpectationFinished(
 	attempt int,
 	status Status,
 	failure *Failure,
+	diagnostics []NodeDiagnostic,
 	startedAt time.Time,
 	scope debugSnapshotSection,
 	inputs debugSnapshotSection,
@@ -815,7 +842,7 @@ func (e actExecution) recordExpectationFinished(
 
 	return boundaryState, expectationNode.finished(
 		attempt,
-		e.expectationResult(expectation, status, failure, startedAt, endedAt),
+		e.expectationResult(expectation, status, failure, diagnostics, startedAt, endedAt),
 	)
 }
 
@@ -903,6 +930,22 @@ func debugTerminalBoundary(state debugBoundaryState, failure *Failure) *debugBou
 	return &candidate
 }
 
+func actionDiagnosticsForNode(diagnostics []NodeDiagnostic, actionNode executionNode, attempt int) []NodeDiagnostic {
+	if len(diagnostics) == 0 {
+		return nil
+	}
+
+	cloned := cloneNodeDiagnostics(diagnostics)
+	actionAddress := actionNode.address.finished(attempt, nil)
+	for i := range cloned {
+		if cloned[i].Kind == NodeDiagnosticKindHTTP && cloned[i].HTTP != nil && cloned[i].HTTP.ActionAddress == nil {
+			cloned[i].HTTP.ActionAddress = cloneNodeAddress(actionAddress)
+		}
+	}
+
+	return cloned
+}
+
 func (e actExecution) handleActionLiveSinkFailure(
 	ctx context.Context,
 	actionNode executionNode,
@@ -916,6 +959,7 @@ func (e actExecution) handleActionLiveSinkFailure(
 	outputs Outputs,
 	actionErr error,
 	streamObservations *ActionObservations,
+	diagnostics []NodeDiagnostic,
 	publishErr error,
 ) (actOutcome, bool, error) {
 	if publishErr == nil {
@@ -943,6 +987,7 @@ func (e actExecution) handleActionLiveSinkFailure(
 		startedAt,
 		failure,
 		observations,
+		diagnostics,
 		scope,
 		inputs,
 		outputSection,
@@ -960,13 +1005,14 @@ func (e actExecution) handleActionExecutionError(
 	contract ActionContract,
 	inputObservations *ActionObservations,
 	streamObservations *ActionObservations,
+	diagnostics []NodeDiagnostic,
 	actionErr error,
 ) (actOutcome, error) {
 	var panicErr boundaryPanicError
 	if errors.As(actionErr, &panicErr) {
 		observations := mergeActionObservations(inputObservations, streamObservations)
 		failure := internalFailure(e.actionPath, "action panicked", actionErr)
-		return e.finishActionFailure(ctx, actionNode, attempt, startedAt, failure, observations, scope, inputs, debugSnapshotSection{})
+		return e.finishActionFailure(ctx, actionNode, attempt, startedAt, failure, observations, nil, scope, inputs, debugSnapshotSection{})
 	}
 
 	outputObservations := partialOutputObservations(actionErr, contract)
@@ -986,6 +1032,7 @@ func (e actExecution) handleActionExecutionError(
 		status,
 		failure,
 		observations,
+		diagnostics,
 		startedAt,
 		scope,
 		inputs,
@@ -1005,6 +1052,7 @@ func (e actExecution) finishActionFailure(
 	startedAt time.Time,
 	failure *Failure,
 	observations *ActionObservations,
+	diagnostics []NodeDiagnostic,
 	scope debugSnapshotSection,
 	inputs debugSnapshotSection,
 	output debugSnapshotSection,
@@ -1016,6 +1064,7 @@ func (e actExecution) finishActionFailure(
 		StatusFailed,
 		failure,
 		observations,
+		diagnostics,
 		startedAt,
 		scope,
 		inputs,
@@ -1034,6 +1083,7 @@ func (e actExecution) finishExpectationPreparationFailure(
 	expectationNode executionNode,
 	attempt int,
 	failure *Failure,
+	diagnostics []NodeDiagnostic,
 	startedAt time.Time,
 	scope debugSnapshotSection,
 ) (preparedExpectationExecution, *actOutcome, error) {
@@ -1044,6 +1094,7 @@ func (e actExecution) finishExpectationPreparationFailure(
 		attempt,
 		StatusFailed,
 		failure,
+		diagnostics,
 		startedAt,
 		scope,
 		debugSnapshotSection{},
@@ -1063,6 +1114,7 @@ func (e actExecution) finishExpectationFailure(
 	expectationNode executionNode,
 	attempt int,
 	failure *Failure,
+	diagnostics []NodeDiagnostic,
 	startedAt time.Time,
 	scope debugSnapshotSection,
 	inputs debugSnapshotSection,
@@ -1075,6 +1127,7 @@ func (e actExecution) finishExpectationFailure(
 		attempt,
 		StatusFailed,
 		failure,
+		diagnostics,
 		startedAt,
 		scope,
 		inputs,

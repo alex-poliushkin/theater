@@ -53,6 +53,7 @@ type ActionRequest struct {
 	State       *statemodel.Manager
 	HTTPCapture *HTTPAuthCaptureSpec
 	Reporter    observe.Reporter
+	Diagnostics DiagnosticRecorder
 	Paths       PathContext
 	Attempt     int
 	Resources   ResourceScope

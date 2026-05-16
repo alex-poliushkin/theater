@@ -34,6 +34,9 @@ const (
 		`use "none" to disable auth inherited from identity`
 	FormArgDescription = "optional application/x-www-form-urlencoded request form; incompatible with raw body"
 	JSONArgDescription = "optional application/json request body encoded from any bound runtime value; incompatible with raw body and form"
+
+	httpDiagnosticPreviewLimitBytes = 4 * 1024
+	httpDiagnosticRedactedValue     = "redacted"
 )
 
 var clientFactoryScopeKey = theater.NewResourceKey(resourceNamespace, "client_factory")
@@ -60,6 +63,7 @@ type Response struct {
 	Headers    http.Header
 	Status     string
 	StatusCode int
+	Diagnostic theater.HTTPDiagnostic
 }
 
 func RegisterScenarioScopeInitializer(registrar theater.ScenarioScopeInitializerRegistrar) error {
@@ -157,6 +161,15 @@ func Do(ctx context.Context, resources theater.ResourceScope, httpSpec *theater.
 	return defaultResolver.Resolve(resources).Do(ctx, httpSpec, request)
 }
 
+func HTTPDiagnosticFromError(err error) (theater.HTTPDiagnostic, bool) {
+	var diagnosticErr diagnosticError
+	if !errors.As(err, &diagnosticErr) {
+		return theater.HTTPDiagnostic{}, false
+	}
+
+	return diagnosticErr.diagnostic, true
+}
+
 func Outputs(response Response) theater.Outputs {
 	return theater.Outputs{
 		"status_code": response.StatusCode,
@@ -197,6 +210,11 @@ type authStateStore struct {
 	slots map[string]map[string]theater.Secret
 }
 
+type diagnosticError struct {
+	cause      error
+	diagnostic theater.HTTPDiagnostic
+}
+
 var defaultResolver clientResolver = defaultClientResolver{}
 
 const (
@@ -219,26 +237,47 @@ func (defaultClientResolver) Resolve(resources theater.ResourceScope) requestExe
 	return transportExecutor{client: client, resources: resources}
 }
 
+func (e diagnosticError) Error() string {
+	if e.cause == nil {
+		return "http diagnostic error"
+	}
+
+	return e.cause.Error()
+}
+
+func (e diagnosticError) Unwrap() error {
+	return e.cause
+}
+
 func (e transportExecutor) Do(ctx context.Context, httpSpec *theater.HTTPSpec, request Request) (Response, error) {
 	if e.cleanup != nil {
 		defer e.cleanup()
 	}
 
+	startedAt := time.Now()
 	resolved, err := resolveRequest(e.resources, httpSpec, request)
 	if err != nil {
-		return Response{}, err
+		return Response{}, diagnosticError{
+			cause:      err,
+			diagnostic: newHTTPDiagnostic(request, nil, time.Since(startedAt)),
+		}
 	}
 
 	response, err := e.client.Do(ctx, transportRequest(resolved))
 	if err != nil {
-		return Response{}, err
+		return Response{}, diagnosticError{
+			cause:      err,
+			diagnostic: newHTTPDiagnostic(resolved, nil, time.Since(startedAt)),
+		}
 	}
+	diagnostic := newHTTPDiagnostic(resolved, &response, time.Since(startedAt))
 
 	return Response{
 		Body:       bytes.Clone(response.Body),
 		Headers:    response.Header.Clone(),
 		Status:     response.Status,
 		StatusCode: response.StatusCode,
+		Diagnostic: diagnostic,
 	}, nil
 }
 

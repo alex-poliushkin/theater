@@ -20,6 +20,7 @@ type actOutcome struct {
 	failure               *Failure
 	values                Values
 	properties            Values
+	diagnostics           []NodeDiagnostic
 	logs                  []logEvaluationRecord
 	eventually            *EventuallyReport
 	debugTerminalBoundary *debugBoundaryState
