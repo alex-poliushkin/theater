@@ -20,6 +20,7 @@ How-to pages solve one task at a time.
 ## Discover And Integrate
 
 - [List reusable scenarios](list-reusable-scenarios.md)
+- [Test local mocks against client contracts](test-local-mocks-against-client-contracts.md)
 - [Inspect a plugin registry](inspect-plugin-registry.md)
 - [Embed Theater in Go](embed-theater-in-go.md)
 - [Check editor tooling](check-editor-tooling.md)
