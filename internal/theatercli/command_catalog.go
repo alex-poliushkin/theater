@@ -200,7 +200,7 @@ func newReportRenderCommandSpec() *commandSpec {
 	return &commandSpec{
 		Name:        commandReportRender,
 		Path:        "theater report render",
-		Args:        "--input <run.json> [--format junit|markdown]",
+		Args:        "--input <run.json> [--format junit|markdown|summary-md]",
 		Short:       "Render one artifact from saved run JSON.",
 		Long:        "Use report render to convert the public JSON emitted by theater run --format json into a CI artifact.",
 		FlagProfile: commandFlagProfileReportRender,
@@ -215,6 +215,11 @@ func newReportRenderCommandSpec() *commandSpec {
 				Command: "theater report render --input build/example-domain.run.json " +
 					"--format markdown > build/example-domain.md",
 			},
+			{
+				Title: "Compact job summary",
+				Command: "theater report render --input build/example-domain.run.json " +
+					"--format summary-md > build/example-domain.summary.md",
+			},
 		},
 		Sections: []commandHelpSection{
 			{
@@ -228,7 +233,8 @@ func newReportRenderCommandSpec() *commandSpec {
 				Title: "Formats",
 				Lines: []string{
 					"junit keeps the compact scenario-call testcase contract used by theater run --format junit.",
-					"markdown renders a bounded human-readable summary with scenarios, acts, expectations, logs, retries, and failures.",
+					"markdown renders a detailed bounded report with scenarios, acts, expectations, logs, retries, and failures.",
+					"summary-md renders a compact CI job summary without raw logs, HTTP bodies, secrets, or unbounded payloads.",
 				},
 			},
 		},
@@ -360,13 +366,13 @@ func newRunCommandSpec() *commandSpec {
 		Name: commandRun,
 		Path: "theater run",
 		Args: stageFileArgument + " [--format text|json|junit] [--live auto|off] " +
-			"[--json-output <path>] [--junit-output <path>] [--markdown-output <path>] " +
+			"[--json-output <path>] [--junit-output <path>] [--markdown-output <path>] [--summary-output <path>] " +
 			"[--overwrite] [--debug off|dump|interactive]",
 		Short:       "Validate, execute, and render a stage run.",
 		FlagProfile: commandFlagProfileRun,
 		Long: "Use run when you want the full validate-first path: load a stage, " +
 			"validate it, execute it, and render the final result as text, JSON, or JUnit. " +
-			"Use sidecar output flags to write JSON, JUnit, or Markdown artifacts from the same run document. " +
+			"Use sidecar output flags to write JSON, JUnit, Markdown, or compact summary artifacts from the same run document. " +
 			"Use a positional stage path for the common case; --file remains available " +
 			"when explicit spelling helps readability, and legacy -file remains supported for compatibility.",
 		Examples: []commandExample{
@@ -387,7 +393,8 @@ func newRunCommandSpec() *commandSpec {
 				Command: "theater run theater/flows/http/example-domain.yaml --live off --format text \\\n" +
 					"  --json-output build/example-domain.run.json \\\n" +
 					"  --junit-output build/example-domain.junit.xml \\\n" +
-					"  --markdown-output build/example-domain.md",
+					"  --markdown-output build/example-domain.md \\\n" +
+					"  --summary-output build/example-domain.summary.md",
 			},
 			{
 				Title:   "Dump debug sidecar",
@@ -421,6 +428,7 @@ func newRunCommandSpec() *commandSpec {
 					"JSON and JUnit keep stdout machine-readable. Interactive debug prompts " +
 						"and pause cards also stay on stderr so redirected stdout remains clean.",
 					"Sidecar output flags write explicit file paths after execution and before stdout rendering. Existing files require --overwrite.",
+					"Use --summary-output for compact CI job summaries; use --markdown-output for detailed report artifacts.",
 					"Sidecar render or write failures exit with command failure status. " +
 						"Failed runs still write requested sidecars when rendering succeeds.",
 				},
@@ -452,7 +460,13 @@ func newRunCommandSpec() *commandSpec {
 		},
 		FlagGroups: []flagHelpGroup{
 			{Title: flagGroupFiles, Flags: []string{"file"}},
-			{Title: flagGroupOutput, Flags: []string{"format", "live", "json-output", "junit-output", "markdown-output", "overwrite"}},
+			{
+				Title: flagGroupOutput,
+				Flags: []string{
+					"format", "live", "json-output", "junit-output",
+					"markdown-output", "summary-output", "overwrite",
+				},
+			},
 			{Title: flagGroupPlugins, Flags: []string{"plugins-config", "plugins-lock", "plugin-exporter"}},
 			{Title: flagGroupDebug, Flags: []string{"debug", "break", "break-file", "step", "debug-dump", "stop-on-failure"}},
 		},

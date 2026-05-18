@@ -80,6 +80,7 @@ func TestRunCommandHelpUsesCommandMetadata(t *testing.T) {
 		"--json-output build/example-domain.run.json",
 		"--junit-output build/example-domain.junit.xml",
 		"--markdown-output build/example-domain.md",
+		"--summary-output build/example-domain.summary.md",
 		"theater run theater/flows/plugins/hello-world-plugin.yaml",
 		"--plugin-exporter <report-exporter-capability>",
 		"--live off",
@@ -117,6 +118,7 @@ func TestRunCommandHelpUsesCommandMetadata(t *testing.T) {
 		!strings.Contains(output, "--json-output <string>") ||
 		!strings.Contains(output, "--junit-output <string>") ||
 		!strings.Contains(output, "--markdown-output <string>") ||
+		!strings.Contains(output, "--summary-output <string>") ||
 		!strings.Contains(output, "--overwrite") {
 		t.Fatalf("command help missing long-form options: %q", output)
 	}
@@ -134,6 +136,34 @@ func TestRunCommandHelpUsesCommandMetadata(t *testing.T) {
 	}
 	if strings.Contains(output, "Usage of run:") {
 		t.Fatalf("command help must not use raw flag usage: %q", output)
+	}
+}
+
+func TestReportRenderCommandHelpUsesCommandMetadata(t *testing.T) {
+	t.Parallel()
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	code := run([]string{commandHelp, commandReport, commandReportRender}, &stdout, &stderr)
+	if got, want := code, 0; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d", got, want)
+	}
+	if got := strings.TrimSpace(stderr.String()); got != "" {
+		t.Fatalf("stderr mismatch: got %q want empty", got)
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"Usage:\n  theater report render --input <run.json> [--format junit|markdown|summary-md]",
+		"Compact job summary:",
+		"--format summary-md > build/example-domain.summary.md",
+		"summary-md renders a compact CI job summary without raw logs, HTTP bodies, secrets, or unbounded payloads.",
+		"--format <string>",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("report render help missing %q: %q", want, output)
+		}
 	}
 }
 

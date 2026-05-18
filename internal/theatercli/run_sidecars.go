@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alex-poliushkin/theater/junit"
 	reportmodel "github.com/alex-poliushkin/theater/report"
 )
 
@@ -18,6 +17,7 @@ type runSidecarOutputs struct {
 	JSON      string
 	JUnit     string
 	Markdown  string
+	Summary   string
 	Overwrite bool
 }
 
@@ -60,7 +60,7 @@ func writeRunSidecarOutputs(file string, document reportmodel.RunDocument, outpu
 }
 
 func (o runSidecarOutputs) requested() []runSidecarOutput {
-	outputs := make([]runSidecarOutput, 0, 3)
+	outputs := make([]runSidecarOutput, 0, 4)
 	if o.JSON != "" {
 		outputs = append(outputs, runSidecarOutput{format: outputFormatJSON, path: o.JSON})
 	}
@@ -69,6 +69,9 @@ func (o runSidecarOutputs) requested() []runSidecarOutput {
 	}
 	if o.Markdown != "" {
 		outputs = append(outputs, runSidecarOutput{format: outputFormatMarkdown, path: o.Markdown})
+	}
+	if o.Summary != "" {
+		outputs = append(outputs, runSidecarOutput{format: outputFormatSummary, path: o.Summary})
 	}
 	return outputs
 }
@@ -111,16 +114,10 @@ func renderRunSidecar(file string, document reportmodel.RunDocument, format outp
 		if err := writeRunDocumentJSON(&buffer, file, document); err != nil {
 			return nil, err
 		}
-	case outputFormatJUnit:
-		if err := junit.NewExporter().Write(&buffer, document); err != nil {
-			return nil, err
-		}
-	case outputFormatMarkdown:
-		if err := newReportMarkdownRenderer().Write(&buffer, file, document); err != nil {
-			return nil, err
-		}
 	default:
-		return nil, fmt.Errorf("unsupported format %q", format)
+		if err := renderRunDocumentArtifact(&buffer, file, document, format); err != nil {
+			return nil, err
+		}
 	}
 	return buffer.Bytes(), nil
 }

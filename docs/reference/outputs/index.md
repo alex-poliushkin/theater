@@ -9,13 +9,14 @@ Source of truth:
 - `internal/theatercli/renderers.go`
 - `internal/theatercli/report_command.go`
 - `internal/theatercli/report_markdown_renderer.go`
+- `internal/theatercli/report_summary_markdown_renderer.go`
 - `internal/theatercli/debug_path_renderer.go`
 - `internal/theatercli/list_command.go`
 - [Reports](../reports.md)
 
 ## Checked Output Commands
 
-<!-- theater-doc: command id=reference-output-formats cwd=../../.. expect-stdout="Output formats:" expect-stdout-2="json  machine-readable stdout" expect-stdout-3="markdown  detailed human-readable CI summary" -->
+<!-- theater-doc: command id=reference-output-formats cwd=../../.. expect-stdout="Output formats:" expect-stdout-2="json  machine-readable stdout" expect-stdout-3="markdown  detailed human-readable CI report" expect-stdout-4="summary-md  compact Markdown summary" -->
 ```sh
 go run ./cmd/theater explain formats
 ```
@@ -45,6 +46,11 @@ go run ./cmd/theater run docs/examples/first-stage/stage.thtr --live off --forma
 go run ./cmd/theater report render --input docs/examples/reference/saved-run.json --format markdown
 ```
 
+<!-- theater-doc: command id=reference-output-report-summary cwd=../../.. expect-stdout="# Theater Run Summary" expect-stdout-2="- Status: `passed`" expect-stdout-3="- Run: `" reject-stdout="### Scenario" reject-stdout-2="log response" reject-stdout-3="HTTP body:" -->
+```sh
+go run ./cmd/theater report render --input docs/examples/reference/saved-run.json --format summary-md
+```
+
 <!-- theater-doc: command id=reference-output-live-log-stderr cwd=../../.. expect-stdout=passed expect-stderr="log response" expect-stderr-2="log audit" reject-stdout="log response" reject-stdout-2="log audit" -->
 ```sh
 go run ./cmd/theater run docs/examples/reference/logs.thtr --live auto
@@ -58,15 +64,17 @@ go run ./cmd/theater run docs/examples/reference/logs.thtr --live auto
 | `json` | `validate`, `run`, `validate --debug-paths`, `list scenarios`, `plugins inspect` | Machine-readable stdout; no ANSI styling |
 | `junit` | `run`, `report render` | Compact scenario-call JUnit XML stdout for CI test-report ingestion |
 | `markdown` | `report render`, `run` sidecars | Detailed human-readable run report for CI artifacts |
+| `summary-md` | `report render`, `run` sidecars | Compact Markdown run summary for CI job summaries |
 
 Live progress, scenario-authored live log lines, debug prompts, and interactive
 pause cards use stderr so redirected stdout remains safe for JSON, JUnit, or
 text summary capture. Passing text summaries do not print all scenario-authored
 report logs by default; use `run --format json` to read retained log records
-from `result.report.logs`. Use `run --json-output`, `--junit-output`, and
-`--markdown-output` when one execution should produce multiple artifacts. Use
-`report render` when a saved run JSON file should become compact JUnit or
-detailed Markdown without executing the stage again.
+from `result.report.logs`. Use `run --json-output`, `--junit-output`,
+`--markdown-output`, and `--summary-output` when one execution should produce
+multiple artifacts. Use `report render` when a saved run JSON file should
+become compact JUnit, detailed Markdown, or compact summary Markdown without
+executing the stage again.
 
 The compact summary Markdown projection is a separate v0.5.0 report projection
 over the same run document. It is bounded for CI job summaries and must not
@@ -83,6 +91,7 @@ outputs from the same run document:
 | `--json-output <path>` | JSON run wrapper |
 | `--junit-output <path>` | JUnit XML |
 | `--markdown-output <path>` | Markdown report |
+| `--summary-output <path>` | Compact Markdown summary |
 | `--overwrite` | Allow replacing existing sidecar files |
 
 Sidecar flags do not accept `-`. Existing files require `--overwrite`, and
@@ -92,7 +101,7 @@ rejected.
 
 <!-- theater-doc: command id=reference-output-run-sidecars cwd=../../.. expect-stdout=passed expect-stdout-2="passed=1 failed=0" -->
 ```sh
-go run ./cmd/theater run docs/examples/first-stage/stage.thtr --live off --format text --json-output /tmp/theater-first-stage.run.json --junit-output /tmp/theater-first-stage.junit.xml --markdown-output /tmp/theater-first-stage.md --overwrite
+go run ./cmd/theater run docs/examples/first-stage/stage.thtr --live off --format text --json-output /tmp/theater-first-stage.run.json --junit-output /tmp/theater-first-stage.junit.xml --markdown-output /tmp/theater-first-stage.md --summary-output /tmp/theater-first-stage.summary.md --overwrite
 ```
 
 Exit precedence:

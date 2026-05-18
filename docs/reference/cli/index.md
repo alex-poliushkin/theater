@@ -22,7 +22,7 @@ go run ./cmd/theater help
 go run ./cmd/theater help validate
 ```
 
-<!-- theater-doc: command id=reference-cli-run-help cwd=../../.. expect-stdout="--format text|json|junit" expect-stdout-2="--live auto|off" expect-stdout-3="--json-output" expect-stdout-4="--junit-output" expect-stdout-5="--markdown-output" expect-stdout-6="--plugin-exporter" -->
+<!-- theater-doc: command id=reference-cli-run-help cwd=../../.. expect-stdout="--format text|json|junit" expect-stdout-2="--live auto|off" expect-stdout-3="--json-output" expect-stdout-4="--junit-output" expect-stdout-5="--markdown-output" expect-stdout-6="--summary-output" expect-stdout-7="--plugin-exporter" -->
 ```sh
 go run ./cmd/theater help run
 ```
@@ -47,7 +47,7 @@ go run ./cmd/theater help list scenarios
 go run ./cmd/theater help migrate from-yaml
 ```
 
-<!-- theater-doc: command id=reference-cli-report-render-help cwd=../../.. expect-stdout="theater report render --input <run.json>" expect-stdout-2="--format <string>" expect-stdout-3="Markdown summary" -->
+<!-- theater-doc: command id=reference-cli-report-render-help cwd=../../.. expect-stdout="theater report render --input <run.json>" expect-stdout-2="--format <string>" expect-stdout-3="summary-md" -->
 ```sh
 go run ./cmd/theater help report render
 ```
@@ -68,14 +68,14 @@ go run ./cmd/theater help report render
 | --- | --- | --- |
 | `theater init` | `theater init [theater/flows/.../starter.{yaml|thtr}] [--syntax yaml|thtr]` | Creates one starter stage under `theater/flows/` and prepares `theater/lib/`; never overwrites an existing target |
 | `theater validate` | `theater validate <stage.{yaml|yml|thtr}> [--format text|json] [--plugins-readiness runtime\|descriptor] [--debug-paths]` | Alias: `check`; validates without live execution |
-| `theater run` | `theater run <stage.{yaml|yml|thtr}> [--format text|json|junit] [--json-output <path>] [--junit-output <path>] [--markdown-output <path>] [--overwrite] [--live auto|off] [--debug off|dump|interactive]` | Validates first, executes once, renders stdout, and can write explicit sidecar artifacts |
+| `theater run` | `theater run <stage.{yaml|yml|thtr}> [--format text|json|junit] [--json-output <path>] [--junit-output <path>] [--markdown-output <path>] [--summary-output <path>] [--overwrite] [--live auto|off] [--debug off|dump|interactive]` | Validates first, executes once, renders stdout, and can write explicit sidecar artifacts |
 | `theater fmt` | `theater fmt <path.thtr> [--write] [--check] [--diff]` | Prints formatted `.thtr` by default; `--write` mutates the file |
 | `theater lower` | `theater lower <path.thtr> [--map <path.json>]` | Writes canonical YAML to stdout; `--map` writes a source-map sidecar |
 | `theater migrate from-yaml` | `theater migrate from-yaml --file <stage.yaml\|stage.yml> [--plugins-config <path.json> --plugins-lock <path.lock.json>]` | Emits formatter-clean `.thtr` to stdout |
 | `theater explain` | `theater explain [family\|topic\|query] [ref]` | Lists families/topics, inspects `family ref`, or lists non-topic query matches |
 | `theater doctor` | `theater doctor [--plugins-config <path> --plugins-lock <path>] [--write-path <path>...]` | Checks common local workflow preconditions |
 | `theater list scenarios` | `theater list scenarios [--root <path>] [--format text\|json] [--syntax all\|yaml\|thtr] [--call-skeleton]` | Lists reusable public scenario ids from `theater/lib` |
-| `theater report render` | `theater report render --input <run.json> [--format junit\|markdown]` | Converts `run --format json` output into compact JUnit or detailed Markdown without rerunning the stage |
+| `theater report render` | `theater report render --input <run.json> [--format junit\|markdown\|summary-md]` | Converts `run --format json` output into compact JUnit, detailed Markdown, or compact summary Markdown without rerunning the stage |
 | `theater plugins inspect` | `theater plugins inspect --plugins-config <path> [--plugins-lock <path>] [--format text\|json]` | Alias: `ls`; resolves the plugin set |
 | `theater plugins digest` | `theater plugins digest --manifest <path> [--write]` | Prints or updates a plugin manifest descriptor digest |
 | `theater plugins lock` | `theater plugins lock --plugins-config <path> --plugins-lock <path>` | Writes plugin checksum lock data |

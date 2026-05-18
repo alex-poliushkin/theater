@@ -30,20 +30,35 @@ runs.
 The checked commands above assert that the JSON contains the `check-values`
 stage and a `passed` status.
 
-When CI needs JSON, JUnit, and Markdown artifacts from one execution, write
-sidecar outputs from `theater run`:
+When CI needs JSON, JUnit, detailed Markdown, and compact summary artifacts
+from one execution, write sidecar outputs from `theater run`:
 
 <!-- theater-doc: command id=howto-read-output-sidecars cwd=../.. expect-stdout=passed expect-stdout-2="passed=1 failed=0" -->
 ```sh
-go run ./cmd/theater run docs/examples/check-values/profile.thtr --live off --format text --json-output /tmp/theater-profile.run.json --junit-output /tmp/theater-profile.junit.xml --markdown-output /tmp/theater-profile.md --overwrite
+go run ./cmd/theater run docs/examples/check-values/profile.thtr --live off --format text --json-output /tmp/theater-profile.run.json --junit-output /tmp/theater-profile.junit.xml --markdown-output /tmp/theater-profile.md --summary-output /tmp/theater-profile.summary.md --overwrite
 ```
 
 For a repository-local CI job, create the output directory first and use paths
-owned by the job workspace:
+owned by the job workspace. `--markdown-output` writes the detailed report
+artifact; `--summary-output` writes the bounded job summary:
 
 ```
 mkdir -p build
-theater run docs/examples/check-values/profile.thtr --live off --format text --json-output build/profile.run.json --junit-output build/profile.junit.xml --markdown-output build/profile.md
+theater run docs/examples/check-values/profile.thtr --live off --format text --json-output build/profile.run.json --junit-output build/profile.junit.xml --markdown-output build/profile.md --summary-output build/profile.summary.md
+```
+
+For GitHub Actions, preserve the Theater exit code while still appending the
+compact summary for failed runs:
+
+```
+mkdir -p build
+set +e
+theater run docs/examples/check-values/profile.thtr --live off --format text --json-output build/profile.run.json --junit-output build/profile.junit.xml --markdown-output build/profile.md --summary-output build/profile.summary.md
+status=$?
+if [ -f build/profile.summary.md ]; then
+  cat build/profile.summary.md >> "$GITHUB_STEP_SUMMARY"
+fi
+exit "$status"
 ```
 
 Sidecar paths are always explicit. Theater does not derive filenames from the
@@ -63,6 +78,13 @@ Exit precedence for `theater run` with sidecars:
 `report render` remains available when a saved run JSON already exists. It is a
 converter and exits successfully when the artifact is written, even if the saved
 run document describes a failed Theater run.
+
+Use `report render --format summary-md` when a CI step already has saved run
+JSON and only needs the compact Markdown summary:
+
+```
+theater report render --input build/profile.run.json --format summary-md > build/profile.summary.md
+```
 
 Use [Selectors](../reference/selectors.md) and
 [Expectations](../reference/expectations.md) when the failure is about a checked

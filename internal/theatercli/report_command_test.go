@@ -66,6 +66,47 @@ func TestReportRenderMarkdownReadsSavedRunJSON(t *testing.T) {
 	}
 }
 
+func TestReportRenderSummaryMarkdownReadsSavedRunJSON(t *testing.T) {
+	t.Parallel()
+
+	input, stagePath := writeRunJSONFixture(t, "docs/examples/reference/logs.thtr", 0)
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+	code := run([]string{commandReport, commandReportRender, "--input", input, "--format", "summary-md"}, &stdout, &stderr)
+	if got, want := code, 0; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d stderr=%q", got, want, stderr.String())
+	}
+	if got := strings.TrimSpace(stderr.String()); got != "" {
+		t.Fatalf("stderr mismatch: got %q want empty", got)
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"# Theater Run Summary",
+		"- File: `" + filepath.ToSlash(stagePath) + "`",
+		"- Status: `passed`",
+		"- Scenarios: total=1 passed=1 failed=0 canceled=0 skipped=0",
+		"- Run: `",
+		"- Theater: `",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("summary output missing %q: %q", want, output)
+		}
+	}
+	for _, forbidden := range []string{
+		"## Scenarios",
+		"- Log `response` emitted:",
+		"log response",
+		"log audit",
+		"HTTP body:",
+	} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("summary output must stay compact and report-safe, found %q: %q", forbidden, output)
+		}
+	}
+}
+
 func TestReportRenderMarkdownReturnsZeroForFailedRunDocument(t *testing.T) {
 	t.Parallel()
 
@@ -94,6 +135,82 @@ func TestReportRenderMarkdownReturnsZeroForFailedRunDocument(t *testing.T) {
 	}
 	if strings.Contains(output, "actual hello does not equal expected goodbye") {
 		t.Fatalf("markdown output must not restore raw failure cause from saved JSON: %q", output)
+	}
+}
+
+func TestReportRenderSummaryMarkdownReturnsZeroForFailedRunDocument(t *testing.T) {
+	t.Parallel()
+
+	input, _ := writeRunJSONFixture(t, "docs/examples/first-stage/stage-wrong.thtr", 1)
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+	code := run([]string{commandReport, commandReportRender, "--input", input, "--format", "summary-md"}, &stdout, &stderr)
+	if got, want := code, 0; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+	if got := strings.TrimSpace(stderr.String()); got != "" {
+		t.Fatalf("stderr mismatch: got %q want empty", got)
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"- Status: `failed`",
+		"## Failed Scenarios",
+		"- Scenario `run` failed",
+		"- Failed node: `stage.docs-first/call.run/act.say-hello/expectation.message`",
+		"expectation failed",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("summary output missing %q: %q", want, output)
+		}
+	}
+	if strings.Contains(output, "actual hello does not equal expected goodbye") {
+		t.Fatalf("summary output must not restore raw failure cause from saved JSON: %q", output)
+	}
+}
+
+func TestReportRenderSummaryMarkdownOmitsHTTPDiagnosticDetails(t *testing.T) {
+	t.Parallel()
+
+	input := repoFilePath(t, "docs/examples/reference/failed-http-run.json")
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+	code := run([]string{commandReport, commandReportRender, "--input", input, "--format", "summary-md"}, &stdout, &stderr)
+	if got, want := code, 0; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+	if got := strings.TrimSpace(stderr.String()); got != "" {
+		t.Fatalf("stderr mismatch: got %q want empty", got)
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"# Theater Run Summary",
+		"- Status: `failed`",
+		"## Failed Scenarios",
+		"- Scenario `probe` failed",
+		"- Failed node: `stage.docs-http-diagnostics/call.probe/act.fetch/expectation.status`",
+		"status mismatch",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("summary output missing %q: %q", want, output)
+		}
+	}
+	for _, forbidden := range []string{
+		"HTTP request",
+		"HTTP body:",
+		"api.example.test",
+		"retry later",
+		"credential-secret",
+		"token",
+		"Bad Gateway",
+		"req-123",
+	} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("summary output must omit HTTP diagnostic detail %q: %q", forbidden, output)
+		}
 	}
 }
 
@@ -170,12 +287,7 @@ func TestReportRenderRejectsInvalidInput(t *testing.T) {
 func writeRunJSONFixture(t *testing.T, repoStagePath string, wantCode int) (string, string) {
 	t.Helper()
 
-	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("locate test file failed")
-	}
-	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
-	stagePath := filepath.Join(repoRoot, filepath.FromSlash(repoStagePath))
+	stagePath := repoFilePath(t, repoStagePath)
 	var stdout strings.Builder
 	var stderr strings.Builder
 	code := run([]string{commandRun, stagePath, "--live", "off", "--format", "json"}, &stdout, &stderr)
@@ -191,4 +303,15 @@ func writeRunJSONFixture(t *testing.T, repoStagePath string, wantCode int) (stri
 		t.Fatalf("write run json fixture failed: %v", err)
 	}
 	return path, stagePath
+}
+
+func repoFilePath(t *testing.T, repoPath string) string {
+	t.Helper()
+
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("locate test file failed")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(currentFile), "..", ".."))
+	return filepath.Join(repoRoot, filepath.FromSlash(repoPath))
 }

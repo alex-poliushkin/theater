@@ -12,6 +12,7 @@ Source of truth:
 - `report/observations.go`
 - `internal/theatercli/renderers.go`
 - `internal/theatercli/report_command.go`
+- `internal/theatercli/report_summary_markdown_renderer.go`
 - [Output Formats](outputs/index.md)
 
 ## Checked Report Output
@@ -36,6 +37,11 @@ go run ./cmd/theater run docs/examples/reference/logs.thtr --live off --format j
 go run ./cmd/theater report render --input docs/examples/reference/saved-run.json --format markdown
 ```
 
+<!-- theater-doc: command id=reference-report-render-summary cwd=../.. expect-stdout="# Theater Run Summary" expect-stdout-2="- Status: `passed`" expect-stdout-3="- Run: `" reject-stdout="### Scenario" reject-stdout-2="log response" reject-stdout-3="HTTP body:" -->
+```sh
+go run ./cmd/theater report render --input docs/examples/reference/saved-run.json --format summary-md
+```
+
 <!-- theater-doc: command id=reference-report-http-diagnostics-markdown cwd=../.. expect-stdout="HTTP request" expect-stdout-2="api.example.test/redacted?token=redacted" expect-stdout-3="HTTP body:" expect-stdout-4="retry later" reject-stdout=credential-secret -->
 ```sh
 go run ./cmd/theater report render --input docs/examples/reference/failed-http-run.json --format markdown
@@ -56,14 +62,14 @@ go run ./cmd/theater report render --input docs/examples/reference/failed-http-r
 | `result` | Public run document |
 
 `theater run` can also write the same run document and derived CI artifacts to
-sidecar files with `--json-output`, `--junit-output`, and `--markdown-output`.
-Sidecars are rendered from the same in-memory run document as stdout output and
-do not execute the stage again.
+sidecar files with `--json-output`, `--junit-output`, `--markdown-output`, and
+`--summary-output`. Sidecars are rendered from the same in-memory run document
+as stdout output and do not execute the stage again.
 
 `theater report render --input <run.json>` reads this same wrapper. The render
 command exits `0` when artifact generation succeeds, even when the saved run
 document describes a failed Theater run. Failed outcomes are represented inside
-the rendered JUnit or Markdown artifact.
+the rendered JUnit, Markdown, or summary artifact.
 
 ## Run Sidecar Outputs
 
@@ -72,6 +78,7 @@ the rendered JUnit or Markdown artifact.
 | `--json-output <path>` | JSON wrapper with `file` and `result`, matching `run --format json` stdout |
 | `--junit-output <path>` | JUnit XML rendered from the run document |
 | `--markdown-output <path>` | Markdown report rendered from the run document |
+| `--summary-output <path>` | Compact Markdown summary rendered from the run document |
 | `--overwrite` | Replace existing sidecar files; without this flag existing files are rejected |
 
 Sidecar paths must be explicit file paths. Theater rejects `-`, parent
@@ -192,7 +199,9 @@ payload preview. Zero counters are omitted from JSON.
 
 ## Summary Projection Contract
 
-The compact summary projection is separate from the detailed Markdown report.
+The compact summary projection is available through `report render --format
+summary-md` and `run --summary-output`. It is separate from the detailed
+Markdown report.
 The existing `markdown` renderer may show scenario calls, acts, expectations,
 logs, diagnostics, and report-safe observed values. The compact summary
 projection is for CI job summaries and must stay short.

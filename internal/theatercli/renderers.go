@@ -15,6 +15,7 @@ const (
 	outputFormatJSON     outputFormat = "json"
 	outputFormatJUnit    outputFormat = "junit"
 	outputFormatMarkdown outputFormat = "markdown"
+	outputFormatSummary  outputFormat = "summary-md"
 	outputFormatText     outputFormat = "text"
 )
 
@@ -75,6 +76,7 @@ func parseReportOutputFormat(raw string) (outputFormat, error) {
 	return outputFormatSet{
 		outputFormatJUnit:    {},
 		outputFormatMarkdown: {},
+		outputFormatSummary:  {},
 	}.Parse(raw)
 }
 
@@ -88,7 +90,7 @@ func (s outputFormatSet) Parse(raw string) (outputFormat, error) {
 }
 
 func (s outputFormatSet) supportedValues() string {
-	candidates := []outputFormat{outputFormatText, outputFormatJSON, outputFormatJUnit, outputFormatMarkdown}
+	candidates := []outputFormat{outputFormatText, outputFormatJSON, outputFormatJUnit, outputFormatMarkdown, outputFormatSummary}
 	values := make([]string, 0, len(s))
 	for _, candidate := range candidates {
 		if _, ok := s[candidate]; ok {

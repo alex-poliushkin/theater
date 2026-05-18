@@ -141,6 +141,8 @@ func renderRunDocumentArtifact(
 		return junit.NewExporter().Write(writer, document)
 	case outputFormatMarkdown:
 		return newReportMarkdownRenderer().Write(writer, file, document)
+	case outputFormatSummary:
+		return newReportSummaryMarkdownRenderer().Write(writer, file, document)
 	default:
 		return fmt.Errorf("unsupported format %q", format)
 	}

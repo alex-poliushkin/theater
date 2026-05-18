@@ -1500,6 +1500,7 @@ func TestRunStageWritesSidecarOutputsFromOneExecution(t *testing.T) {
 	jsonPath := filepath.Join(outputDir, "run.json")
 	junitPath := filepath.Join(outputDir, "run.junit.xml")
 	markdownPath := filepath.Join(outputDir, "run.md")
+	summaryPath := filepath.Join(outputDir, "run.summary.md")
 	path := writeStageYAML(t, `
 id: main
 scenarios:
@@ -1542,6 +1543,7 @@ scenario_calls:
 		"--json-output", jsonPath,
 		"--junit-output", junitPath,
 		"--markdown-output", markdownPath,
+		"--summary-output", summaryPath,
 	}, &stdout, &stderr)
 	if got, want := code, 0; got != want {
 		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
@@ -1561,6 +1563,22 @@ scenario_calls:
 	if !strings.Contains(readFileString(t, markdownPath), "# Theater Run Report") {
 		t.Fatalf("markdown sidecar missing report title: %q", readFileString(t, markdownPath))
 	}
+	summarySidecar := readFileString(t, summaryPath)
+	if !strings.Contains(summarySidecar, "# Theater Run Summary") || !strings.Contains(summarySidecar, "- Status: `passed`") {
+		t.Fatalf("summary sidecar missing compact summary: %q", summarySidecar)
+	}
+	var renderStdout strings.Builder
+	var renderStderr strings.Builder
+	renderCode := run([]string{commandReport, commandReportRender, "--input", jsonPath, "--format", "summary-md"}, &renderStdout, &renderStderr)
+	if got, want := renderCode, 0; got != want {
+		t.Fatalf("render summary exit code mismatch: got %d want %d, stderr=%q", got, want, renderStderr.String())
+	}
+	if got := strings.TrimSpace(renderStderr.String()); got != "" {
+		t.Fatalf("render summary stderr mismatch: got %q want empty", got)
+	}
+	if got, want := renderStdout.String(), summarySidecar; got != want {
+		t.Fatalf("summary render mismatch:\ngot:\n%s\nwant:\n%s", got, want)
+	}
 	if !strings.Contains(stdout.String(), "passed") {
 		t.Fatalf("stdout text output missing passed summary: %q", stdout.String())
 	}
@@ -1574,6 +1592,7 @@ func TestRunStageWritesSidecarsForFailedRun(t *testing.T) {
 	jsonPath := filepath.Join(outputDir, "failed.json")
 	junitPath := filepath.Join(outputDir, "failed.junit.xml")
 	markdownPath := filepath.Join(outputDir, "failed.md")
+	summaryPath := filepath.Join(outputDir, "failed.summary.md")
 	path := writeStageYAML(t, `
 id: main
 scenarios:
@@ -1607,6 +1626,7 @@ scenario_calls:
 		"--json-output", jsonPath,
 		"--junit-output", junitPath,
 		"--markdown-output", markdownPath,
+		"--summary-output", summaryPath,
 	}, &stdout, &stderr)
 	if got, want := code, 1; got != want {
 		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
@@ -1620,6 +1640,88 @@ scenario_calls:
 	}
 	if !strings.Contains(readFileString(t, markdownPath), "failed") {
 		t.Fatalf("markdown sidecar missing failed status: %q", readFileString(t, markdownPath))
+	}
+	if got := readFileString(t, summaryPath); !strings.Contains(got, "# Theater Run Summary") || !strings.Contains(got, "- Status: `failed`") {
+		t.Fatalf("summary sidecar missing failed status: %q", got)
+	}
+	for _, want := range []string{
+		"## Failed Scenarios",
+		"- Scenario `run-probe` failed",
+		"- Failed node: `stage.main/call.run-probe/act.generate/expectation.wrong-value`",
+		"expectation failed",
+	} {
+		if got := readFileString(t, summaryPath); !strings.Contains(got, want) {
+			t.Fatalf("summary sidecar missing failed detail %q: %q", want, got)
+		}
+	}
+}
+
+func TestRunStageSummarySidecarOmitsInMemoryFailureCause(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		writer.WriteHeader(http.StatusOK)
+		_, _ = writer.Write([]byte(`{"token":"issued-token","cookie":"session=raw"}`))
+	}))
+	defer server.Close()
+
+	summaryPath := filepath.Join(t.TempDir(), "failed.summary.md")
+	path := writeStageYAML(t, `
+id: main
+scenarios:
+  - id: probe
+    acts:
+      - id: request
+        action:
+          use: action.http
+          with:
+            url:
+              kind: literal
+              value: `+server.URL+`
+        expectations:
+          - id: body
+            subject: body
+            assert:
+              contains: missing-token
+scenario_calls:
+  - id: probe-server
+    scenario_id: probe
+`)
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+
+	code := run([]string{
+		"run",
+		"-file", path,
+		"--live", "off",
+		"--summary-output", summaryPath,
+	}, &stdout, &stderr)
+	if got, want := code, 1; got != want {
+		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
+	}
+
+	summary := readFileString(t, summaryPath)
+	for _, want := range []string{
+		"# Theater Run Summary",
+		"- Status: `failed`",
+		"## Failed Scenarios",
+		"expectation failed",
+	} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("summary sidecar missing %q: %q", want, summary)
+		}
+	}
+	for _, forbidden := range []string{
+		"issued-token",
+		"session=raw",
+		`{"token"`,
+		"missing-token",
+		"actual ",
+		"does not contain expected",
+	} {
+		if strings.Contains(summary, forbidden) {
+			t.Fatalf("summary sidecar leaked in-memory failure cause %q: %q", forbidden, summary)
+		}
 	}
 }
 

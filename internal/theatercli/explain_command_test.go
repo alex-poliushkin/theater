@@ -309,7 +309,8 @@ func TestExplainCommandShowsTopicDetail(t *testing.T) {
 		"Explain CLI output surfaces.",
 		"Output formats:",
 		"text  default human-readable output",
-		"markdown  detailed human-readable CI summary",
+		"markdown  detailed human-readable CI report",
+		"summary-md  compact Markdown summary",
 		"Stdout and stderr:",
 		"theater help exit-codes",
 	} {
