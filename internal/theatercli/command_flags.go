@@ -29,6 +29,10 @@ type listScenariosFlagValues struct {
 	syntax string
 }
 
+type librariesInspectFlagValues struct {
+	format string
+}
+
 type reportRenderOptions struct {
 	format outputFormat
 	input  string
@@ -56,6 +60,9 @@ func (a *application) helpFlagSet(spec *commandSpec) *flag.FlagSet {
 		return flags
 	case commandFlagProfileInit:
 		flags, _, _ := a.newInitCommandFlagSet()
+		return flags
+	case commandFlagProfileLibrariesInspect:
+		flags, _, _ := a.newLibrariesInspectCommandFlagSet()
 		return flags
 	case commandFlagProfileListScenarios:
 		flags, _, _ := a.newListScenariosCommandFlagSet()
@@ -136,6 +143,14 @@ func (a *application) newListScenariosCommandFlagSet() (*flag.FlagSet, *listScen
 	return flags, &options, values
 }
 
+func (a *application) newLibrariesInspectCommandFlagSet() (*flag.FlagSet, *librariesInspectOptions, *librariesInspectFlagValues) {
+	flags := a.newFlagSet(a.commands.Must(commandLibraries, commandLibrariesInspect))
+	options := librariesInspectOptions{format: outputFormatText}
+	values := &librariesInspectFlagValues{format: string(outputFormatText)}
+	registerLibrariesInspectCommandFlags(flags, &options, values)
+	return flags, &options, values
+}
+
 func (a *application) newLowerCommandFlagSet() (*flag.FlagSet, *commandOptions) {
 	flags := a.newFlagSet(a.commands.Must(commandLower))
 	options := commandOptions{}
@@ -199,6 +214,15 @@ func registerListScenariosCommandFlags(flags *flag.FlagSet, options *listScenari
 	flags.StringVar(&values.format, "format", values.format, "output format")
 	flags.StringVar(&values.syntax, "syntax", values.syntax, "scenario syntax filter")
 	flags.BoolVar(&options.callSkeleton, "call-skeleton", false, "print runnable scenario call skeletons in text output")
+}
+
+func registerLibrariesInspectCommandFlags(
+	flags *flag.FlagSet,
+	options *librariesInspectOptions,
+	values *librariesInspectFlagValues,
+) {
+	flags.StringVar(&options.file, "file", "", stageFileHelpText)
+	flags.StringVar(&values.format, "format", values.format, "output format")
 }
 
 func registerLowerCommandFlags(flags *flag.FlagSet, options *commandOptions) {

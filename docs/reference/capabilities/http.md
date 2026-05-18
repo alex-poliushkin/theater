@@ -195,6 +195,14 @@ declared in a selected library are rejected before run. Duplicate auth names
 across the flow and selected libraries, or across selected libraries, are hard
 validation errors even when definitions match textually.
 
+Use `theater libraries inspect` to review the selected reusable auth contract
+without executing the flow:
+
+<!-- theater-doc: command id=reference-http-reusable-auth-inspect cwd=../../.. expect-stdout="selected_library_files" expect-stdout-2="service_api" expect-stdout-3="scenario_call_edges" -->
+```sh
+go run ./cmd/theater libraries inspect docs/examples/reusable-auth/theater/flows/sample-ready.thtr --format json
+```
+
 Checked Theater DSL library file:
 
 <!-- theater-doc: source id=reusable-auth-library-thtr kind=thtr path=../../examples/reusable-auth/theater/lib/service/sample-ready.thtr pair=reusable-auth-library checks=fmt,lower,validate -->

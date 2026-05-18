@@ -25,21 +25,22 @@ const (
 type commandFlagProfile string
 
 const (
-	commandFlagProfileDoctor         commandFlagProfile = "doctor"
-	commandFlagProfileExplain        commandFlagProfile = "explain"
-	commandFlagProfileFmt            commandFlagProfile = "fmt"
-	commandFlagProfileInit           commandFlagProfile = "init"
-	commandFlagProfileListScenarios  commandFlagProfile = "list-scenarios"
-	commandFlagProfileLower          commandFlagProfile = "lower"
-	commandFlagProfileMigrateYAML    commandFlagProfile = "migrate-yaml"
-	commandFlagProfileNone           commandFlagProfile = ""
-	commandFlagProfilePluginsDigest  commandFlagProfile = "plugins-digest"
-	commandFlagProfilePluginsDoctor  commandFlagProfile = "plugins-doctor"
-	commandFlagProfilePluginsInspect commandFlagProfile = "plugins-inspect"
-	commandFlagProfilePluginsLock    commandFlagProfile = "plugins-lock"
-	commandFlagProfileReportRender   commandFlagProfile = "report-render"
-	commandFlagProfileRun            commandFlagProfile = "run"
-	commandFlagProfileValidate       commandFlagProfile = "validate"
+	commandFlagProfileDoctor           commandFlagProfile = "doctor"
+	commandFlagProfileExplain          commandFlagProfile = "explain"
+	commandFlagProfileFmt              commandFlagProfile = "fmt"
+	commandFlagProfileInit             commandFlagProfile = "init"
+	commandFlagProfileLibrariesInspect commandFlagProfile = "libraries-inspect"
+	commandFlagProfileListScenarios    commandFlagProfile = "list-scenarios"
+	commandFlagProfileLower            commandFlagProfile = "lower"
+	commandFlagProfileMigrateYAML      commandFlagProfile = "migrate-yaml"
+	commandFlagProfileNone             commandFlagProfile = ""
+	commandFlagProfilePluginsDigest    commandFlagProfile = "plugins-digest"
+	commandFlagProfilePluginsDoctor    commandFlagProfile = "plugins-doctor"
+	commandFlagProfilePluginsInspect   commandFlagProfile = "plugins-inspect"
+	commandFlagProfilePluginsLock      commandFlagProfile = "plugins-lock"
+	commandFlagProfileReportRender     commandFlagProfile = "report-render"
+	commandFlagProfileRun              commandFlagProfile = "run"
+	commandFlagProfileValidate         commandFlagProfile = "validate"
 )
 
 type commandCatalog struct {
@@ -97,6 +98,7 @@ func newCommandCatalog() commandCatalog {
 	validate := newValidateCommandSpec()
 	explain := newExplainCommandSpec()
 	doctor := newDoctorCommandSpec()
+	libraries := newLibrariesCommandSpec()
 	list := newListCommandSpec()
 	format := newFormatCommandSpec()
 	lower := newLowerCommandSpec()
@@ -135,6 +137,7 @@ func newCommandCatalog() commandCatalog {
 			validate,
 			explain,
 			doctor,
+			libraries,
 			list,
 			format,
 			lower,
@@ -149,7 +152,7 @@ func newCommandCatalog() commandCatalog {
 		Groups: []commandHelpGroup{
 			{Title: commandGroupStartHere, Commands: []*commandSpec{init, validate, run}},
 			{Title: commandGroupAuthoring, Commands: []*commandSpec{format, lower, migrate}},
-			{Title: commandGroupDiscover, Commands: []*commandSpec{explain, doctor, list, report}},
+			{Title: commandGroupDiscover, Commands: []*commandSpec{explain, doctor, libraries, list, report}},
 			{Title: commandGroupPlugins, Commands: []*commandSpec{plugins}},
 			{Title: commandGroupEnvironment, Commands: []*commandSpec{help, version, completion}},
 		},
@@ -192,6 +195,68 @@ func newReportCommandSpec() *commandSpec {
 		Subcommands: []*commandSpec{render},
 		Groups: []commandHelpGroup{
 			{Title: commandGroupOperations, Commands: []*commandSpec{render}},
+		},
+	}
+}
+
+func newLibrariesCommandSpec() *commandSpec {
+	inspect := newLibrariesInspectCommandSpec()
+	return &commandSpec{
+		Name:  commandLibraries,
+		Path:  "theater libraries",
+		Args:  "<command> [options]",
+		Short: "Inspect repo-aware reusable scenario libraries.",
+		Long: "Use libraries when a flow calls scenarios from theater/lib and you need to see the selected files, " +
+			"scenario edges, inputs, exports, and selected auth contributions without running the flow.",
+		Examples: []commandExample{
+			{
+				Title:   "Inspect selected libraries",
+				Command: "theater libraries inspect theater/flows/http/example-domain.yaml",
+			},
+			{
+				Title:   "Inspect selected libraries as JSON",
+				Command: "theater libraries inspect theater/flows/http/example-domain.yaml --format json",
+			},
+		},
+		Subcommands: []*commandSpec{inspect},
+		Groups: []commandHelpGroup{
+			{Title: commandGroupOperations, Commands: []*commandSpec{inspect}},
+		},
+	}
+}
+
+func newLibrariesInspectCommandSpec() *commandSpec {
+	return &commandSpec{
+		Name:  commandLibrariesInspect,
+		Path:  "theater libraries inspect",
+		Args:  stageFileArgument + " [--format text|json]",
+		Short: "Inspect the library contract selected by one flow.",
+		Long: "Use libraries inspect to explain repo-aware loading. " +
+			"It is an inspection view, not a registry, lockfile, or package manager.",
+		FlagProfile: commandFlagProfileLibrariesInspect,
+		Examples: []commandExample{
+			{
+				Title:   "Text inspection",
+				Command: "theater libraries inspect theater/flows/http/example-domain.yaml",
+			},
+			{
+				Title:   "JSON inspection",
+				Command: "theater libraries inspect theater/flows/http/example-domain.yaml --format json",
+			},
+		},
+		Sections: []commandHelpSection{
+			{
+				Title: "Contract",
+				Lines: []string{
+					"Inspection lists selected library files, selected scenarios, call edges, inputs, exports, and selected auth names.",
+					"Unselected library files are listed separately and do not contribute auth or diagnostics.",
+					"Credential values are never printed.",
+				},
+			},
+		},
+		FlagGroups: []flagHelpGroup{
+			{Title: flagGroupFiles, Flags: []string{"file"}},
+			{Title: flagGroupOutput, Flags: []string{"format"}},
 		},
 	}
 }

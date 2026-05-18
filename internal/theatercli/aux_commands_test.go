@@ -689,12 +689,15 @@ func TestCompleteCommandUsesMetadata(t *testing.T) {
 		want []string
 	}{
 		{name: "root", args: []string{commandComplete, "pl"}, want: []string{commandPlugins}},
-		{name: "help targets", args: []string{commandComplete, commandHelp, ""}, want: []string{commandInit, commandRun, commandValidate, commandExplain, commandDoctor, commandPlugins, commandReport, "environment", "exit-codes", "formats", "debug-selectors", "compatibility", "migration"}},
+		{name: "root libraries", args: []string{commandComplete, "li"}, want: []string{commandLibraries}},
+		{name: "help targets", args: []string{commandComplete, commandHelp, ""}, want: []string{commandInit, commandRun, commandValidate, commandExplain, commandDoctor, commandLibraries, commandPlugins, commandReport, "environment", "exit-codes", "formats", "debug-selectors", "compatibility", "migration"}},
 		{name: "explain targets", args: []string{commandComplete, commandExplain, ""}, want: []string{"action", "actions", "inventory", "formats", "output-format", "state-backend"}},
 		{name: "explain generator targets", args: []string{commandComplete, commandExplain, "generator", ""}, want: []string{"date", "email", "uuid", "timestamp"}},
 		{name: "explain action targets", args: []string{commandComplete, commandExplain, "action", ""}, want: []string{"http", "generate", "action.http", "action.generate"}},
 		{name: "plugins", args: []string{commandComplete, commandPlugins, ""}, want: []string{commandPluginsDigest, commandPluginsInspect, commandPluginsLock, commandPluginsDoctor}},
 		{name: "plugins digest flags", args: []string{commandComplete, commandPlugins, commandPluginsDigest, "--"}, want: []string{"--manifest", "--write"}},
+		{name: "libraries", args: []string{commandComplete, commandLibraries, ""}, want: []string{commandLibrariesInspect}},
+		{name: "libraries inspect flags", args: []string{commandComplete, commandLibraries, commandLibrariesInspect, "--f"}, want: []string{"--file", "--format"}},
 		{name: "run flags", args: []string{commandComplete, commandRun, "-d"}, want: []string{"-debug", "-debug-dump"}},
 		{name: "run long flags", args: []string{commandComplete, commandRun, "--d"}, want: []string{"--debug", "--debug-dump"}},
 		{name: "run sidecar flags", args: []string{commandComplete, commandRun, "--j"}, want: []string{"--json-output", "--junit-output"}},
@@ -778,6 +781,18 @@ func TestCompleteCommandSuggestsStageAndPluginPaths(t *testing.T) {
 		{
 			name:   "run positional stage path",
 			args:   []string{commandComplete, commandRun, filepath.Join(tempDir, "sce")},
+			want:   []string{stageYAMLPath, stageTHTRPath},
+			absent: []string{pluginConfigPath, notesPath, unsafeStagePath},
+		},
+		{
+			name:   "libraries inspect positional stage path",
+			args:   []string{commandComplete, commandLibraries, commandLibrariesInspect, filepath.Join(tempDir, "sce")},
+			want:   []string{stageYAMLPath, stageTHTRPath},
+			absent: []string{pluginConfigPath, notesPath, unsafeStagePath},
+		},
+		{
+			name:   "libraries inspect file flag stage path",
+			args:   []string{commandComplete, commandLibraries, commandLibrariesInspect, "--file", filepath.Join(tempDir, "sce")},
 			want:   []string{stageYAMLPath, stageTHTRPath},
 			absent: []string{pluginConfigPath, notesPath, unsafeStagePath},
 		},

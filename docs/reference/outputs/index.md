@@ -120,7 +120,12 @@ Exit precedence:
 | `run --format json` | `{ "file": "...", "result": <run document> }` |
 | `validate --debug-paths --format json` | `{ "file": "...", "paths": [...] }` |
 | `list scenarios --format json` | `{ "repo_root": "...", "library_root": "...", "scenarios": [...] }` |
+| `libraries inspect --format json` | `{ "file": "...", "repo_root": ".", "selected_library_files": [...], "scenario_call_edges": [...] }` |
 | `plugins inspect --format json` | `{ "config_path": "...", "lock_path": "...", "plugins": [...] }` |
+
+`libraries inspect --format json` reports repo-relative paths. Its `repo_root`
+field is `.` by design so the inspection report can be shared without exposing
+the local workspace path.
 
 Open [Reports](../reports.md) for the run document inside `run --format json`.
 Open [CLI Reference](../cli/index.md) for command flags.

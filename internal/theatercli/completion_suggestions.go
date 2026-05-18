@@ -261,7 +261,7 @@ func (a *application) completionPathExpectation(args []string) (completionPathKi
 		if !completionCommandArgsHaveStagePath(command, commandArgs) {
 			return completionPathTHTR, current, true
 		}
-	case commandRun, commandValidate:
+	case commandRun, commandValidate, commandLibrariesInspect:
 		if !completionCommandArgsHaveStagePath(command, commandArgs) {
 			return completionPathStage, current, true
 		}
@@ -302,7 +302,7 @@ func pendingCompletionPathKind(command string, args []string) (completionPathKin
 	switch name {
 	case stageFileFlag:
 		switch command {
-		case commandRun, commandValidate:
+		case commandRun, commandValidate, commandLibrariesInspect:
 			return completionPathStage, true
 		case commandFmt, commandLower:
 			return completionPathTHTR, true

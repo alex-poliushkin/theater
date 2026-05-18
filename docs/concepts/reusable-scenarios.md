@@ -95,5 +95,22 @@ Auth registry composition follows the same selected-library rule. A library
 that is not selected by the flow contributes no scenarios and no HTTP auth
 entries.
 
+## Inspect Selected Libraries
+
+Use `theater libraries inspect` when reviewing which reusable library surface a
+flow selects. The command does not run the flow. It reports selected library
+files, selected scenarios, scenario call edges, selected auth names, input
+requirements, exports, unselected library files, and selected-library auth
+diagnostics.
+
+<!-- theater-doc: command id=concept-reusable-scenarios-inspect cwd=../.. expect-stdout="selected_library_files" expect-stdout-2="service_api" expect-stdout-3="scenario_call_edges" -->
+```sh
+go run ./cmd/theater libraries inspect docs/examples/reusable-auth/theater/flows/sample-ready.thtr --format json
+```
+
+The JSON shape is a current inspection report for local tooling. It is not a
+remote package manifest, lockfile, package registry contract, or transitive
+import graph.
+
 Continue with [Reuse A Scenario](../tutorial/04-reuse-a-scenario.md) for a
 runnable Theater DSL and YAML example.

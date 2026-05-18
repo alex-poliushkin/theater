@@ -66,7 +66,7 @@ func normalizeStageFileArgs(command string, args []string) (normalized []string,
 
 func commandAcceptsPositionalStagePath(command string) bool {
 	switch command {
-	case commandRun, commandValidate, commandFmt, commandLower:
+	case commandRun, commandValidate, commandFmt, commandLower, commandLibrariesInspect:
 		return true
 	default:
 		return false
@@ -104,8 +104,10 @@ func isStageCommandValueFlag(command, name string) bool {
 	switch name {
 	case stageFileFlag:
 		return true
-	case "plugins-config", "plugins-lock", "format":
+	case "plugins-config", "plugins-lock":
 		return command == commandRun || command == commandValidate
+	case "format":
+		return command == commandRun || command == commandValidate || command == commandLibrariesInspect
 	case "map":
 		return command == commandLower
 	case "live", "debug", "break", "break-file", "debug-dump", "plugin-exporter":

@@ -62,14 +62,37 @@ func ValidateSelectedLibraryHTTPAuth(
 	composedAuthOwners map[string]string,
 	libraryFile string,
 ) error {
+	issues := SelectedLibraryHTTPAuthIssues(
+		librarySpec,
+		selectedScenarioIDs,
+		flowAuthNames,
+		composedAuthOwners,
+		libraryFile,
+	)
+	if len(issues) > 0 {
+		return &issues[0]
+	}
+	return nil
+}
+
+// SelectedLibraryHTTPAuthIssues returns selected-library auth diagnostics while
+// preserving the same owner rules used by ValidateSelectedLibraryHTTPAuth.
+func SelectedLibraryHTTPAuthIssues(
+	librarySpec theater.StageSpec,
+	selectedScenarioIDs map[string]struct{},
+	flowAuthNames map[string]struct{},
+	composedAuthOwners map[string]string,
+	libraryFile string,
+) []SelectedLibraryAuthError {
 	if librarySpec.HTTP == nil || len(librarySpec.HTTP.Auth) == 0 || len(selectedScenarioIDs) == 0 {
 		return nil
 	}
 
+	var issues []SelectedLibraryAuthError
 	for _, authName := range sortedHTTPAuthNames(librarySpec.HTTP.Auth) {
 		auth := librarySpec.HTTP.Auth[authName]
 		if attachmentIndex, ok := firstNonSlotBackedHTTPAuthAttachment(auth); ok {
-			return &SelectedLibraryAuthError{
+			issues = append(issues, SelectedLibraryAuthError{
 				Code:            "invalid_selected_library_http_auth",
 				AuthName:        authName,
 				AttachmentIndex: attachmentIndex,
@@ -78,10 +101,11 @@ func ValidateSelectedLibraryHTTPAuth(
 					authName,
 					libraryFile,
 				),
-			}
+			})
+			continue
 		}
 		if _, exists := flowAuthNames[authName]; exists {
-			return &SelectedLibraryAuthError{
+			issues = append(issues, SelectedLibraryAuthError{
 				Code:            "duplicate_selected_library_http_auth",
 				AuthName:        authName,
 				AttachmentIndex: -1,
@@ -90,10 +114,11 @@ func ValidateSelectedLibraryHTTPAuth(
 					authName,
 					libraryFile,
 				),
-			}
+			})
+			continue
 		}
 		if owner, exists := composedAuthOwners[authName]; exists {
-			return &SelectedLibraryAuthError{
+			issues = append(issues, SelectedLibraryAuthError{
 				Code:            "duplicate_selected_library_http_auth",
 				AuthName:        authName,
 				AttachmentIndex: -1,
@@ -103,13 +128,14 @@ func ValidateSelectedLibraryHTTPAuth(
 					owner,
 					libraryFile,
 				),
-			}
+			})
+			continue
 		}
 
 		composedAuthOwners[authName] = libraryFile
 	}
 
-	return nil
+	return issues
 }
 
 // ComposeSelectedLibraryHTTPAuth copies selected auth entries into a flow.

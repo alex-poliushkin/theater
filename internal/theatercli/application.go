@@ -26,6 +26,7 @@ const (
 	commandFmt        = "fmt"
 	commandHelp       = "help"
 	commandInit       = "init"
+	commandLibraries  = "libraries"
 	commandList       = "list"
 	commandLower      = "lower"
 	commandMigrate    = "migrate"
@@ -148,6 +149,8 @@ func (a *application) runCommand(command *commandSpec, args []string) int {
 		return a.doctorCommand(args)
 	case commandInit:
 		return a.initCommand(args)
+	case commandLibraries:
+		return a.runLibrariesCommand(args)
 	case commandList:
 		return a.runListCommand(args)
 	case commandFmt:

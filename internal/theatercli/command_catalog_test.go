@@ -688,7 +688,7 @@ func TestCommandCatalogRootGroupsStayStable(t *testing.T) {
 	}{
 		{group: 0, names: []string{commandInit, commandValidate, commandRun}},
 		{group: 1, names: []string{commandFmt, commandLower, commandMigrate}},
-		{group: 2, names: []string{commandExplain, commandDoctor, commandList, commandReport}},
+		{group: 2, names: []string{commandExplain, commandDoctor, commandLibraries, commandList, commandReport}},
 		{group: 3, names: []string{commandPlugins}},
 		{group: 4, names: []string{commandHelp, commandVersion, commandCompletion}},
 	}
