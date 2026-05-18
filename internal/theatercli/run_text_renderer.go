@@ -328,11 +328,20 @@ func renderPreflightDiagnosticText(value string) string {
 
 func renderHTTPDiagnostic(builder *strings.Builder, diagnostic reportmodel.HTTPDiagnostic) {
 	builder.WriteString("  http:\n")
+	if diagnostic.FailureKind != "" {
+		fmt.Fprintf(builder, "    failure: %s\n", diagnostic.FailureKind)
+	}
 	if diagnostic.Method != "" || diagnostic.URL != "" {
 		fmt.Fprintf(builder, "    request: %s %s\n", diagnostic.Method, diagnostic.URL)
 	}
+	if diagnostic.RequestFingerprint != nil {
+		renderHTTPDiagnosticFingerprint(builder, *diagnostic.RequestFingerprint)
+	}
 	if diagnostic.StatusCode != 0 || diagnostic.Status != "" {
 		fmt.Fprintf(builder, "    response: %d %s\n", diagnostic.StatusCode, diagnostic.Status)
+	}
+	if diagnostic.ResponseMetadata != nil {
+		renderHTTPDiagnosticResponseMetadata(builder, *diagnostic.ResponseMetadata)
 	}
 	if diagnostic.DurationMs >= 0 {
 		fmt.Fprintf(builder, "    duration: %s\n", humanDuration(diagnostic.DurationMs))
@@ -344,6 +353,33 @@ func renderHTTPDiagnostic(builder *strings.Builder, diagnostic reportmodel.HTTPD
 		builder.WriteString("    body: ")
 		builder.WriteString(renderHTTPDiagnosticPreview(diagnostic.ResponsePreview))
 		builder.WriteByte('\n')
+	}
+}
+
+func renderHTTPDiagnosticFingerprint(builder *strings.Builder, fingerprint reportmodel.HTTPRequestFingerprint) {
+	if fingerprint.Host != "" {
+		fmt.Fprintf(builder, "    request.host: %s\n", fingerprint.Host)
+	}
+	if fingerprint.PathShape != "" {
+		fmt.Fprintf(builder, "    request.path_shape: %s\n", fingerprint.PathShape)
+	}
+	if len(fingerprint.QueryKeys) != 0 {
+		fmt.Fprintf(builder, "    request.query_keys: %s\n", strings.Join(fingerprint.QueryKeys, ", "))
+	}
+}
+
+func renderHTTPDiagnosticResponseMetadata(builder *strings.Builder, metadata reportmodel.HTTPResponseMetadata) {
+	if metadata.ContentType != "" {
+		fmt.Fprintf(builder, "    response.content_type: %s\n", metadata.ContentType)
+	}
+	if metadata.ContentLengthBytes != 0 {
+		fmt.Fprintf(builder, "    response.content_length_bytes: %d\n", metadata.ContentLengthBytes)
+	}
+	if metadata.PreviewKind != "" {
+		fmt.Fprintf(builder, "    response.preview_kind: %s\n", metadata.PreviewKind)
+	}
+	if metadata.PreviewOmittedReason != "" {
+		fmt.Fprintf(builder, "    response.preview_omitted_reason: %s\n", metadata.PreviewOmittedReason)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -472,7 +473,7 @@ func TestDoRejectsUndeclaredNamedAuth(t *testing.T) {
 	t.Parallel()
 
 	_, err := Do(context.Background(), nil, &theater.HTTPSpec{}, Request{
-		URL:  "https://example.test",
+		URL:  "https://user:pass@example.test/path-secret?token=query-secret",
 		Auth: "missing",
 	})
 	if err == nil {
@@ -480,6 +481,36 @@ func TestDoRejectsUndeclaredNamedAuth(t *testing.T) {
 	}
 	if got, want := err.Error(), `auth "missing" is not declared`; got != want {
 		t.Fatalf("error mismatch: got %q want %q", got, want)
+	}
+
+	diagnostic, ok := HTTPDiagnosticFromError(err)
+	if !ok {
+		t.Fatal("expected http diagnostic on request error")
+	}
+	if got, want := diagnostic.FailureKind, theater.HTTPDiagnosticFailureRequest; got != want {
+		t.Fatalf("diagnostic failure kind mismatch: got %q want %q", got, want)
+	}
+	if got, want := diagnostic.Method, http.MethodGet; got != want {
+		t.Fatalf("diagnostic method mismatch: got %q want %q", got, want)
+	}
+	if got, want := diagnostic.URL, "https://example.test/redacted?token=redacted"; got != want {
+		t.Fatalf("diagnostic url mismatch: got %q want %q", got, want)
+	}
+	if diagnostic.RequestFingerprint == nil {
+		t.Fatal("request error diagnostic must include request fingerprint")
+	}
+	if got, want := diagnostic.RequestFingerprint.Host, "example.test"; got != want {
+		t.Fatalf("fingerprint host mismatch: got %q want %q", got, want)
+	}
+	if got, want := diagnostic.RequestFingerprint.PathShape, "/redacted"; got != want {
+		t.Fatalf("fingerprint path shape mismatch: got %q want %q", got, want)
+	}
+	if got, want := diagnostic.RequestFingerprint.QueryKeys, []string{"redacted"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("fingerprint query keys mismatch: got %#v want %#v", got, want)
+	}
+	assertDiagnosticTextOmits(t, diagnostic, "user", "pass", "path-secret", "query-secret")
+	if diagnostic.StatusCode != 0 || diagnostic.Status != "" || diagnostic.ResponseMetadata != nil || diagnostic.ResponsePreview != nil {
+		t.Fatalf("request error diagnostic must not include response data: %#v", diagnostic)
 	}
 }
 
@@ -802,4 +833,18 @@ func TestClientFromResourcesCachesFactoryWhenScopeIsUnseeded(t *testing.T) {
 	}
 
 	t.Cleanup(factory.CloseIdleConnections)
+}
+
+func assertDiagnosticTextOmits(t *testing.T, diagnostic theater.HTTPDiagnostic, forbidden ...string) {
+	t.Helper()
+
+	data, err := json.Marshal(diagnostic)
+	if err != nil {
+		t.Fatalf("marshal diagnostic failed: %v", err)
+	}
+	for _, value := range forbidden {
+		if strings.Contains(string(data), value) {
+			t.Fatalf("diagnostic leaked %q: %s", value, data)
+		}
+	}
 }

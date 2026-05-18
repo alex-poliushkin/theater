@@ -56,18 +56,28 @@ and `field(headers) | path("/Content-Type/0")`.
 
 ### Failure Diagnostics Contract
 
-The v0.4 report contract emits HTTP failure diagnostics as node-scoped report
+The v0.5 report contract emits HTTP failure diagnostics as node-scoped report
 data. They are not `action.http` output fields and cannot be selected with
 `field(...)`.
 
 When emitted, an HTTP diagnostic can describe a failed transport or request
 assembly on the failed action node, or a failed expectation that inspected a
 completed HTTP response on the failed expectation node. The diagnostic includes
-the HTTP action address and uses report-safe data: method, redacted resolved
-URL, status and duration when available, allowlisted response headers, and a
+the HTTP action address, a typed failure category when known, and report-safe
+data: method, redacted resolved URL, redacted request fingerprint, status,
+duration, selected response metadata, allowlisted response headers, and a
 bounded response preview. Request bodies, authorization headers, cookies, typed
 auth material, session state, and raw response bodies are not diagnostic
 carriers.
+
+Failure categories are safe coarse labels: `network_error`, `timeout`,
+`tls_error`, `status_mismatch`, `header_mismatch`, `body_parse_error`,
+`expectation_mismatch`, and `request_error`. Request fingerprints include the
+method, redacted URL, host, redacted path shape, query-key list, and duration
+when available. Query values are never included in the fingerprint, and query
+key names that look like credentials or personal data are redacted. Response
+metadata includes status, content type, safe content length, and preview
+classification when available.
 
 URL path segment values and query values are redacted by default, userinfo is
 hidden, and URL fragments are omitted. Response header projection is
@@ -76,7 +86,8 @@ set-cookie, unknown header values, and credential-like values even under
 allowlisted header names. Body previews use report `Preview` semantics. Content
 type or valid UTF-8 alone is not enough to expose response text; unclassified
 textual bodies, binary bodies, and unknown bodies use metadata-only previews by
-default.
+default. Preview bounds are reporting and privacy bounds; they do not promise a
+transport read limit.
 
 ## `inventory.http.get`
 

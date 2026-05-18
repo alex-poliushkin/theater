@@ -42,12 +42,12 @@ go run ./cmd/theater report render --input docs/examples/reference/saved-run.jso
 go run ./cmd/theater report render --input docs/examples/reference/saved-run.json --format summary-md
 ```
 
-<!-- theater-doc: command id=reference-report-http-diagnostics-markdown cwd=../.. expect-stdout="HTTP request" expect-stdout-2="api.example.test/redacted?token=redacted" expect-stdout-3="HTTP body:" expect-stdout-4="retry later" reject-stdout=credential-secret -->
+<!-- theater-doc: command id=reference-report-http-diagnostics-markdown cwd=../.. expect-stdout="HTTP failure" expect-stdout-2="status_mismatch" expect-stdout-3="HTTP request" expect-stdout-4="api.example.test/redacted?token=redacted" expect-stdout-5="HTTP host" expect-stdout-6="HTTP content type" expect-stdout-7="HTTP body:" expect-stdout-8="retry later" reject-stdout=credential-secret -->
 ```sh
 go run ./cmd/theater report render --input docs/examples/reference/failed-http-run.json --format markdown
 ```
 
-<!-- theater-doc: command id=reference-report-http-diagnostics-junit cwd=../.. expect-stdout=http.request expect-stdout-2="retry later" expect-stdout-3="[redacted]" reject-stdout=credential-secret -->
+<!-- theater-doc: command id=reference-report-http-diagnostics-junit cwd=../.. expect-stdout=http.failure_kind expect-stdout-2=status_mismatch expect-stdout-3=http.request.host expect-stdout-4=http.response.content_type expect-stdout-5="retry later" expect-stdout-6="[redacted]" reject-stdout=credential-secret -->
 ```sh
 go run ./cmd/theater report render --input docs/examples/reference/failed-http-run.json --format junit
 ```
@@ -236,7 +236,7 @@ response bodies, secrets, unbounded payloads, or renderer-only diagnostics.
 
 ## HTTP Failure Diagnostics Contract
 
-The v0.4 report contract emits node-scoped HTTP diagnostics for failed
+The v0.5 report contract emits node-scoped HTTP diagnostics for failed
 `action.http` exchanges and for expectations that fail after inspecting a
 completed HTTP response. Run documents without HTTP diagnostic evidence simply
 omit the diagnostic fields.
@@ -260,10 +260,13 @@ The typed diagnostic records:
 | --- | --- |
 | kind | HTTP diagnostic kind |
 | action address | Node address or path for the HTTP action that produced the exchange |
+| failure kind | Safe category when known: `network_error`, `timeout`, `tls_error`, `status_mismatch`, `header_mismatch`, `body_parse_error`, `expectation_mismatch`, or `request_error` |
 | method | Request method |
 | URL | Resolved URL with userinfo hidden, path segment values redacted by default, fragments omitted, and query values redacted |
+| request fingerprint | Method, redacted URL, host, redacted path shape, query-key list with sensitive-looking names redacted, and duration when available |
 | status | Response status code and status text when a response exists |
 | duration | Measured exchange duration |
+| response metadata | Status, content type, safe content length, preview kind, and preview omitted reason when available |
 | response headers | Allowlisted response headers such as content type and correlation ids |
 | response preview | Bounded `Preview` for classified and redacted textual bodies, or metadata-only preview for binary, unknown, or unclassified textual bodies |
 

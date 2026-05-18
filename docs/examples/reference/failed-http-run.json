@@ -46,11 +46,29 @@
                   "act_id": "fetch",
                   "kind": "action"
                 },
+                "failure_kind": "status_mismatch",
                 "method": "GET",
                 "url": "https://api.example.test/redacted?token=redacted",
                 "status_code": 502,
                 "status": "Bad Gateway",
                 "duration_ms": 15,
+                "request_fingerprint": {
+                  "method": "GET",
+                  "url": "https://api.example.test/redacted?token=redacted",
+                  "host": "api.example.test",
+                  "path_shape": "/redacted",
+                  "query_keys": [
+                    "redacted"
+                  ],
+                  "duration_ms": 15
+                },
+                "response_metadata": {
+                  "status_code": 502,
+                  "status": "Bad Gateway",
+                  "content_type": "application/json",
+                  "content_length_bytes": 96,
+                  "preview_kind": "json"
+                },
                 "response_headers": {
                   "x-request-id": [
                     "req-123"

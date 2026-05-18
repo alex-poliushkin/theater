@@ -14,8 +14,15 @@ func TestRunTextViewRendersHTTPDiagnostics(t *testing.T) {
 
 	for _, want := range []string{
 		"http:",
+		"failure: status_mismatch",
 		"request: GET https://api.example.test/redacted?token=redacted",
+		"request.host: api.example.test",
+		"request.path_shape: /redacted",
+		"request.query_keys: redacted",
 		"response: 502 Bad Gateway",
+		"response.content_type: application/json",
+		"response.content_length_bytes: 96",
+		"response.preview_kind: json",
 		"header.x-request-id: req-123",
 		`body: {"message":"retry later","token":"[redacted]"} (redacted)`,
 	} {
@@ -37,8 +44,15 @@ func TestReportMarkdownRendererRendersHTTPDiagnostics(t *testing.T) {
 	}
 
 	for _, want := range []string{
+		"- HTTP failure: `status_mismatch`",
 		"- HTTP request: `GET https://api.example.test/redacted?token=redacted`",
+		"- HTTP host: `api.example.test`",
+		"- HTTP path shape: `/redacted`",
+		"- HTTP query keys: `redacted`",
 		"- HTTP response: `502 Bad Gateway`",
+		"- HTTP content type: `application/json`",
+		"- HTTP content length: `96`",
+		"- HTTP preview kind: `json`",
 		"- HTTP header `x-request-id`: `req-123`",
 		"- HTTP body: `{\"message\":\"retry later\",\"token\":\"[redacted]\"}` (redacted)",
 	} {
@@ -61,7 +75,9 @@ func TestReportMarkdownRendererRendersHTTPTransportDiagnostics(t *testing.T) {
 
 	for _, want := range []string{
 		"- Action `fetch` failed",
+		"- HTTP failure: `network_error`",
 		"- HTTP request: `GET https://api.example.test/redacted?token=redacted`",
+		"- HTTP host: `api.example.test`",
 		"- HTTP duration: `15ms`",
 	} {
 		if !strings.Contains(output.String(), want) {
@@ -198,11 +214,27 @@ func httpDiagnosticFailureDocument() theater.RunDocument {
 									ActID:            "fetch",
 									Kind:             theater.NodeKindAction,
 								},
-								Method:     "GET",
-								URL:        "https://api.example.test/redacted?token=redacted",
-								StatusCode: 502,
-								Status:     "Bad Gateway",
-								DurationMs: 15,
+								FailureKind: theater.HTTPDiagnosticFailureStatus,
+								Method:      "GET",
+								URL:         "https://api.example.test/redacted?token=redacted",
+								StatusCode:  502,
+								Status:      "Bad Gateway",
+								DurationMs:  15,
+								RequestFingerprint: &theater.HTTPRequestFingerprint{
+									Method:     "GET",
+									URL:        "https://api.example.test/redacted?token=redacted",
+									Host:       "api.example.test",
+									PathShape:  "/redacted",
+									QueryKeys:  []string{"redacted"},
+									DurationMs: 15,
+								},
+								ResponseMetadata: &theater.HTTPResponseMetadata{
+									StatusCode:         502,
+									Status:             "Bad Gateway",
+									ContentType:        "application/json",
+									ContentLengthBytes: 96,
+									PreviewKind:        "json",
+								},
 								ResponseHeaders: map[string][]string{
 									"x-request-id": {"req-123"},
 								},
@@ -356,9 +388,18 @@ func httpTransportDiagnosticFailureDocument() theater.RunDocument {
 						{
 							Kind: theater.NodeDiagnosticKindHTTP,
 							HTTP: &theater.HTTPDiagnostic{
-								Method:     "GET",
-								URL:        "https://api.example.test/redacted?token=redacted",
-								DurationMs: 15,
+								FailureKind: theater.HTTPDiagnosticFailureNetwork,
+								Method:      "GET",
+								URL:         "https://api.example.test/redacted?token=redacted",
+								DurationMs:  15,
+								RequestFingerprint: &theater.HTTPRequestFingerprint{
+									Method:     "GET",
+									URL:        "https://api.example.test/redacted?token=redacted",
+									Host:       "api.example.test",
+									PathShape:  "/redacted",
+									QueryKeys:  []string{"redacted"},
+									DurationMs: 15,
+								},
 							},
 						},
 					},

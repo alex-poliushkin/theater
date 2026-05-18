@@ -62,6 +62,9 @@ func TestHTTPExpectationFailureReportsSafeDiagnostics(t *testing.T) {
 	if got, want := diagnostic.ActionAddress.ActID, "fetch"; got != want {
 		t.Fatalf("action address act id mismatch: got %q want %q", got, want)
 	}
+	if got, want := diagnostic.FailureKind, theater.HTTPDiagnosticFailureStatus; got != want {
+		t.Fatalf("failure kind mismatch: got %q want %q", got, want)
+	}
 	if got, want := diagnostic.Method, http.MethodGet; got != want {
 		t.Fatalf("method mismatch: got %q want %q", got, want)
 	}
@@ -80,6 +83,37 @@ func TestHTTPExpectationFailureReportsSafeDiagnostics(t *testing.T) {
 	assertNotContains(t, diagnostic.URL, "#debug")
 	if !strings.Contains(diagnostic.URL, "token=redacted") {
 		t.Fatalf("redacted URL must keep query names with redacted values: %q", diagnostic.URL)
+	}
+
+	if diagnostic.RequestFingerprint == nil {
+		t.Fatal("http diagnostic must include request fingerprint")
+	}
+	if got, want := diagnostic.RequestFingerprint.Method, http.MethodGet; got != want {
+		t.Fatalf("fingerprint method mismatch: got %q want %q", got, want)
+	}
+	if diagnostic.RequestFingerprint.Host == "" {
+		t.Fatalf("fingerprint host is missing: %#v", diagnostic.RequestFingerprint)
+	}
+	if got, want := diagnostic.RequestFingerprint.PathShape, "/redacted/redacted"; got != want {
+		t.Fatalf("fingerprint path shape mismatch: got %q want %q", got, want)
+	}
+	if got := strings.Join(diagnostic.RequestFingerprint.QueryKeys, ","); got != "redacted,visible" {
+		t.Fatalf("fingerprint query keys mismatch: %q", got)
+	}
+	assertNotContains(t, diagnostic.RequestFingerprint.URL, "path-secret")
+	assertNotContains(t, diagnostic.RequestFingerprint.URL, "query-secret")
+
+	if diagnostic.ResponseMetadata == nil {
+		t.Fatal("http diagnostic must include response metadata")
+	}
+	if got, want := diagnostic.ResponseMetadata.StatusCode, http.StatusInternalServerError; got != want {
+		t.Fatalf("metadata status code mismatch: got %d want %d", got, want)
+	}
+	if got, want := diagnostic.ResponseMetadata.ContentType, "application/json"; got != want {
+		t.Fatalf("metadata content type mismatch: got %q want %q", got, want)
+	}
+	if got, want := diagnostic.ResponseMetadata.PreviewKind, "json"; got != want {
+		t.Fatalf("metadata preview kind mismatch: got %q want %q", got, want)
 	}
 
 	if got := diagnostic.ResponseHeaders["x-request-id"]; len(got) != 1 || got[0] != "req-123" {
@@ -152,13 +186,24 @@ func TestHTTPActionTransportFailureReportsRequestOnlyDiagnostics(t *testing.T) {
 
 	actionNode := findNodeReport(t, result.Report, theater.NodeKindAction, "stage.main/call.probe/act.fetch/action")
 	diagnostic := requireHTTPDiagnostic(t, actionNode)
+	if got, want := diagnostic.FailureKind, theater.HTTPDiagnosticFailureNetwork; got != want {
+		t.Fatalf("failure kind mismatch: got %q want %q", got, want)
+	}
 	if got, want := diagnostic.Method, http.MethodGet; got != want {
 		t.Fatalf("method mismatch: got %q want %q", got, want)
 	}
 	assertNotContains(t, diagnostic.URL, "path-secret")
 	assertNotContains(t, diagnostic.URL, "query-secret")
+	if diagnostic.RequestFingerprint == nil {
+		t.Fatal("transport failure must carry request fingerprint")
+	}
+	assertNotContains(t, diagnostic.RequestFingerprint.URL, "path-secret")
+	assertNotContains(t, diagnostic.RequestFingerprint.URL, "query-secret")
 	if diagnostic.StatusCode != 0 || diagnostic.Status != "" {
 		t.Fatalf("transport failure must not carry response status: %#v", diagnostic)
+	}
+	if diagnostic.ResponseMetadata != nil {
+		t.Fatalf("transport failure must not carry response metadata: %#v", diagnostic.ResponseMetadata)
 	}
 	if len(diagnostic.ResponseHeaders) != 0 {
 		t.Fatalf("transport failure must not carry response headers: %#v", diagnostic.ResponseHeaders)
@@ -215,6 +260,9 @@ func TestHTTPDiagnosticsUseMetadataOnlyPreviewForUnclassifiedText(t *testing.T) 
 	}
 	if got, want := preview.OmittedReason, "unclassified_text"; got != want {
 		t.Fatalf("omitted reason mismatch: got %q want %q", got, want)
+	}
+	if diagnostic.ResponseMetadata == nil || diagnostic.ResponseMetadata.PreviewOmittedReason != "unclassified_text" {
+		t.Fatalf("response metadata must classify omitted preview: %#v", diagnostic.ResponseMetadata)
 	}
 	assertNotContains(t, fmt.Sprintf("%#v", diagnostic), "plain-text-secret")
 }

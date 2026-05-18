@@ -350,6 +350,8 @@ func cloneNodeDiagnostic(diagnostic NodeDiagnostic) NodeDiagnostic {
 	if diagnostic.HTTP != nil {
 		httpDiagnostic := *diagnostic.HTTP
 		httpDiagnostic.ActionAddress = cloneNodeAddress(diagnostic.HTTP.ActionAddress)
+		httpDiagnostic.RequestFingerprint = cloneHTTPRequestFingerprint(diagnostic.HTTP.RequestFingerprint)
+		httpDiagnostic.ResponseMetadata = cloneHTTPResponseMetadata(diagnostic.HTTP.ResponseMetadata)
 		httpDiagnostic.ResponsePreview = clonePreview(diagnostic.HTTP.ResponsePreview)
 		if len(diagnostic.HTTP.ResponseHeaders) != 0 {
 			httpDiagnostic.ResponseHeaders = make(map[string][]string, len(diagnostic.HTTP.ResponseHeaders))
@@ -367,6 +369,25 @@ func cloneNodeDiagnostic(diagnostic NodeDiagnostic) NodeDiagnostic {
 	}
 
 	return cloned
+}
+
+func cloneHTTPRequestFingerprint(fingerprint *HTTPRequestFingerprint) *HTTPRequestFingerprint {
+	if fingerprint == nil {
+		return nil
+	}
+
+	cloned := *fingerprint
+	cloned.QueryKeys = append([]string(nil), fingerprint.QueryKeys...)
+	return &cloned
+}
+
+func cloneHTTPResponseMetadata(metadata *HTTPResponseMetadata) *HTTPResponseMetadata {
+	if metadata == nil {
+		return nil
+	}
+
+	cloned := *metadata
+	return &cloned
 }
 
 func cloneLogRecord(record LogRecord) LogRecord {

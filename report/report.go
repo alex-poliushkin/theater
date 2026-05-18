@@ -34,6 +34,15 @@ const (
 	NodeDiagnosticKindHTTP      NodeDiagnosticKind = "http"
 	NodeDiagnosticKindPreflight NodeDiagnosticKind = "preflight"
 
+	HTTPDiagnosticFailureNetwork     HTTPDiagnosticFailureKind = "network_error"
+	HTTPDiagnosticFailureTimeout     HTTPDiagnosticFailureKind = "timeout"
+	HTTPDiagnosticFailureTLS         HTTPDiagnosticFailureKind = "tls_error"
+	HTTPDiagnosticFailureStatus      HTTPDiagnosticFailureKind = "status_mismatch"
+	HTTPDiagnosticFailureHeader      HTTPDiagnosticFailureKind = "header_mismatch"
+	HTTPDiagnosticFailureBodyParse   HTTPDiagnosticFailureKind = "body_parse_error"
+	HTTPDiagnosticFailureExpectation HTTPDiagnosticFailureKind = "expectation_mismatch"
+	HTTPDiagnosticFailureRequest     HTTPDiagnosticFailureKind = "request_error"
+
 	LogStatusEmitted LogStatus = "emitted"
 	LogStatusOmitted LogStatus = "omitted"
 	LogStatusError   LogStatus = "error"
@@ -70,6 +79,10 @@ type NodeKind string
 
 // NodeDiagnosticKind identifies the typed diagnostic attached to a report node.
 type NodeDiagnosticKind string
+
+// HTTPDiagnosticFailureKind classifies the safe failure category for an HTTP
+// diagnostic when the category is known.
+type HTTPDiagnosticFailureKind string
 
 // LogStatus identifies how one scenario-authored log record was handled.
 type LogStatus string
@@ -137,16 +150,41 @@ type NodeDiagnostic struct {
 	Preflight *PreflightDiagnostic `json:"preflight,omitempty"`
 }
 
+// HTTPRequestFingerprint is a report-safe identity for one attempted HTTP
+// request. It records request shape, never query values or credentials.
+type HTTPRequestFingerprint struct {
+	Method     string   `json:"method,omitempty"`
+	URL        string   `json:"url,omitempty"`
+	Host       string   `json:"host,omitempty"`
+	PathShape  string   `json:"path_shape,omitempty"`
+	QueryKeys  []string `json:"query_keys,omitempty"`
+	DurationMs int64    `json:"duration_ms,omitempty"`
+}
+
+// HTTPResponseMetadata records report-safe response facts without exposing raw
+// response bodies or non-allowlisted headers.
+type HTTPResponseMetadata struct {
+	StatusCode           int    `json:"status_code,omitempty"`
+	Status               string `json:"status,omitempty"`
+	ContentType          string `json:"content_type,omitempty"`
+	ContentLengthBytes   int64  `json:"content_length_bytes,omitempty"`
+	PreviewKind          string `json:"preview_kind,omitempty"`
+	PreviewOmittedReason string `json:"preview_omitted_reason,omitempty"`
+}
+
 // HTTPDiagnostic is the report-safe summary of one HTTP exchange.
 type HTTPDiagnostic struct {
-	ActionAddress   *NodeAddress        `json:"action_addr,omitempty"`
-	Method          string              `json:"method,omitempty"`
-	URL             string              `json:"url,omitempty"`
-	StatusCode      int                 `json:"status_code,omitempty"`
-	Status          string              `json:"status,omitempty"`
-	DurationMs      int64               `json:"duration_ms,omitempty"`
-	ResponseHeaders map[string][]string `json:"response_headers,omitempty"`
-	ResponsePreview *Preview            `json:"response_preview,omitempty"`
+	ActionAddress      *NodeAddress              `json:"action_addr,omitempty"`
+	FailureKind        HTTPDiagnosticFailureKind `json:"failure_kind,omitempty"`
+	Method             string                    `json:"method,omitempty"`
+	URL                string                    `json:"url,omitempty"`
+	StatusCode         int                       `json:"status_code,omitempty"`
+	Status             string                    `json:"status,omitempty"`
+	DurationMs         int64                     `json:"duration_ms,omitempty"`
+	RequestFingerprint *HTTPRequestFingerprint   `json:"request_fingerprint,omitempty"`
+	ResponseMetadata   *HTTPResponseMetadata     `json:"response_metadata,omitempty"`
+	ResponseHeaders    map[string][]string       `json:"response_headers,omitempty"`
+	ResponsePreview    *Preview                  `json:"response_preview,omitempty"`
 }
 
 // PreflightDiagnostic is the report-safe summary of one scenario preflight
@@ -379,6 +417,23 @@ func (k NodeDiagnosticKind) Valid() bool {
 	}
 }
 
+func (k HTTPDiagnosticFailureKind) Valid() bool {
+	switch k {
+	case "",
+		HTTPDiagnosticFailureNetwork,
+		HTTPDiagnosticFailureTimeout,
+		HTTPDiagnosticFailureTLS,
+		HTTPDiagnosticFailureStatus,
+		HTTPDiagnosticFailureHeader,
+		HTTPDiagnosticFailureBodyParse,
+		HTTPDiagnosticFailureExpectation,
+		HTTPDiagnosticFailureRequest:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s LogStatus) Valid() bool {
 	switch s {
 	case LogStatusEmitted, LogStatusOmitted, LogStatusError:
@@ -444,6 +499,10 @@ func (d NodeDiagnostic) Validate() error {
 }
 
 func (d HTTPDiagnostic) Validate() error {
+	if !d.FailureKind.Valid() {
+		return fmt.Errorf("failure_kind %q is invalid", d.FailureKind)
+	}
+
 	if d.DurationMs < 0 {
 		return fmt.Errorf("duration_ms %d is invalid", d.DurationMs)
 	}
@@ -452,10 +511,76 @@ func (d HTTPDiagnostic) Validate() error {
 		return fmt.Errorf("status_code %d is invalid", d.StatusCode)
 	}
 
+	if d.RequestFingerprint != nil {
+		if err := d.RequestFingerprint.Validate(); err != nil {
+			return fmt.Errorf("request_fingerprint is invalid: %w", err)
+		}
+		if err := d.validateRequestFingerprintConsistency(*d.RequestFingerprint); err != nil {
+			return err
+		}
+	}
+
+	if d.ResponseMetadata != nil {
+		if err := d.ResponseMetadata.Validate(); err != nil {
+			return fmt.Errorf("response_metadata is invalid: %w", err)
+		}
+		if err := d.validateResponseMetadataConsistency(*d.ResponseMetadata); err != nil {
+			return err
+		}
+	}
+
 	if d.ActionAddress != nil {
 		if err := d.ActionAddress.Validate(); err != nil {
 			return fmt.Errorf("action_addr is invalid: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func (d HTTPDiagnostic) validateRequestFingerprintConsistency(f HTTPRequestFingerprint) error {
+	if d.Method != "" && f.Method != "" && d.Method != f.Method {
+		return fmt.Errorf("request_fingerprint method %q differs from method %q", f.Method, d.Method)
+	}
+
+	if d.URL != "" && f.URL != "" && d.URL != f.URL {
+		return fmt.Errorf("request_fingerprint url %q differs from url %q", f.URL, d.URL)
+	}
+
+	if d.DurationMs != 0 && f.DurationMs != 0 && d.DurationMs != f.DurationMs {
+		return fmt.Errorf("request_fingerprint duration_ms %d differs from duration_ms %d", f.DurationMs, d.DurationMs)
+	}
+
+	return nil
+}
+
+func (d HTTPDiagnostic) validateResponseMetadataConsistency(m HTTPResponseMetadata) error {
+	if d.StatusCode != 0 && m.StatusCode != 0 && d.StatusCode != m.StatusCode {
+		return fmt.Errorf("response_metadata status_code %d differs from status_code %d", m.StatusCode, d.StatusCode)
+	}
+
+	if d.Status != "" && m.Status != "" && d.Status != m.Status {
+		return fmt.Errorf("response_metadata status %q differs from status %q", m.Status, d.Status)
+	}
+
+	return nil
+}
+
+func (f HTTPRequestFingerprint) Validate() error {
+	if f.DurationMs < 0 {
+		return fmt.Errorf("duration_ms %d is invalid", f.DurationMs)
+	}
+
+	return nil
+}
+
+func (m HTTPResponseMetadata) Validate() error {
+	if m.StatusCode < 0 {
+		return fmt.Errorf("status_code %d is invalid", m.StatusCode)
+	}
+
+	if m.ContentLengthBytes < 0 {
+		return fmt.Errorf("content_length_bytes %d is invalid", m.ContentLengthBytes)
 	}
 
 	return nil

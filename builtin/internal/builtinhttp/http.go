@@ -36,6 +36,8 @@ const (
 	JSONArgDescription = "optional application/json request body encoded from any bound runtime value; incompatible with raw body and form"
 
 	httpDiagnosticPreviewLimitBytes = 4 * 1024
+	httpDiagnosticQueryKeyLimit     = 32
+	httpDiagnosticQueryKeyMaxBytes  = 128
 	httpDiagnosticRedactedValue     = "redacted"
 )
 
@@ -259,7 +261,7 @@ func (e transportExecutor) Do(ctx context.Context, httpSpec *theater.HTTPSpec, r
 	if err != nil {
 		return Response{}, diagnosticError{
 			cause:      err,
-			diagnostic: newHTTPDiagnostic(request, nil, time.Since(startedAt)),
+			diagnostic: newHTTPDiagnosticForError(request, nil, time.Since(startedAt), err, theater.HTTPDiagnosticFailureRequest),
 		}
 	}
 
@@ -267,7 +269,7 @@ func (e transportExecutor) Do(ctx context.Context, httpSpec *theater.HTTPSpec, r
 	if err != nil {
 		return Response{}, diagnosticError{
 			cause:      err,
-			diagnostic: newHTTPDiagnostic(resolved, nil, time.Since(startedAt)),
+			diagnostic: newHTTPDiagnosticForError(resolved, nil, time.Since(startedAt), err, theater.HTTPDiagnosticFailureNetwork),
 		}
 	}
 	diagnostic := newHTTPDiagnostic(resolved, &response, time.Since(startedAt))

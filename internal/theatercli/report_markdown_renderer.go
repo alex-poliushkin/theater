@@ -346,13 +346,22 @@ func renderMarkdownPreflightDiagnostic(builder *strings.Builder, indent string, 
 }
 
 func renderMarkdownHTTPDiagnostic(builder *strings.Builder, indent string, diagnostic reportmodel.HTTPDiagnostic) {
+	if diagnostic.FailureKind != "" {
+		fmt.Fprintf(builder, "%s- HTTP failure: %s\n", indent, markdownCode(string(diagnostic.FailureKind)))
+	}
 	request := strings.TrimSpace(diagnostic.Method + " " + diagnostic.URL)
 	if request != "" {
 		fmt.Fprintf(builder, "%s- HTTP request: %s\n", indent, markdownCode(request))
 	}
+	if diagnostic.RequestFingerprint != nil {
+		renderMarkdownHTTPFingerprint(builder, indent, *diagnostic.RequestFingerprint)
+	}
 	if diagnostic.StatusCode != 0 || diagnostic.Status != "" {
 		response := strings.TrimSpace(fmt.Sprintf("%d %s", diagnostic.StatusCode, diagnostic.Status))
 		fmt.Fprintf(builder, "%s- HTTP response: %s\n", indent, markdownCode(response))
+	}
+	if diagnostic.ResponseMetadata != nil {
+		renderMarkdownHTTPResponseMetadata(builder, indent, *diagnostic.ResponseMetadata)
 	}
 	if diagnostic.DurationMs >= 0 {
 		fmt.Fprintf(builder, "%s- HTTP duration: %s\n", indent, markdownCode(humanDuration(diagnostic.DurationMs)))
@@ -368,6 +377,41 @@ func renderMarkdownHTTPDiagnostic(builder *strings.Builder, indent string, diagn
 	}
 	if diagnostic.ResponsePreview != nil {
 		fmt.Fprintf(builder, "%s- HTTP body: %s\n", indent, renderMarkdownHTTPPreview(diagnostic.ResponsePreview))
+	}
+}
+
+func renderMarkdownHTTPFingerprint(
+	builder *strings.Builder,
+	indent string,
+	fingerprint reportmodel.HTTPRequestFingerprint,
+) {
+	if fingerprint.Host != "" {
+		fmt.Fprintf(builder, "%s- HTTP host: %s\n", indent, markdownCode(fingerprint.Host))
+	}
+	if fingerprint.PathShape != "" {
+		fmt.Fprintf(builder, "%s- HTTP path shape: %s\n", indent, markdownCode(fingerprint.PathShape))
+	}
+	if len(fingerprint.QueryKeys) != 0 {
+		fmt.Fprintf(builder, "%s- HTTP query keys: %s\n", indent, markdownCode(strings.Join(fingerprint.QueryKeys, ", ")))
+	}
+}
+
+func renderMarkdownHTTPResponseMetadata(
+	builder *strings.Builder,
+	indent string,
+	metadata reportmodel.HTTPResponseMetadata,
+) {
+	if metadata.ContentType != "" {
+		fmt.Fprintf(builder, "%s- HTTP content type: %s\n", indent, markdownCode(metadata.ContentType))
+	}
+	if metadata.ContentLengthBytes != 0 {
+		fmt.Fprintf(builder, "%s- HTTP content length: %s\n", indent, markdownCode(strconv.FormatInt(metadata.ContentLengthBytes, 10)))
+	}
+	if metadata.PreviewKind != "" {
+		fmt.Fprintf(builder, "%s- HTTP preview kind: %s\n", indent, markdownCode(metadata.PreviewKind))
+	}
+	if metadata.PreviewOmittedReason != "" {
+		fmt.Fprintf(builder, "%s- HTTP preview omitted: %s\n", indent, markdownCode(metadata.PreviewOmittedReason))
 	}
 }
 

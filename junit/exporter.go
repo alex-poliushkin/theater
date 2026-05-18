@@ -517,13 +517,22 @@ func formatPreflightDiagnosticLines(diagnostic reportmodel.PreflightDiagnostic) 
 
 func formatHTTPDiagnosticLines(diagnostic reportmodel.HTTPDiagnostic) []string {
 	lines := make([]string, 0, 5)
+	if diagnostic.FailureKind != "" {
+		lines = append(lines, "http.failure_kind: "+string(diagnostic.FailureKind))
+	}
 	request := strings.TrimSpace(diagnostic.Method + " " + diagnostic.URL)
 	if request != "" {
 		lines = append(lines, "http.request: "+boundedSingleLine(request, bodyLimit))
 	}
+	if diagnostic.RequestFingerprint != nil {
+		lines = append(lines, formatHTTPRequestFingerprintLines(*diagnostic.RequestFingerprint)...)
+	}
 	if diagnostic.StatusCode != 0 || diagnostic.Status != "" {
 		response := strings.TrimSpace(fmt.Sprintf("%d %s", diagnostic.StatusCode, diagnostic.Status))
 		lines = append(lines, "http.response: "+boundedSingleLine(response, bodyLimit))
+	}
+	if diagnostic.ResponseMetadata != nil {
+		lines = append(lines, formatHTTPResponseMetadataLines(*diagnostic.ResponseMetadata)...)
 	}
 	if diagnostic.DurationMs >= 0 {
 		lines = append(lines, fmt.Sprintf("http.duration_ms: %d", diagnostic.DurationMs))
@@ -534,6 +543,39 @@ func formatHTTPDiagnosticLines(diagnostic reportmodel.HTTPDiagnostic) []string {
 	}
 	if diagnostic.ResponsePreview != nil {
 		lines = append(lines, "http.body: "+formatHTTPDiagnosticPreview(diagnostic.ResponsePreview))
+	}
+
+	return lines
+}
+
+func formatHTTPRequestFingerprintLines(fingerprint reportmodel.HTTPRequestFingerprint) []string {
+	lines := make([]string, 0, 3)
+	if fingerprint.Host != "" {
+		lines = append(lines, "http.request.host: "+boundedSingleLine(fingerprint.Host, bodyLimit))
+	}
+	if fingerprint.PathShape != "" {
+		lines = append(lines, "http.request.path_shape: "+boundedSingleLine(fingerprint.PathShape, bodyLimit))
+	}
+	if len(fingerprint.QueryKeys) != 0 {
+		lines = append(lines, "http.request.query_keys: "+boundedSingleLine(strings.Join(fingerprint.QueryKeys, ", "), bodyLimit))
+	}
+
+	return lines
+}
+
+func formatHTTPResponseMetadataLines(metadata reportmodel.HTTPResponseMetadata) []string {
+	lines := make([]string, 0, 4)
+	if metadata.ContentType != "" {
+		lines = append(lines, "http.response.content_type: "+boundedSingleLine(metadata.ContentType, bodyLimit))
+	}
+	if metadata.ContentLengthBytes != 0 {
+		lines = append(lines, fmt.Sprintf("http.response.content_length_bytes: %d", metadata.ContentLengthBytes))
+	}
+	if metadata.PreviewKind != "" {
+		lines = append(lines, "http.response.preview_kind: "+boundedSingleLine(metadata.PreviewKind, bodyLimit))
+	}
+	if metadata.PreviewOmittedReason != "" {
+		lines = append(lines, "http.response.preview_omitted_reason: "+boundedSingleLine(metadata.PreviewOmittedReason, bodyLimit))
 	}
 
 	return lines

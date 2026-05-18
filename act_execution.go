@@ -377,13 +377,14 @@ func (e actExecution) prepareExpectationExecution(
 	actual, err := e.expectationSubjectResolver(actionOutputs, actScope).
 		ResolveSubjectContext(ctx, expectation.Subject)
 	if err != nil {
+		failure := expectationObservationFailure(path, err)
 		return e.finishExpectationPreparationFailure(
 			ctx,
 			expectation,
 			expectationNode,
 			attempt,
-			expectationObservationFailure(path, err),
-			actionDiagnostics,
+			failure,
+			httpDiagnosticsForExpectationFailure(actionDiagnostics, expectation, failure),
 			startedAt,
 			scopeSection,
 		)
@@ -711,7 +712,7 @@ func (e actExecution) runExpectation(
 				expectationNode,
 				attempt,
 				failure,
-				actionDiagnostics,
+				httpDiagnosticsForExpectationFailure(actionDiagnostics, expectation, failure),
 				startedAt,
 				prepared.scopeSection,
 				prepared.inputSection,
@@ -727,7 +728,7 @@ func (e actExecution) runExpectation(
 			attempt,
 			status,
 			failure,
-			actionDiagnostics,
+			httpDiagnosticsForExpectationFailure(actionDiagnostics, expectation, failure),
 			startedAt,
 			prepared.scopeSection,
 			prepared.inputSection,
@@ -944,6 +945,55 @@ func actionDiagnosticsForNode(diagnostics []NodeDiagnostic, actionNode execution
 	}
 
 	return cloned
+}
+
+func httpDiagnosticsForExpectationFailure(
+	diagnostics []NodeDiagnostic,
+	expectation expectationPlan,
+	failure *Failure,
+) []NodeDiagnostic {
+	failureKind := httpDiagnosticFailureKindForExpectation(expectation, failure)
+	if failureKind == "" {
+		return diagnostics
+	}
+
+	cloned := cloneNodeDiagnostics(diagnostics)
+	for i := range cloned {
+		if cloned[i].Kind != NodeDiagnosticKindHTTP || cloned[i].HTTP == nil {
+			continue
+		}
+		if cloned[i].HTTP.FailureKind == "" {
+			cloned[i].HTTP.FailureKind = failureKind
+		}
+	}
+
+	return cloned
+}
+
+func httpDiagnosticFailureKindForExpectation(
+	expectation expectationPlan,
+	failure *Failure,
+) HTTPDiagnosticFailureKind {
+	if failure == nil || expectation.Subject.From == SubjectFromProperty {
+		return ""
+	}
+
+	if failure.Kind == FailureKindObservation && expectation.Subject.Field == "body" && expectation.Subject.Decode != "" {
+		return HTTPDiagnosticFailureBodyParse
+	}
+
+	if failure.Kind != FailureKindExpectation {
+		return ""
+	}
+
+	switch expectation.Subject.Field {
+	case "status", "status_code":
+		return HTTPDiagnosticFailureStatus
+	case "headers":
+		return HTTPDiagnosticFailureHeader
+	default:
+		return HTTPDiagnosticFailureExpectation
+	}
 }
 
 func (e actExecution) handleActionLiveSinkFailure(

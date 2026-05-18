@@ -1,10 +1,16 @@
 package builtinhttp
 
 import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -27,13 +33,41 @@ const (
 )
 
 func newHTTPDiagnostic(request Request, response *httpclient.Response, duration time.Duration) theater.HTTPDiagnostic {
-	diagnostic := theater.HTTPDiagnostic{
-		Method:     request.Method,
-		URL:        redactedDiagnosticURL(request.URL),
-		DurationMs: duration.Milliseconds(),
+	return buildHTTPDiagnostic(request, response, duration, "")
+}
+
+func newHTTPDiagnosticForError(
+	request Request,
+	response *httpclient.Response,
+	duration time.Duration,
+	err error,
+	fallback theater.HTTPDiagnosticFailureKind,
+) theater.HTTPDiagnostic {
+	failureKind := fallback
+	if err != nil {
+		failureKind = classifyHTTPDiagnosticFailure(err, fallback)
 	}
-	if diagnostic.Method == "" {
-		diagnostic.Method = defaultMethod
+
+	return buildHTTPDiagnostic(request, response, duration, failureKind)
+}
+
+func buildHTTPDiagnostic(
+	request Request,
+	response *httpclient.Response,
+	duration time.Duration,
+	failureKind theater.HTTPDiagnosticFailureKind,
+) theater.HTTPDiagnostic {
+	method := request.Method
+	if method == "" {
+		method = defaultMethod
+	}
+	redactedURL := redactedDiagnosticURL(request.URL)
+	diagnostic := theater.HTTPDiagnostic{
+		FailureKind:        failureKind,
+		Method:             method,
+		URL:                redactedURL,
+		DurationMs:         duration.Milliseconds(),
+		RequestFingerprint: diagnosticRequestFingerprint(request, method, redactedURL, duration),
 	}
 
 	if response == nil {
@@ -44,7 +78,132 @@ func newHTTPDiagnostic(request Request, response *httpclient.Response, duration 
 	diagnostic.Status = diagnosticStatusText(response.StatusCode, response.Status)
 	diagnostic.ResponseHeaders = diagnosticResponseHeaders(response.Header)
 	diagnostic.ResponsePreview = diagnosticResponsePreview(response.Body, response.Header)
+	diagnostic.ResponseMetadata = diagnosticResponseMetadata(response, diagnostic.Status, diagnostic.ResponsePreview)
 	return diagnostic
+}
+
+func classifyHTTPDiagnosticFailure(err error, fallback theater.HTTPDiagnosticFailureKind) theater.HTTPDiagnosticFailureKind {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return theater.HTTPDiagnosticFailureTimeout
+	case isHTTPTimeoutError(err):
+		return theater.HTTPDiagnosticFailureTimeout
+	case isHTTPTLSError(err):
+		return theater.HTTPDiagnosticFailureTLS
+	case fallback != "":
+		return fallback
+	default:
+		return theater.HTTPDiagnosticFailureNetwork
+	}
+}
+
+func isHTTPTimeoutError(err error) bool {
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
+func isHTTPTLSError(err error) bool {
+	var recordHeaderErr tls.RecordHeaderError
+	if errors.As(err, &recordHeaderErr) {
+		return true
+	}
+
+	var certVerificationErr *tls.CertificateVerificationError
+	if errors.As(err, &certVerificationErr) {
+		return true
+	}
+
+	var unknownAuthorityErr x509.UnknownAuthorityError
+	if errors.As(err, &unknownAuthorityErr) {
+		return true
+	}
+
+	var hostnameErr x509.HostnameError
+	if errors.As(err, &hostnameErr) {
+		return true
+	}
+
+	var certificateInvalidErr x509.CertificateInvalidError
+	return errors.As(err, &certificateInvalidErr)
+}
+
+func diagnosticRequestFingerprint(
+	request Request,
+	method string,
+	redactedURL string,
+	duration time.Duration,
+) *theater.HTTPRequestFingerprint {
+	fingerprint := &theater.HTTPRequestFingerprint{
+		Method:     method,
+		URL:        redactedURL,
+		DurationMs: duration.Milliseconds(),
+	}
+
+	parsed, err := url.Parse(request.URL)
+	if err != nil {
+		return fingerprint
+	}
+
+	fingerprint.Host = parsed.Hostname()
+	fingerprint.PathShape = redactedDiagnosticPath(parsed.EscapedPath())
+	fingerprint.QueryKeys = diagnosticQueryKeys(parsed.Query())
+	return fingerprint
+}
+
+func diagnosticQueryKeys(query url.Values) []string {
+	if len(query) == 0 {
+		return nil
+	}
+
+	rawKeys := make([]string, 0, len(query))
+	for key := range query {
+		rawKeys = append(rawKeys, key)
+	}
+	sort.Strings(rawKeys)
+
+	seen := make(map[string]struct{}, len(rawKeys))
+	keys := make([]string, 0, len(rawKeys))
+	for _, key := range rawKeys {
+		projected := diagnosticQueryKey(key)
+		if _, ok := seen[projected]; ok {
+			continue
+		}
+		seen[projected] = struct{}{}
+		keys = append(keys, projected)
+		if len(keys) == httpDiagnosticQueryKeyLimit {
+			break
+		}
+	}
+	return keys
+}
+
+func diagnosticQueryKey(key string) string {
+	if isSensitiveDiagnosticName(key) || isCredentialLikeValue(key) || isPersonalLikeValue(key) {
+		return httpDiagnosticRedactedValue
+	}
+
+	rendered := streamtext.Render([]byte(key))
+	truncated, _ := streamtext.TruncateSuffix(rendered, httpDiagnosticQueryKeyMaxBytes-len("..."), "...")
+	return truncated
+}
+
+func diagnosticResponseMetadata(
+	response *httpclient.Response,
+	status string,
+	preview *theater.Preview,
+) *theater.HTTPResponseMetadata {
+	metadata := &theater.HTTPResponseMetadata{
+		StatusCode:         response.StatusCode,
+		Status:             status,
+		ContentType:        diagnosticContentType(response.Header),
+		ContentLengthBytes: int64(len(response.Body)),
+	}
+	if preview != nil {
+		metadata.PreviewKind = preview.Kind
+		metadata.PreviewOmittedReason = preview.OmittedReason
+	}
+
+	return metadata
 }
 
 func diagnosticStatusText(code int, status string) string {
@@ -122,7 +281,7 @@ func diagnosticResponseHeaders(headers http.Header) map[string][]string {
 		}
 
 		for _, value := range values {
-			if isCredentialLikeValue(value) {
+			if isCredentialLikeValue(value) || isPersonalLikeValue(value) {
 				continue
 			}
 			projected[key] = append(projected[key], value)
@@ -249,7 +408,31 @@ func diagnosticContentType(headers http.Header) string {
 	if !ok {
 		return ""
 	}
-	return value
+	return safeDiagnosticContentType(value)
+}
+
+func safeDiagnosticContentType(value string) string {
+	mediaType, params, err := mime.ParseMediaType(value)
+	if err != nil {
+		trimmed := strings.TrimSpace(value)
+		if index := strings.Index(trimmed, ";"); index >= 0 {
+			trimmed = strings.TrimSpace(trimmed[:index])
+		}
+		if isCredentialLikeValue(trimmed) || isPersonalLikeValue(trimmed) {
+			return ""
+		}
+		return strings.ToLower(trimmed)
+	}
+	if isCredentialLikeValue(mediaType) || isPersonalLikeValue(mediaType) {
+		return ""
+	}
+
+	safeParams := make(map[string]string)
+	if charset, ok := params["charset"]; ok && !isCredentialLikeValue(charset) && !isPersonalLikeValue(charset) {
+		safeParams["charset"] = charset
+	}
+
+	return mime.FormatMediaType(mediaType, safeParams)
 }
 
 func diagnosticMediaType(contentType string) string {
@@ -411,6 +594,6 @@ func truncateDiagnosticText(value string) (string, bool) {
 		return value, false
 	}
 
-	truncated, _ := streamtext.TruncateSuffix(value, httpDiagnosticPreviewLimitBytes, "...")
+	truncated, _ := streamtext.TruncateSuffix(value, httpDiagnosticPreviewLimitBytes-len("..."), "...")
 	return truncated, true
 }

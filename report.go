@@ -30,6 +30,15 @@ const (
 	NodeDiagnosticKindHTTP      NodeDiagnosticKind = reportmodel.NodeDiagnosticKindHTTP
 	NodeDiagnosticKindPreflight NodeDiagnosticKind = reportmodel.NodeDiagnosticKindPreflight
 
+	HTTPDiagnosticFailureNetwork     HTTPDiagnosticFailureKind = reportmodel.HTTPDiagnosticFailureNetwork
+	HTTPDiagnosticFailureTimeout     HTTPDiagnosticFailureKind = reportmodel.HTTPDiagnosticFailureTimeout
+	HTTPDiagnosticFailureTLS         HTTPDiagnosticFailureKind = reportmodel.HTTPDiagnosticFailureTLS
+	HTTPDiagnosticFailureStatus      HTTPDiagnosticFailureKind = reportmodel.HTTPDiagnosticFailureStatus
+	HTTPDiagnosticFailureHeader      HTTPDiagnosticFailureKind = reportmodel.HTTPDiagnosticFailureHeader
+	HTTPDiagnosticFailureBodyParse   HTTPDiagnosticFailureKind = reportmodel.HTTPDiagnosticFailureBodyParse
+	HTTPDiagnosticFailureExpectation HTTPDiagnosticFailureKind = reportmodel.HTTPDiagnosticFailureExpectation
+	HTTPDiagnosticFailureRequest     HTTPDiagnosticFailureKind = reportmodel.HTTPDiagnosticFailureRequest
+
 	LogStatusEmitted LogStatus = reportmodel.LogStatusEmitted
 	LogStatusOmitted LogStatus = reportmodel.LogStatusOmitted
 	LogStatusError   LogStatus = reportmodel.LogStatusError
@@ -66,6 +75,10 @@ type NodeKind = reportmodel.NodeKind
 // NodeDiagnosticKind identifies the typed diagnostic attached to a report node.
 type NodeDiagnosticKind = reportmodel.NodeDiagnosticKind
 
+// HTTPDiagnosticFailureKind classifies the safe failure category for an HTTP
+// diagnostic when the category is known.
+type HTTPDiagnosticFailureKind = reportmodel.HTTPDiagnosticFailureKind
+
 // LogStatus identifies how one scenario-authored log record was handled.
 type LogStatus = reportmodel.LogStatus
 
@@ -92,6 +105,14 @@ type NodeAddress = reportmodel.NodeAddress
 
 // NodeDiagnostic is one typed report-safe diagnostic attached to a report node.
 type NodeDiagnostic = reportmodel.NodeDiagnostic
+
+// HTTPRequestFingerprint is a report-safe identity for one attempted HTTP
+// request. It records request shape, never query values or credentials.
+type HTTPRequestFingerprint = reportmodel.HTTPRequestFingerprint
+
+// HTTPResponseMetadata records report-safe response facts without exposing raw
+// response bodies or non-allowlisted headers.
+type HTTPResponseMetadata = reportmodel.HTTPResponseMetadata
 
 // HTTPDiagnostic is the report-safe summary of one HTTP exchange.
 type HTTPDiagnostic = reportmodel.HTTPDiagnostic
