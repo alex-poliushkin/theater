@@ -26,8 +26,24 @@ type rawScenarioSpec struct {
 	Name         string                            `yaml:"name,omitempty"`
 	Inputs       map[string]theater.ValueContract  `yaml:"inputs,omitempty"`
 	AuthBindings map[string]rawHTTPAuthBindingSpec `yaml:"auth_bindings,omitempty"`
+	Preflight    []rawPreflightSpec                `yaml:"preflight,omitempty"`
 	Acts         []rawActSpec                      `yaml:"acts"`
 	Span         theater.SourceRef
+}
+
+type rawPreflightSpec struct {
+	ID       string               `yaml:"id"`
+	Input    rawPreflightRefSpec  `yaml:"input"`
+	Assert   rawNode              `yaml:"assert"`
+	Override *rawPreflightRefSpec `yaml:"override,omitempty"`
+	Span     theater.SourceRef
+}
+
+type rawPreflightRefSpec struct {
+	Ref     string               `yaml:"ref"`
+	Decode  theater.DecodeKind   `yaml:"decode,omitempty"`
+	Path    string               `yaml:"path,omitempty"`
+	Through []rawThroughStepSpec `yaml:"through,omitempty"`
 }
 
 type rawHTTPAuthBindingSpec struct {
@@ -200,7 +216,7 @@ func (r *rawStageSpec) UnmarshalYAML(node *goyaml.Node) error {
 func (r *rawScenarioSpec) UnmarshalYAML(node *goyaml.Node) error {
 	type rawScenarioSpecAlias rawScenarioSpec
 
-	if err := rejectUnknownFields(node, "id", "name", "inputs", "auth_bindings", "acts"); err != nil {
+	if err := rejectUnknownFields(node, "id", "name", "inputs", "auth_bindings", "preflight", "acts"); err != nil {
 		return err
 	}
 
@@ -211,6 +227,39 @@ func (r *rawScenarioSpec) UnmarshalYAML(node *goyaml.Node) error {
 
 	*r = rawScenarioSpec(decoded)
 	r.Span = rawSourceRef(node)
+	return nil
+}
+
+func (r *rawPreflightSpec) UnmarshalYAML(node *goyaml.Node) error {
+	type rawPreflightSpecAlias rawPreflightSpec
+
+	if err := rejectUnknownFields(node, "id", "input", "assert", "override"); err != nil {
+		return err
+	}
+
+	var decoded rawPreflightSpecAlias
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+
+	*r = rawPreflightSpec(decoded)
+	r.Span = rawSourceRef(node)
+	return nil
+}
+
+func (r *rawPreflightRefSpec) UnmarshalYAML(node *goyaml.Node) error {
+	type rawPreflightRefSpecAlias rawPreflightRefSpec
+
+	if err := rejectUnknownFields(node, "ref", "decode", "path", "through"); err != nil {
+		return err
+	}
+
+	var decoded rawPreflightRefSpecAlias
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+
+	*r = rawPreflightRefSpec(decoded)
 	return nil
 }
 

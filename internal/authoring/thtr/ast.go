@@ -39,8 +39,17 @@ type scenarioSyntax struct {
 	Name         *nameSyntax
 	Inputs       []inputSyntax
 	AuthBindings []authBindingSyntax
+	Preflight    []preflightSyntax
 	Acts         []actSyntax
 	Span         sourceSpan
+}
+
+type preflightSyntax struct {
+	ID       string
+	Input    expressionSyntax
+	Assert   assertionSyntax
+	Override expressionSyntax
+	Span     sourceSpan
 }
 
 type inputSyntax struct {

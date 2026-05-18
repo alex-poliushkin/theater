@@ -229,6 +229,11 @@ func buildScenarioSourceMap(
 		)
 	}
 
+	for i := range scenario.Preflight {
+		preflightLocator := appendYAMLPath(scenarioLocator, yamlKey("preflight"), yamlIndex(i))
+		buildPreflightSourceMap(builder, scenarioPath, scenario.Preflight[i], preflightLocator)
+	}
+
 	for i := range scenario.Acts {
 		actLocator := appendYAMLPath(
 			scenarioLocator,
@@ -241,6 +246,27 @@ func buildScenarioSourceMap(
 	}
 
 	return nil
+}
+
+func buildPreflightSourceMap(
+	builder *sourceMapBuilder,
+	scenarioPath string,
+	preflight preflightSyntax,
+	preflightLocator []yamlPathStep,
+) {
+	codec := sourcePathCodec{}
+	preflightPath := codec.JoinChild(scenarioPath, "preflight", preflight.ID)
+	builder.record(preflightPath, preflight.Span, preflightLocator)
+	builder.record(preflightPath+"/input", preflight.Input.ExpressionSpan(), appendYAMLPath(preflightLocator, yamlKey("input")))
+	builder.record(preflightPath+"/assert", preflight.Assert.Span, appendYAMLPath(preflightLocator, yamlKey("assert")))
+	recordAssertionPaths(builder, preflightPath+"/assert", appendYAMLPath(preflightLocator, yamlKey("assert")), preflight.Assert)
+	if preflight.Override != nil {
+		builder.record(
+			preflightPath+"/override",
+			preflight.Override.ExpressionSpan(),
+			appendYAMLPath(preflightLocator, yamlKey("override")),
+		)
+	}
 }
 
 func recordAuthBindingSlots(

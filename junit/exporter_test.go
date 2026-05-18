@@ -141,6 +141,36 @@ func TestExporterRendersHTTPDiagnostics(t *testing.T) {
 	}
 }
 
+func TestExporterRendersPreflightDiagnosticsWithoutValues(t *testing.T) {
+	t.Parallel()
+
+	exporter := junit.NewExporter()
+	got, err := exporter.Marshal(completeRunDocument(preflightDiagnosticFailureDocument()))
+	if err != nil {
+		t.Fatalf("marshal junit failed: %v", err)
+	}
+
+	xmlText := string(got)
+	for _, want := range []string{
+		"preflight.guard_id: recipient-test-domain",
+		"preflight.input_ref: recipient_email",
+		"preflight.input_path: stage.main/call.send-prod/binding.recipient_email",
+		"preflight.assert_ref: expectation.matches",
+		"preflight.reason_code: matcher_mismatch",
+		"preflight.override_ref: allow_non_test_recipient",
+		"preflight.override_used: false",
+		"preflight.source: flow.thtr:3:3",
+		"preflight.binding_source: flow.thtr:9:31",
+	} {
+		if !strings.Contains(xmlText, want) {
+			t.Fatalf("junit output missing %q: %s", want, xmlText)
+		}
+	}
+	if strings.Contains(xmlText, "person@example.com") {
+		t.Fatalf("junit output leaked rejected input value: %s", xmlText)
+	}
+}
+
 func passedDocument() theater.RunDocument {
 	startedAt := fixedTime(0)
 	endedAt := fixedTime(1000)
@@ -174,6 +204,68 @@ func passedDocument() theater.RunDocument {
 					StartedAt:      scenarioStartedAt,
 					EndedAt:        scenarioEndedAt,
 					DurationMs:     scenarioEndedAt.Sub(scenarioStartedAt).Milliseconds(),
+				},
+			},
+		},
+	}
+}
+
+func preflightDiagnosticFailureDocument() theater.RunDocument {
+	scenarioPath := "stage.main/call.send-prod"
+	failure := &theater.Failure{
+		Kind:    theater.FailureKindSetup,
+		Phase:   theater.PhaseRun,
+		At:      "stage.main/scenario.send-email/preflight.recipient-test-domain",
+		Summary: "preflight rejected scenario input",
+	}
+
+	return theater.RunDocument{
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
+		Report: theater.Report{
+			StageID:   "main",
+			StagePath: "stage.main",
+			Status:    theater.StatusFailed,
+			Failure:   failure,
+			Summary: theater.Summary{
+				TotalScenarios:  1,
+				FailedScenarios: 1,
+			},
+			Nodes: []theater.NodeReport{
+				{
+					Kind:           theater.NodeKindScenario,
+					StageID:        "main",
+					Path:           scenarioPath,
+					ScenarioID:     "send-email",
+					ScenarioCallID: "send-prod",
+					ScenarioPath:   scenarioPath,
+					Attempt:        1,
+					ScenarioSeq:    1,
+					Status:         theater.StatusFailed,
+					Failure:        failure,
+					Diagnostics: []theater.NodeDiagnostic{
+						{
+							Kind: theater.NodeDiagnosticKindPreflight,
+							Preflight: &theater.PreflightDiagnostic{
+								GuardID:         "recipient-test-domain",
+								InputRef:        "recipient_email",
+								InputPath:       scenarioPath + "/binding.recipient_email",
+								AssertRef:       "expectation.matches",
+								ReasonCode:      "matcher_mismatch",
+								OverrideRef:     "allow_non_test_recipient",
+								OverridePresent: true,
+								SourceSpan: &theater.SourceRef{
+									File:   "flow.thtr",
+									Line:   3,
+									Column: 3,
+								},
+								BindingSourceSpan: &theater.SourceRef{
+									File:   "flow.thtr",
+									Line:   9,
+									Column: 31,
+								},
+							},
+						},
+					},
 				},
 			},
 		},

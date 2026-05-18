@@ -23,6 +23,7 @@ import (
 	thtrsyntax "github.com/alex-poliushkin/theater/internal/authoring/thtr"
 	"github.com/alex-poliushkin/theater/internal/testkit"
 	"github.com/alex-poliushkin/theater/observe"
+	theateryaml "github.com/alex-poliushkin/theater/yaml"
 )
 
 const (
@@ -39,6 +40,71 @@ func matcherCatalog(t *testing.T, descriptors ...theater.MatcherDescriptor) *the
 	}
 
 	return catalog
+}
+
+func requireReportNode(t *testing.T, nodes []theater.NodeReport, path string) theater.NodeReport {
+	t.Helper()
+
+	for i := range nodes {
+		if nodes[i].Path == path {
+			return nodes[i]
+		}
+	}
+
+	t.Fatalf("report node %q not found in %#v", path, nodes)
+	return theater.NodeReport{}
+}
+
+func requirePreflightDiagnostic(t *testing.T, node theater.NodeReport) theater.PreflightDiagnostic {
+	t.Helper()
+
+	for i := range node.Diagnostics {
+		diagnostic := node.Diagnostics[i]
+		if diagnostic.Kind == theater.NodeDiagnosticKindPreflight && diagnostic.Preflight != nil {
+			return *diagnostic.Preflight
+		}
+	}
+
+	t.Fatalf("preflight diagnostic not found on node %s: %#v", node.Path, node.Diagnostics)
+	return theater.PreflightDiagnostic{}
+}
+
+func requireNoPreflightDiagnostic(t *testing.T, node theater.NodeReport) {
+	t.Helper()
+
+	for i := range node.Diagnostics {
+		diagnostic := node.Diagnostics[i]
+		if diagnostic.Kind == theater.NodeDiagnosticKindPreflight && diagnostic.Preflight != nil {
+			t.Fatalf("unexpected preflight diagnostic on node %s: %#v", node.Path, diagnostic.Preflight)
+		}
+	}
+}
+
+func requireSourceRef(t *testing.T, source *theater.SourceRef, file string, line int, column int) {
+	t.Helper()
+
+	if source == nil {
+		t.Fatal("source span is required")
+	}
+	if got, want := source.File, file; got != want {
+		t.Fatalf("source file mismatch: got %q want %q", got, want)
+	}
+	if got, want := source.Line, line; got != want {
+		t.Fatalf("source line mismatch: got %d want %d", got, want)
+	}
+	if got, want := source.Column, column; got != want {
+		t.Fatalf("source column mismatch: got %d want %d", got, want)
+	}
+}
+
+func mustMarshalJSON(t *testing.T, value any) string {
+	t.Helper()
+
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal json failed: %v", err)
+	}
+	return string(encoded)
 }
 
 func TestRunExecutesSingleScenarioHappyPath(t *testing.T) {
@@ -149,6 +215,311 @@ func TestRunExecutesSingleScenarioHappyPath(t *testing.T) {
 			t.Fatalf("event[%d] attempt mismatch: got %d want %d", i, got, want)
 		}
 	}
+}
+
+func TestRunPreflightRejectsInputBeforeActionSideEffects(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "send-email",
+			Inputs: map[string]theater.ValueContract{
+				"recipient_email": {Kind: theater.ValueKindString, Required: true},
+			},
+			Preflight: []theater.PreflightSpec{{
+				ID:    "recipient-test-domain",
+				Input: theater.RefSpec{Name: "recipient_email"},
+				Assert: theater.AssertSpec{
+					Ref: builtinexpectation.MatchesRef,
+					Args: map[string]theater.BindingSpec{
+						"pattern": {Kind: theater.BindingKindLiteral, Value: `^[^@]+@example\.test$`},
+					},
+				},
+			}},
+			Acts: []theater.ActSpec{{
+				ID:     "send",
+				Action: theater.ActionSpec{Use: "action.send"},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{
+			ID:         "send-prod",
+			ScenarioID: "send-email",
+			Bindings: map[string]theater.BindingSpec{
+				"recipient_email": {Kind: theater.BindingKindLiteral, Value: "person@example.com"},
+			},
+		}},
+	}
+
+	action := &testkit.ScriptedAction{Output: theater.Outputs{"sent": true}}
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.send", action); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(
+		context.Background(),
+		spec,
+		catalog,
+		matcherCatalog(t, builtinexpectation.Descriptors()...),
+	)
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+
+	if got, want := len(action.Calls), 0; got != want {
+		t.Fatalf("action call count mismatch: got %d want %d", got, want)
+	}
+	if got, want := result.Report.Status, theater.StatusFailed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+	if result.Report.Failure == nil {
+		t.Fatal("report failure is required")
+	}
+	if got, want := result.Report.Failure.Kind, theater.FailureKindSetup; got != want {
+		t.Fatalf("failure kind mismatch: got %q want %q", got, want)
+	}
+	if got, want := result.Report.Failure.Summary, "preflight rejected scenario input"; got != want {
+		t.Fatalf("failure summary mismatch: got %q want %q", got, want)
+	}
+
+	scenarioNode := requireReportNode(t, result.Report.Nodes, "stage.main/call.send-prod")
+	diagnostic := requirePreflightDiagnostic(t, scenarioNode)
+	if got, want := diagnostic.GuardID, "recipient-test-domain"; got != want {
+		t.Fatalf("preflight guard id mismatch: got %q want %q", got, want)
+	}
+	if got, want := diagnostic.InputRef, "recipient_email"; got != want {
+		t.Fatalf("preflight input ref mismatch: got %q want %q", got, want)
+	}
+	if got, want := diagnostic.ReasonCode, "matcher_mismatch"; got != want {
+		t.Fatalf("preflight reason mismatch: got %q want %q", got, want)
+	}
+	if strings.Contains(mustMarshalJSON(t, result.Document()), "person@example.com") {
+		t.Fatalf("preflight report must not expose rejected input value: %s", mustMarshalJSON(t, result.Document()))
+	}
+}
+
+func TestRunPreflightOverrideAllowsActionAndReportsUsage(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "send-email",
+			Inputs: map[string]theater.ValueContract{
+				"recipient_email":          {Kind: theater.ValueKindString, Required: true},
+				"allow_non_test_recipient": {Kind: theater.ValueKindBool},
+			},
+			Preflight: []theater.PreflightSpec{{
+				ID:       "recipient-test-domain",
+				Input:    theater.RefSpec{Name: "recipient_email"},
+				Override: &theater.RefSpec{Name: "allow_non_test_recipient"},
+				Assert: theater.AssertSpec{
+					Ref: builtinexpectation.MatchesRef,
+					Args: map[string]theater.BindingSpec{
+						"pattern": {Kind: theater.BindingKindLiteral, Value: `^[^@]+@example\.test$`},
+					},
+				},
+			}},
+			Acts: []theater.ActSpec{{
+				ID:     "send",
+				Action: theater.ActionSpec{Use: "action.send"},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{
+			ID:         "send-prod",
+			ScenarioID: "send-email",
+			Bindings: map[string]theater.BindingSpec{
+				"recipient_email":          {Kind: theater.BindingKindLiteral, Value: "person@example.com"},
+				"allow_non_test_recipient": {Kind: theater.BindingKindLiteral, Value: true},
+			},
+		}},
+	}
+
+	action := &testkit.ScriptedAction{Output: theater.Outputs{"sent": true}}
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.send", action); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(
+		context.Background(),
+		spec,
+		catalog,
+		matcherCatalog(t, builtinexpectation.Descriptors()...),
+	)
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+
+	if got, want := len(action.Calls), 1; got != want {
+		t.Fatalf("action call count mismatch: got %d want %d", got, want)
+	}
+	if got, want := result.Report.Status, theater.StatusPassed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+
+	scenarioNode := requireReportNode(t, result.Report.Nodes, "stage.main/call.send-prod")
+	diagnostic := requirePreflightDiagnostic(t, scenarioNode)
+	if got, want := diagnostic.ReasonCode, "override_used"; got != want {
+		t.Fatalf("preflight reason mismatch: got %q want %q", got, want)
+	}
+	if got, want := diagnostic.OverrideRef, "allow_non_test_recipient"; got != want {
+		t.Fatalf("preflight override ref mismatch: got %q want %q", got, want)
+	}
+	if !diagnostic.OverridePresent || !diagnostic.OverrideUsed {
+		t.Fatalf("preflight override flags mismatch: %#v", diagnostic)
+	}
+}
+
+func TestRunPreflightPassesInputWithoutDiagnostic(t *testing.T) {
+	t.Parallel()
+
+	spec := theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "send-email",
+			Inputs: map[string]theater.ValueContract{
+				"recipient_email": {Kind: theater.ValueKindString, Required: true},
+			},
+			Preflight: []theater.PreflightSpec{{
+				ID:    "recipient-test-domain",
+				Input: theater.RefSpec{Name: "recipient_email"},
+				Assert: theater.AssertSpec{
+					Ref: builtinexpectation.MatchesRef,
+					Args: map[string]theater.BindingSpec{
+						"pattern": {Kind: theater.BindingKindLiteral, Value: `^[^@]+@example\.test$`},
+					},
+				},
+			}},
+			Acts: []theater.ActSpec{{
+				ID:     "send",
+				Action: theater.ActionSpec{Use: "action.send"},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{
+			ID:         "send-test",
+			ScenarioID: "send-email",
+			Bindings: map[string]theater.BindingSpec{
+				"recipient_email": {Kind: theater.BindingKindLiteral, Value: "person@example.test"},
+			},
+		}},
+	}
+
+	action := &testkit.ScriptedAction{Output: theater.Outputs{"sent": true}}
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.send", action); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(
+		context.Background(),
+		spec,
+		catalog,
+		matcherCatalog(t, builtinexpectation.Descriptors()...),
+	)
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+
+	if got, want := len(action.Calls), 1; got != want {
+		t.Fatalf("action call count mismatch: got %d want %d", got, want)
+	}
+	if got, want := result.Report.Status, theater.StatusPassed; got != want {
+		t.Fatalf("report status mismatch: got %q want %q", got, want)
+	}
+
+	scenarioNode := requireReportNode(t, result.Report.Nodes, "stage.main/call.send-test")
+	requireNoPreflightDiagnostic(t, scenarioNode)
+}
+
+func TestRunPreflightRejectsLoadedTHTRWithSourceSpans(t *testing.T) {
+	t.Parallel()
+
+	sourceFile := filepath.Join(t.TempDir(), "send.thtr")
+	loaded, err := thtrsyntax.ParseDetailed([]byte(`stage main
+scenario send-email(recipient_email: string!)
+  preflight recipient-test-domain: $recipient_email matches r"^[^@]+@example\.test$"
+  act send
+    do action.send()
+call send-prod = send-email(recipient_email: "person@example.com")
+`), sourceFile, matcherCatalog(t, builtinexpectation.Descriptors()...))
+	if err != nil {
+		t.Fatalf("parse detailed failed: %v", err)
+	}
+
+	result := runPreflightLoadedSourceFailure(t, loaded.Spec)
+	scenarioNode := requireReportNode(t, result.Report.Nodes, "stage.main/call.send-prod")
+	diagnostic := requirePreflightDiagnostic(t, scenarioNode)
+	requireSourceRef(t, diagnostic.SourceSpan, sourceFile, 3, 3)
+	requireSourceRef(t, diagnostic.BindingSourceSpan, sourceFile, 6, 29)
+}
+
+func TestRunPreflightRejectsLoadedYAMLWithSourceSpans(t *testing.T) {
+	t.Parallel()
+
+	sourceFile := filepath.Join(t.TempDir(), "send.yaml")
+	if err := os.WriteFile(sourceFile, []byte(`id: main
+scenarios:
+  - id: send-email
+    inputs:
+      recipient_email:
+        type: string
+        required: true
+    preflight:
+      - id: recipient-test-domain
+        input:
+          ref: recipient_email
+        assert:
+          matches: '^[^@]+@example\.test$'
+    acts:
+      - id: send
+        action:
+          use: action.send
+scenario_calls:
+  - id: send-prod
+    scenario_id: send-email
+    bindings:
+      recipient_email: person@example.com
+`), 0o600); err != nil {
+		t.Fatalf("write yaml failed: %v", err)
+	}
+
+	spec, err := theateryaml.LoadFile(sourceFile, matcherCatalog(t, builtinexpectation.Descriptors()...))
+	if err != nil {
+		t.Fatalf("load yaml failed: %v", err)
+	}
+
+	result := runPreflightLoadedSourceFailure(t, spec)
+	scenarioNode := requireReportNode(t, result.Report.Nodes, "stage.main/call.send-prod")
+	diagnostic := requirePreflightDiagnostic(t, scenarioNode)
+	requireSourceRef(t, diagnostic.SourceSpan, sourceFile, 9, 9)
+	requireSourceRef(t, diagnostic.BindingSourceSpan, sourceFile, 22, 24)
+}
+
+func runPreflightLoadedSourceFailure(t *testing.T, spec theater.StageSpec) theater.RunResult {
+	t.Helper()
+
+	action := &testkit.ScriptedAction{Output: theater.Outputs{"sent": true}}
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.send", action); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	result, err := runStage(
+		context.Background(),
+		spec,
+		catalog,
+		matcherCatalog(t, builtinexpectation.Descriptors()...),
+	)
+	if err != nil {
+		t.Fatalf("run stage failed: %v", err)
+	}
+	if got, want := len(action.Calls), 0; got != want {
+		t.Fatalf("action call count mismatch: got %d want %d", got, want)
+	}
+
+	return result
 }
 
 func TestRunRequiredLogFailureStopsBeforeExpectations(t *testing.T) {

@@ -42,6 +42,12 @@ func applyScenarioSourceMapBindingSpans(scenario *theater.ScenarioSpec, scenario
 		scenario.AuthBindings[authName] = authBinding
 	}
 
+	for preflightIndex := range scenario.Preflight {
+		preflight := &scenario.Preflight[preflightIndex]
+		preflightPath := codec.JoinChild(scenarioPath, "preflight", preflight.ID)
+		applySourceMapAssertSpans(&preflight.Assert, preflightPath+"/assert", sourceMap)
+	}
+
 	for actIndex := range scenario.Acts {
 		act := &scenario.Acts[actIndex]
 		actPath := codec.JoinChild(scenarioPath, "act", act.ID)

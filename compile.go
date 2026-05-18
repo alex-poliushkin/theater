@@ -36,8 +36,19 @@ type scenarioPlan struct {
 	PlanOrdinal  int
 	Inputs       map[string]ValueContract
 	AuthBindings map[string]httpAuthBindingPlan
+	Preflight    []preflightPlan
 	Acts         []actPlan
 	SourceSpan   *SourceRef
+}
+
+type preflightPlan struct {
+	ID         string
+	Path       string
+	Input      refPlan
+	Assert     assertPlan
+	Matcher    MatcherDescriptor
+	Override   *refPlan
+	SourceSpan *SourceRef
 }
 
 type scenarioCallPlan struct {
@@ -420,6 +431,16 @@ func duplicateActIDDiagnostics(acts []actPlan) []Diagnostic {
 	)
 }
 
+func duplicatePreflightIDDiagnostics(preflight []preflightPlan) []Diagnostic {
+	return duplicateIDDiagnostics(
+		preflight,
+		func(preflight preflightPlan) string { return preflight.ID },
+		func(preflight preflightPlan) string { return preflight.Path },
+		"duplicate_preflight_id",
+		"preflight",
+	)
+}
+
 func duplicateScenarioIDDiagnostics(scenarios []scenarioPlan) []Diagnostic {
 	return duplicateIDDiagnostics(
 		scenarios,
@@ -719,6 +740,10 @@ func validateRefSpec(ref refPlan) error {
 	}
 
 	return nil
+}
+
+func preflightRefUsesSelector(ref refPlan) bool {
+	return ref.Decode != "" || !ref.Path.IsZero() || len(ref.Through) != 0
 }
 
 func validateThroughStep(path string, step throughStepPlan) []Diagnostic {

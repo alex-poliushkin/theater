@@ -41,6 +41,18 @@ func TestSemanticTokenTypeRecognizesScalarUnaryExpectationSurface(t *testing.T) 
 			wantMatch: true,
 		},
 		{
+			name:      "preflight keyword",
+			token:     authoringthtr.LexToken{Kind: "identifier", Text: "preflight"},
+			wantType:  0,
+			wantMatch: true,
+		},
+		{
+			name:      "override keyword",
+			token:     authoringthtr.LexToken{Kind: "identifier", Text: "override"},
+			wantType:  0,
+			wantMatch: true,
+		},
+		{
 			name:      "greater operator",
 			token:     authoringthtr.LexToken{Kind: ">", Text: ">"},
 			wantType:  4,

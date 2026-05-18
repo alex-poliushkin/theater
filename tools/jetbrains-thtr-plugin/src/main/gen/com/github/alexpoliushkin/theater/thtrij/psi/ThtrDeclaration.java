@@ -56,6 +56,9 @@ public interface ThtrDeclaration extends PsiElement {
   ThtrPoolDeclaration getPoolDeclaration();
 
   @Nullable
+  ThtrPreflightStatement getPreflightStatement();
+
+  @Nullable
   ThtrPropStatement getPropStatement();
 
   @Nullable

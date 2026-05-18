@@ -125,6 +125,12 @@ public class ThtrDeclarationImpl extends ASTWrapperPsiElement implements ThtrDec
 
   @Override
   @Nullable
+  public ThtrPreflightStatement getPreflightStatement() {
+    return findChildByClass(ThtrPreflightStatement.class);
+  }
+
+  @Override
+  @Nullable
   public ThtrPropStatement getPropStatement() {
     return findChildByClass(ThtrPropStatement.class);
   }

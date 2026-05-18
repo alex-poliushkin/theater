@@ -86,6 +86,8 @@ func (v *structureValidator) validateScenario(scenario scenarioPlan) {
 	}
 
 	v.diagnostics.addAll(validateValueContracts(scenario.Path, scenario.Inputs))
+	v.diagnostics.addAll(duplicatePreflightIDDiagnostics(scenario.Preflight))
+	v.validatePreflight(scenario)
 	v.diagnostics.addAll(duplicateActIDDiagnostics(scenario.Acts))
 
 	for i := range scenario.Acts {
@@ -117,6 +119,87 @@ func (v *structureValidator) validateScenario(scenario scenarioPlan) {
 	}
 
 	v.diagnostics.addAll(validateScenarioLocalBindingRefs(scenario, analyzeScenarioScope(scenario)))
+}
+
+func (v *structureValidator) validatePreflight(scenario scenarioPlan) {
+	for i := range scenario.Preflight {
+		guard := scenario.Preflight[i]
+		path := guard.Path
+
+		if guard.ID == "" {
+			v.diagnostics.add(path, "missing_preflight_id", "preflight id is required")
+		}
+
+		v.validatePreflightInput(scenario, guard)
+		v.validatePreflightOverride(scenario, guard)
+
+		if guard.Assert.Ref == "" {
+			v.diagnostics.add(path+"/assert", "missing_preflight_assert_ref", fmt.Sprintf("preflight %q must define an assert ref", guard.ID))
+		}
+		v.diagnostics.addAll(validateBindings(path+"/assert", guard.Assert.Args))
+	}
+}
+
+func (v *structureValidator) validatePreflightInput(scenario scenarioPlan, guard preflightPlan) {
+	path := guard.Path + "/input"
+	if guard.Input.Name == "" {
+		v.diagnostics.add(path, "missing_preflight_input_ref", fmt.Sprintf("preflight %q input ref is required", guard.ID))
+		return
+	}
+
+	if err := validateRefSpec(guard.Input); err != nil {
+		v.diagnostics.add(path, "invalid_preflight_input_ref", err.Error())
+		return
+	}
+
+	if preflightRefUsesSelector(guard.Input) {
+		v.diagnostics.add(
+			path,
+			"unsupported_preflight_input_selector",
+			fmt.Sprintf("preflight %q input must name a scenario input without decode, path, or through", guard.ID),
+		)
+	}
+
+	if _, ok := scenario.Inputs[guard.Input.Name]; !ok {
+		v.diagnostics.add(
+			path,
+			"unknown_preflight_input_ref",
+			fmt.Sprintf("preflight %q references unknown scenario input %q", guard.ID, guard.Input.Name),
+		)
+	}
+}
+
+func (v *structureValidator) validatePreflightOverride(scenario scenarioPlan, guard preflightPlan) {
+	if guard.Override == nil {
+		return
+	}
+
+	path := guard.Path + "/override"
+	if guard.Override.Name == "" {
+		v.diagnostics.add(path, "missing_preflight_override_ref", fmt.Sprintf("preflight %q override ref is required", guard.ID))
+		return
+	}
+
+	if err := validateRefSpec(*guard.Override); err != nil {
+		v.diagnostics.add(path, "invalid_preflight_override_ref", err.Error())
+		return
+	}
+
+	if preflightRefUsesSelector(*guard.Override) {
+		v.diagnostics.add(
+			path,
+			"unsupported_preflight_override_selector",
+			fmt.Sprintf("preflight %q override must name a scenario input without decode, path, or through", guard.ID),
+		)
+	}
+
+	if _, ok := scenario.Inputs[guard.Override.Name]; !ok {
+		v.diagnostics.add(
+			path,
+			"unknown_preflight_override_ref",
+			fmt.Sprintf("preflight %q override references unknown scenario input %q", guard.ID, guard.Override.Name),
+		)
+	}
 }
 
 func (v *structureValidator) validateScenarioCall(call scenarioCallPlan) {

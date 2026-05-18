@@ -23,6 +23,11 @@ func (p planPreparer) Prepare(stage *stagePlan) (*stagePlan, error) {
 
 	for i := range stage.Scenarios {
 		scenario := &stage.Scenarios[i]
+		if !dependencyMissing(p.matchers) {
+			if err := p.preparePreflight(scenario); err != nil {
+				return nil, err
+			}
+		}
 		for j := range scenario.Acts {
 			if err := p.prepareAct(&scenario.Acts[j]); err != nil {
 				return nil, err
@@ -38,6 +43,24 @@ func (p planPreparer) Prepare(stage *stagePlan) (*stagePlan, error) {
 	}
 
 	return stage, nil
+}
+
+func (p planPreparer) preparePreflight(scenario *scenarioPlan) error {
+	for i := range scenario.Preflight {
+		guard := &scenario.Preflight[i]
+		if guard.Assert.Ref == "" {
+			continue
+		}
+
+		descriptor, err := p.matchers.Resolve(guard.Assert.Ref)
+		if err != nil {
+			return newPlanPreparationError(guard.Path, err)
+		}
+
+		guard.Matcher = descriptor
+	}
+
+	return nil
 }
 
 func (e planPreparationError) Error() string {

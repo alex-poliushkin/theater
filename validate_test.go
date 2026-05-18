@@ -241,6 +241,216 @@ func TestValidateReportsMatcherCompileDiagnostics(t *testing.T) {
 	}
 }
 
+func TestValidateReportsPreflightGuardDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		mutate    func(*theater.StageSpec)
+		wantCode  string
+		wantPath  string
+		wantCount int
+	}{
+		{
+			name: "duplicate guard id",
+			mutate: func(spec *theater.StageSpec) {
+				spec.Scenarios[0].Preflight = append(spec.Scenarios[0].Preflight, spec.Scenarios[0].Preflight[0])
+			},
+			wantCode:  "duplicate_preflight_id",
+			wantPath:  "stage.main/scenario.send-email/preflight.recipient-test-domain",
+			wantCount: 1,
+		},
+		{
+			name: "unknown input ref",
+			mutate: func(spec *theater.StageSpec) {
+				spec.Scenarios[0].Preflight[0].Input = theater.RefSpec{Name: "recipient"}
+			},
+			wantCode:  "unknown_preflight_input_ref",
+			wantPath:  "stage.main/scenario.send-email/preflight.recipient-test-domain/input",
+			wantCount: 1,
+		},
+		{
+			name: "input selector",
+			mutate: func(spec *theater.StageSpec) {
+				spec.Scenarios[0].Preflight[0].Input = theater.RefSpec{
+					Name: "recipient_email",
+					Path: theater.JSONPointer("/domain"),
+				}
+			},
+			wantCode:  "unsupported_preflight_input_selector",
+			wantPath:  "stage.main/scenario.send-email/preflight.recipient-test-domain/input",
+			wantCount: 1,
+		},
+		{
+			name: "missing override ref",
+			mutate: func(spec *theater.StageSpec) {
+				spec.Scenarios[0].Preflight[0].Override = &theater.RefSpec{}
+			},
+			wantCode:  "missing_preflight_override_ref",
+			wantPath:  "stage.main/scenario.send-email/preflight.recipient-test-domain/override",
+			wantCount: 1,
+		},
+		{
+			name: "unknown override ref",
+			mutate: func(spec *theater.StageSpec) {
+				spec.Scenarios[0].Preflight[0].Override = &theater.RefSpec{Name: "manager_override"}
+			},
+			wantCode:  "unknown_preflight_override_ref",
+			wantPath:  "stage.main/scenario.send-email/preflight.recipient-test-domain/override",
+			wantCount: 1,
+		},
+		{
+			name: "input kind must match matcher actual",
+			mutate: func(spec *theater.StageSpec) {
+				spec.Scenarios[0].Inputs["recipient_email"] = theater.ValueContract{Kind: theater.ValueKindBool}
+				spec.ScenarioCalls[0].Bindings["recipient_email"] = theater.BindingSpec{Kind: theater.BindingKindLiteral, Value: true}
+			},
+			wantCode:  "incompatible_preflight_input_kind",
+			wantPath:  "stage.main/scenario.send-email/preflight.recipient-test-domain/input",
+			wantCount: 1,
+		},
+		{
+			name: "override must be bool",
+			mutate: func(spec *theater.StageSpec) {
+				spec.Scenarios[0].Inputs["allow_non_test_recipient"] = theater.ValueContract{Kind: theater.ValueKindString}
+			},
+			wantCode:  "incompatible_preflight_override_kind",
+			wantPath:  "stage.main/scenario.send-email/preflight.recipient-test-domain/override",
+			wantCount: 1,
+		},
+		{
+			name: "unknown matcher",
+			mutate: func(spec *theater.StageSpec) {
+				spec.Scenarios[0].Preflight[0].Assert = theater.AssertSpec{
+					Ref: "expectation.unknown",
+					Args: map[string]theater.BindingSpec{
+						"pattern": {Kind: theater.BindingKindLiteral, Value: `^[^@]+@example\.test$`},
+					},
+				}
+			},
+			wantCode:  "unknown_preflight_assert_ref",
+			wantPath:  "stage.main/scenario.send-email/preflight.recipient-test-domain/assert",
+			wantCount: 1,
+		},
+		{
+			name: "unsupported matcher",
+			mutate: func(spec *theater.StageSpec) {
+				spec.Scenarios[0].Preflight[0].Assert = theater.AssertSpec{
+					Ref: builtinexpectation.EqualRef,
+					Args: map[string]theater.BindingSpec{
+						"expected": {Kind: theater.BindingKindLiteral, Value: "person@example.test"},
+					},
+				}
+			},
+			wantCode:  "unsupported_preflight_assert_ref",
+			wantPath:  "stage.main/scenario.send-email/preflight.recipient-test-domain/assert",
+			wantCount: 1,
+		},
+		{
+			name: "static pattern must be string",
+			mutate: func(spec *theater.StageSpec) {
+				spec.Scenarios[0].Preflight[0].Assert.Args["pattern"] = theater.BindingSpec{
+					Kind:  theater.BindingKindLiteral,
+					Value: 42,
+				}
+			},
+			wantCode:  "incompatible_expectation_assert_arg",
+			wantPath:  "stage.main/scenario.send-email/preflight.recipient-test-domain/assert/binding.pattern",
+			wantCount: 1,
+		},
+		{
+			name: "non static pattern",
+			mutate: func(spec *theater.StageSpec) {
+				spec.Scenarios[0].Preflight[0].Assert.Args["pattern"] = theater.BindingSpec{
+					Kind: theater.BindingKindRef,
+					Ref:  &theater.RefSpec{Name: "recipient_email"},
+				}
+			},
+			wantCode:  "non_static_preflight_assert_arg",
+			wantPath:  "stage.main/scenario.send-email/preflight.recipient-test-domain/assert",
+			wantCount: 1,
+		},
+		{
+			name: "unanchored pattern",
+			mutate: func(spec *theater.StageSpec) {
+				spec.Scenarios[0].Preflight[0].Assert.Args["pattern"] = theater.BindingSpec{
+					Kind:  theater.BindingKindLiteral,
+					Value: `@example\.test`,
+				}
+			},
+			wantCode:  "unanchored_preflight_pattern",
+			wantPath:  "stage.main/scenario.send-email/preflight.recipient-test-domain/assert/binding.pattern",
+			wantCount: 1,
+		},
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.send", &testkit.ScriptedAction{}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+
+	matchers, err := newMatcherCatalog(builtinexpectation.Descriptors()...)
+	if err != nil {
+		t.Fatalf("new matcher catalog failed: %v", err)
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			spec := validPreflightStageSpec()
+			testCase.mutate(&spec)
+
+			diagnostics := validateStage(spec, catalog, matchers)
+			if got, want := len(diagnostics), testCase.wantCount; got != want {
+				t.Fatalf("diagnostic count mismatch: got %d want %d: %#v", got, want, diagnostics)
+			}
+			diagnostic := diagnostics[0]
+			if got, want := diagnostic.Code, testCase.wantCode; got != want {
+				t.Fatalf("diagnostic code mismatch: got %q want %q", got, want)
+			}
+			if got, want := diagnostic.Path, testCase.wantPath; got != want {
+				t.Fatalf("diagnostic path mismatch: got %q want %q", got, want)
+			}
+		})
+	}
+}
+
+func validPreflightStageSpec() theater.StageSpec {
+	return theater.StageSpec{
+		ID: "main",
+		Scenarios: []theater.ScenarioSpec{{
+			ID: "send-email",
+			Inputs: map[string]theater.ValueContract{
+				"recipient_email":          {Kind: theater.ValueKindString, Required: true},
+				"allow_non_test_recipient": {Kind: theater.ValueKindBool},
+			},
+			Preflight: []theater.PreflightSpec{{
+				ID:       "recipient-test-domain",
+				Input:    theater.RefSpec{Name: "recipient_email"},
+				Override: &theater.RefSpec{Name: "allow_non_test_recipient"},
+				Assert: theater.AssertSpec{
+					Ref: builtinexpectation.MatchesRef,
+					Args: map[string]theater.BindingSpec{
+						"pattern": {Kind: theater.BindingKindLiteral, Value: `^[^@]+@example\.test$`},
+					},
+				},
+			}},
+			Acts: []theater.ActSpec{{
+				ID:     "send",
+				Action: theater.ActionSpec{Use: "action.send"},
+			}},
+		}},
+		ScenarioCalls: []theater.ScenarioCallSpec{{
+			ID:         "send-test",
+			ScenarioID: "send-email",
+			Bindings: map[string]theater.BindingSpec{
+				"recipient_email": {Kind: theater.BindingKindLiteral, Value: "person@example.test"},
+			},
+		}},
+	}
+}
+
 func TestValidateTreatsPluginAssertAndWhereArgsAsPlainData(t *testing.T) {
 	t.Parallel()
 

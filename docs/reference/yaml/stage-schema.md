@@ -32,6 +32,22 @@ initialized through `scenarios[].auth_bindings`, populated later by
 | --- | --- |
 | `scenarios[].auth_bindings.<auth>.slots.<slot>` | Binding that initializes one declared HTTP auth slot at scenario start |
 
+## Scenario Preflight
+
+`scenarios[].preflight` declares guardrails over resolved scenario inputs.
+Preflight runs after scenario-call bindings resolve and before scenario auth
+slot initialization or acts. Plugin session startup and plugin
+`theater.prepare` hooks are stage-preparation work outside the preflight
+boundary.
+
+| Path | Meaning |
+| --- | --- |
+| `scenarios[].preflight[].id` | Scenario-local preflight guard id |
+| `scenarios[].preflight[].input.ref` | Scenario input checked by the guard |
+| `scenarios[].preflight[].assert.ref` | Matcher ref with descriptor preflight support |
+| `scenarios[].preflight[].assert.args.<name>` | Static matcher argument |
+| `scenarios[].preflight[].override.ref` | Optional bool scenario input that records an explicit bypass |
+
 ## State Registry
 
 | Path | Meaning |

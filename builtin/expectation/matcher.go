@@ -258,6 +258,13 @@ func matchesDescriptor() theater.MatcherDescriptor {
 			Accepts:  theater.ValueContract{Kind: theater.ValueKindString},
 		}},
 		Actual: theater.ValueContract{Kind: theater.ValueKindString},
+		Preflight: &theater.MatcherPreflightPolicy{
+			Args: map[string]theater.MatcherPreflightArgRule{
+				"pattern": {
+					ValidateLiteral: validateMatchesPreflightPattern,
+				},
+			},
+		},
 		Sugar: theater.SugarSpec{
 			Keys:           []string{"matches"},
 			Form:           theater.SugarFormUnary,
@@ -285,6 +292,29 @@ func matchesDescriptor() theater.MatcherDescriptor {
 			}, nil
 		},
 	}
+}
+
+func validateMatchesPreflightPattern(value any) *theater.MatcherPreflightArgIssue {
+	pattern, ok := value.(string)
+	if !ok {
+		return &theater.MatcherPreflightArgIssue{
+			Code:    "invalid_preflight_assert_arg",
+			Summary: "preflight matches pattern must be a static string",
+		}
+	}
+
+	if !matchesPreflightPatternAnchored(pattern) {
+		return &theater.MatcherPreflightArgIssue{
+			Code:    "unanchored_preflight_pattern",
+			Summary: "preflight matches pattern must be anchored with ^ and $",
+		}
+	}
+
+	return nil
+}
+
+func matchesPreflightPatternAnchored(pattern string) bool {
+	return len(pattern) >= 2 && pattern[0] == '^' && pattern[len(pattern)-1] == '$'
 }
 
 func presentDescriptor() theater.MatcherDescriptor {

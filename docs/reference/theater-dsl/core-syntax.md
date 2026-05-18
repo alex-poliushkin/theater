@@ -51,9 +51,10 @@ Scenario-level cleanup hooks are a [ratified future contract](../cleanup-hooks.m
 They are not available in the current `.thtr` parser, formatter, lowerer, or
 runtime.
 
-Scenario-level preflight guardrails are a
-[ratified future contract](../preflight-guardrails.md). They are not available
-in the current `.thtr` parser, formatter, lowerer, or runtime.
+`preflight <id>: $input matches r"^...$"` declares a scenario-level guard over a
+resolved scenario input. It can add `override $input` for a boolean scenario
+input override. Use [Preflight Guardrails](../preflight-guardrails.md) for the
+full runtime, validation, and report contract.
 
 ## Act
 

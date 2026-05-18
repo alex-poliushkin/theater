@@ -280,50 +280,9 @@ func (p *parser) parseScenario() (scenarioSyntax, error) {
 		if p.at(tokenDedent) || p.at(tokenEOF) {
 			break
 		}
-		if p.atKeyword("name") {
-			if scenario.Name != nil {
-				return scenarioSyntax{}, &parserError{
-					span:    p.peek().Span,
-					message: "scenario already declares name",
-				}
-			}
-			if seenActs {
-				return scenarioSyntax{}, &parserError{
-					span:    p.peek().Span,
-					message: "scenario entries must follow name, act order",
-				}
-			}
-			name, err := p.parseName()
-			if err != nil {
-				return scenarioSyntax{}, err
-			}
-			scenario.Name = &name
-			scenario.Span.End = name.Span.End
-			continue
-		}
-		if p.atKeyword("bind") {
-			if seenActs {
-				return scenarioSyntax{}, &parserError{
-					span:    p.peek().Span,
-					message: "scenario entries must follow name, bind auth, act order",
-				}
-			}
-			authBinding, err := p.parseAuthBinding()
-			if err != nil {
-				return scenarioSyntax{}, err
-			}
-			scenario.AuthBindings = append(scenario.AuthBindings, authBinding)
-			scenario.Span.End = authBinding.Span.End
-			continue
-		}
-
-		seenActs = true
-		act, err := p.parseAct()
-		if err != nil {
+		if err := p.parseScenarioEntry(&scenario, &seenActs); err != nil {
 			return scenarioSyntax{}, err
 		}
-		scenario.Acts = append(scenario.Acts, act)
-		scenario.Span.End = act.Span.End
 	}
 	if _, err := p.expect(tokenDedent); err != nil {
 		return scenarioSyntax{}, err
@@ -335,6 +294,73 @@ func (p *parser) parseScenario() (scenarioSyntax, error) {
 		}
 	}
 	return scenario, nil
+}
+
+func (p *parser) parseScenarioEntry(scenario *scenarioSyntax, seenActs *bool) error {
+	switch {
+	case p.atKeyword("name"):
+		return p.parseScenarioName(scenario, *seenActs)
+	case p.atKeyword("bind"):
+		if *seenActs {
+			return p.scenarioOrderError()
+		}
+		authBinding, err := p.parseAuthBinding()
+		if err != nil {
+			return err
+		}
+		scenario.AuthBindings = append(scenario.AuthBindings, authBinding)
+		scenario.Span.End = authBinding.Span.End
+	case p.atKeyword("preflight"):
+		if *seenActs {
+			return p.scenarioOrderError()
+		}
+		preflight, err := p.parsePreflight()
+		if err != nil {
+			return err
+		}
+		scenario.Preflight = append(scenario.Preflight, preflight)
+		scenario.Span.End = preflight.Span.End
+	default:
+		*seenActs = true
+		act, err := p.parseAct()
+		if err != nil {
+			return err
+		}
+		scenario.Acts = append(scenario.Acts, act)
+		scenario.Span.End = act.Span.End
+	}
+
+	return nil
+}
+
+func (p *parser) parseScenarioName(scenario *scenarioSyntax, seenActs bool) error {
+	if scenario.Name != nil {
+		return &parserError{
+			span:    p.peek().Span,
+			message: "scenario already declares name",
+		}
+	}
+	if seenActs {
+		return &parserError{
+			span:    p.peek().Span,
+			message: "scenario entries must follow name, act order",
+		}
+	}
+
+	name, err := p.parseName()
+	if err != nil {
+		return err
+	}
+	scenario.Name = &name
+	scenario.Span.End = name.Span.End
+	return nil
+}
+
+func (p *parser) scenarioOrderError() error {
+	return &parserError{
+		span:    p.peek().Span,
+		message: "scenario entries must follow name, bind auth, preflight, act order",
+	}
 }
 
 func (p *parser) parseAuthBinding() (authBindingSyntax, error) {
@@ -375,6 +401,53 @@ func (p *parser) parseAuthBinding() (authBindingSyntax, error) {
 	}
 
 	return binding, nil
+}
+
+func (p *parser) parsePreflight() (preflightSyntax, error) {
+	start, err := p.expectKeyword("preflight")
+	if err != nil {
+		return preflightSyntax{}, err
+	}
+	id, _, err := p.parseLocalIdentifier()
+	if err != nil {
+		return preflightSyntax{}, err
+	}
+	if _, err := p.expect(tokenColon); err != nil {
+		return preflightSyntax{}, err
+	}
+	input, err := p.parseExpression()
+	if err != nil {
+		return preflightSyntax{}, err
+	}
+	assertion, err := p.parseAssertion()
+	if err != nil {
+		return preflightSyntax{}, err
+	}
+
+	end := assertion.Span
+	var override expressionSyntax
+	if p.matchKeyword("override") {
+		parsed, err := p.parseExpression()
+		if err != nil {
+			return preflightSyntax{}, err
+		}
+		override = parsed
+		end = parsed.ExpressionSpan()
+	}
+	if err := p.expectLineEnd(); err != nil {
+		return preflightSyntax{}, err
+	}
+
+	return preflightSyntax{
+		ID:       id,
+		Input:    input,
+		Assert:   assertion,
+		Override: override,
+		Span: sourceSpan{
+			Start: start.Span.Start,
+			End:   end.End,
+		},
+	}, nil
 }
 
 func (p *parser) parseInputList() ([]inputSyntax, sourceSpan, error) {

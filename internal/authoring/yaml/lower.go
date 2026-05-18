@@ -37,7 +37,8 @@ func lowerStage(raw rawStageSpec, matchers theater.MatcherSugarResolver, sourceF
 		SourceSpan:    bindSourceRef(raw.Span, sourceFile),
 	}
 
-	for _, rawScenario := range raw.Scenarios {
+	for scenarioIndex := range raw.Scenarios {
+		rawScenario := raw.Scenarios[scenarioIndex]
 		authBindings, err := lowerHTTPAuthBindings(rawScenario.AuthBindings, sourceFile)
 		if err != nil {
 			return theater.StageSpec{}, err
@@ -48,8 +49,21 @@ func lowerStage(raw rawStageSpec, matchers theater.MatcherSugarResolver, sourceF
 			Name:         rawScenario.Name,
 			Inputs:       rawScenario.Inputs,
 			AuthBindings: authBindings,
+			Preflight:    make([]theater.PreflightSpec, 0, len(rawScenario.Preflight)),
 			Acts:         make([]theater.ActSpec, 0, len(rawScenario.Acts)),
 			SourceSpan:   bindSourceRef(rawScenario.Span, sourceFile),
+		}
+
+		for i := range rawScenario.Preflight {
+			preflight, err := lowerPreflight(rawScenario.Preflight[i], matchers, sourceFile)
+			if err != nil {
+				return theater.StageSpec{}, err
+			}
+
+			scenario.Preflight = append(scenario.Preflight, preflight)
+		}
+		if len(scenario.Preflight) == 0 {
+			scenario.Preflight = nil
 		}
 
 		for actIndex := range rawScenario.Acts {
@@ -149,6 +163,57 @@ func lowerHTTPAuthBindings(
 	}
 
 	return bindings, nil
+}
+
+func lowerPreflight(
+	raw rawPreflightSpec,
+	matchers theater.MatcherSugarResolver,
+	sourceFile string,
+) (theater.PreflightSpec, error) {
+	input, err := lowerPreflightRef(raw.Input, sourceFile)
+	if err != nil {
+		return theater.PreflightSpec{}, err
+	}
+
+	assert, err := lowerAssert(raw.Assert.Node, matchers, sourceFile)
+	if err != nil {
+		return theater.PreflightSpec{}, err
+	}
+
+	var override *theater.RefSpec
+	if raw.Override != nil {
+		resolved, err := lowerPreflightRef(*raw.Override, sourceFile)
+		if err != nil {
+			return theater.PreflightSpec{}, err
+		}
+		override = &resolved
+	}
+
+	return theater.PreflightSpec{
+		ID:         raw.ID,
+		Input:      input,
+		Assert:     assert,
+		Override:   override,
+		SourceSpan: bindSourceRef(raw.Span, sourceFile),
+	}, nil
+}
+
+func lowerPreflightRef(raw rawPreflightRefSpec, sourceFile string) (theater.RefSpec, error) {
+	path, err := lowerJSONPointer(raw.Path)
+	if err != nil {
+		return theater.RefSpec{}, err
+	}
+	through, err := lowerThrough(raw.Through, sourceFile)
+	if err != nil {
+		return theater.RefSpec{}, err
+	}
+
+	return theater.RefSpec{
+		Name:    raw.Ref,
+		Decode:  raw.Decode,
+		Path:    path,
+		Through: through,
+	}, nil
 }
 
 func lowerExpectation(raw rawExpectationSpec, matchers theater.MatcherSugarResolver, sourceFile string) (theater.ExpectationSpec, error) {

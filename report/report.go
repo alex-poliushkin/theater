@@ -31,7 +31,8 @@ const (
 	NodeKindExpectation NodeKind = "expectation"
 	NodeKindLog         NodeKind = "log"
 
-	NodeDiagnosticKindHTTP NodeDiagnosticKind = "http"
+	NodeDiagnosticKindHTTP      NodeDiagnosticKind = "http"
+	NodeDiagnosticKindPreflight NodeDiagnosticKind = "preflight"
 
 	LogStatusEmitted LogStatus = "emitted"
 	LogStatusOmitted LogStatus = "omitted"
@@ -131,8 +132,9 @@ type NodeAddress struct {
 
 // NodeDiagnostic is one typed report-safe diagnostic attached to a report node.
 type NodeDiagnostic struct {
-	Kind NodeDiagnosticKind `json:"kind"`
-	HTTP *HTTPDiagnostic    `json:"http,omitempty"`
+	Kind      NodeDiagnosticKind   `json:"kind"`
+	HTTP      *HTTPDiagnostic      `json:"http,omitempty"`
+	Preflight *PreflightDiagnostic `json:"preflight,omitempty"`
 }
 
 // HTTPDiagnostic is the report-safe summary of one HTTP exchange.
@@ -145,6 +147,21 @@ type HTTPDiagnostic struct {
 	DurationMs      int64               `json:"duration_ms,omitempty"`
 	ResponseHeaders map[string][]string `json:"response_headers,omitempty"`
 	ResponsePreview *Preview            `json:"response_preview,omitempty"`
+}
+
+// PreflightDiagnostic is the report-safe summary of one scenario preflight
+// guard result that affected execution.
+type PreflightDiagnostic struct {
+	GuardID           string     `json:"guard_id"`
+	InputRef          string     `json:"input_ref"`
+	InputPath         string     `json:"input_path,omitempty"`
+	AssertRef         string     `json:"assert_ref,omitempty"`
+	ReasonCode        string     `json:"reason_code"`
+	OverrideRef       string     `json:"override_ref,omitempty"`
+	OverridePresent   bool       `json:"override_present,omitempty"`
+	OverrideUsed      bool       `json:"override_used,omitempty"`
+	SourceSpan        *SourceRef `json:"source_span,omitempty"`
+	BindingSourceSpan *SourceRef `json:"binding_source_span,omitempty"`
 }
 
 // AttemptReport summarizes one eventually attempt.
@@ -355,7 +372,7 @@ func (k NodeKind) Valid() bool {
 
 func (k NodeDiagnosticKind) Valid() bool {
 	switch k {
-	case NodeDiagnosticKindHTTP:
+	case NodeDiagnosticKindHTTP, NodeDiagnosticKindPreflight:
 		return true
 	default:
 		return false
@@ -416,6 +433,11 @@ func (d NodeDiagnostic) Validate() error {
 			return errors.New("http diagnostic is required")
 		}
 		return d.HTTP.Validate()
+	case NodeDiagnosticKindPreflight:
+		if d.Preflight == nil {
+			return errors.New("preflight diagnostic is required")
+		}
+		return d.Preflight.Validate()
 	default:
 		return nil
 	}
@@ -434,6 +456,22 @@ func (d HTTPDiagnostic) Validate() error {
 		if err := d.ActionAddress.Validate(); err != nil {
 			return fmt.Errorf("action_addr is invalid: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func (d PreflightDiagnostic) Validate() error {
+	if d.GuardID == "" {
+		return errors.New("guard_id is required")
+	}
+
+	if d.InputRef == "" {
+		return errors.New("input_ref is required")
+	}
+
+	if d.ReasonCode == "" {
+		return errors.New("reason_code is required")
 	}
 
 	return nil

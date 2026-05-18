@@ -42,6 +42,77 @@ scenario ping
 	}
 }
 
+func TestParseLowersScenarioPreflight(t *testing.T) {
+	t.Parallel()
+
+	spec, err := Parse([]byte(`stage smoke
+scenario send-email(recipient_email: string!, allow_non_test_recipient: bool)
+  preflight recipient-test-domain: $recipient_email matches r"^[^@]+@example\.test$" override $allow_non_test_recipient
+  act send
+    do action.send()
+call run = send-email(recipient_email: "person@example.test")
+`), nil)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+
+	preflight := spec.Scenarios[0].Preflight[0]
+	if got, want := preflight.ID, "recipient-test-domain"; got != want {
+		t.Fatalf("preflight id mismatch: got %q want %q", got, want)
+	}
+	if got, want := preflight.Input.Name, "recipient_email"; got != want {
+		t.Fatalf("preflight input mismatch: got %q want %q", got, want)
+	}
+	if preflight.Override == nil || preflight.Override.Name != "allow_non_test_recipient" {
+		t.Fatalf("preflight override mismatch: %#v", preflight.Override)
+	}
+	if got, want := preflight.Assert.Ref, builtinexpectation.MatchesRef; got != want {
+		t.Fatalf("preflight assert ref mismatch: got %q want %q", got, want)
+	}
+	if got, want := preflight.Assert.Args["pattern"].Value, `^[^@]+@example\.test$`; got != want {
+		t.Fatalf("preflight pattern mismatch: got %#v want %#v", got, want)
+	}
+	if preflight.SourceSpan == nil || preflight.SourceSpan.Line == 0 {
+		t.Fatalf("preflight source span must be present: %#v", preflight.SourceSpan)
+	}
+}
+
+func TestParseDetailedRewritesPreflightDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	result, err := ParseDetailed([]byte(`stage smoke
+scenario send-email(recipient_email: string!)
+  preflight recipient-test-domain: $recipient_email matches r"@example\.test"
+  act send
+    do action.send()
+call run = send-email(recipient_email: "person@example.test")
+`), "/tmp/send.thtr", nil)
+	if err != nil {
+		t.Fatalf("parse detailed failed: %v", err)
+	}
+
+	catalog := theater.NewCatalog()
+	if err := catalog.RegisterAction("action.send", &testkit.ScriptedAction{}); err != nil {
+		t.Fatalf("register action failed: %v", err)
+	}
+	matchers, err := theater.NewMatcherCatalog(builtinexpectation.Descriptors()...)
+	if err != nil {
+		t.Fatalf("new matcher catalog failed: %v", err)
+	}
+
+	diagnostics := result.RewriteDiagnostics(theater.NewValidator(catalog, matchers).Validate(result.Spec))
+	diagnostic := findDiagnosticByCodeValue(diagnostics, "unanchored_preflight_pattern")
+	if diagnostic == nil {
+		t.Fatalf("expected unanchored_preflight_pattern diagnostic, got %#v", diagnostics)
+	}
+	if got, want := diagnostic.Span.File, "/tmp/send.thtr"; got != want {
+		t.Fatalf("diagnostic source file mismatch: got %q want %q", got, want)
+	}
+	if got, want := diagnostic.Span.Line, 3; got != want {
+		t.Fatalf("diagnostic source line mismatch: got %d want %d", got, want)
+	}
+}
+
 func TestParseLowersActLogSugarToLogSpec(t *testing.T) {
 	t.Parallel()
 

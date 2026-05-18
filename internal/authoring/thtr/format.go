@@ -113,6 +113,11 @@ func (f *thtrFormatter) writeScenario(scenario scenarioSyntax) {
 		f.writeAuthBinding(scenario.AuthBindings[i], 1)
 	}
 
+	for i := range scenario.Preflight {
+		f.writeCommentsBefore(scenario.Preflight[i].Span.Start.Line)
+		f.writePreflight(scenario.Preflight[i], 1)
+	}
+
 	for i := range scenario.Acts {
 		if i > 0 {
 			f.blankLine()
@@ -120,6 +125,23 @@ func (f *thtrFormatter) writeScenario(scenario scenarioSyntax) {
 		f.writeCommentsBefore(scenario.Acts[i].Span.Start.Line)
 		f.writeAct(scenario.Acts[i], 1)
 	}
+}
+
+func (f *thtrFormatter) writePreflight(preflight preflightSyntax, indent int) {
+	prefix := "preflight " + preflight.ID + ": "
+	input := f.renderExpressionForPrefix(preflight.Input, indent, len(prefix))
+	text := indented(indent, prefix) + input
+	text += f.renderAssertionForPrefix(preflight.Assert, indent, lastLineWidth(text))
+	if preflight.Override != nil {
+		overridePrefix := " override "
+		text += overridePrefix +
+			f.renderExpressionForPrefix(
+				preflight.Override,
+				indent,
+				lastLineWidth(text)+len(overridePrefix),
+			)
+	}
+	f.writeLine(appendTrailingComment(text, f.takeTrailingComment(preflight.Span.Start.Line)))
 }
 
 func (f *thtrFormatter) writeAuthBinding(binding authBindingSyntax, indent int) {

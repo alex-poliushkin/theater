@@ -79,6 +79,7 @@ class ThtrLexerTest {
 			state
 			  backend local = state.backend.file(root: "/tmp")
 			scenario auth/register(email: string!)
+			  preflight recipient-test-domain: ${'$'}email matches r"^[^@]+@example\.test$" override ${'$'}allow_non_test_recipient
 			  act submit
 			    eventually 30s every 1s
 			    do repeatable action.http
@@ -98,6 +99,8 @@ class ThtrLexerTest {
 		assertTrue(tokens.any { it.type == ThtrTypes.EVERY })
 		assertTrue(tokens.any { it.type == ThtrTypes.DURATION && it.text == "1s" })
 		assertTrue(tokens.any { it.type == ThtrTypes.REPEATABLE })
+		assertTrue(tokens.any { it.type == ThtrTypes.PREFLIGHT })
+		assertTrue(tokens.any { it.type == ThtrTypes.OVERRIDE })
 		assertTrue(tokens.any { it.type == ThtrTypes.LOG })
 		assertTrue(tokens.any { it.type == ThtrTypes.OBJECT })
 		assertTrue(tokens.any { it.type == ThtrTypes.EXPORT })

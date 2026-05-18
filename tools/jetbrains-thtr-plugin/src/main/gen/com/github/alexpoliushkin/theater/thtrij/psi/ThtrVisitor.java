@@ -91,6 +91,10 @@ public class ThtrVisitor extends PsiElementVisitor {
     visitPsiElement(o);
   }
 
+  public void visitPreflightStatement(@NotNull ThtrPreflightStatement o) {
+    visitPsiElement(o);
+  }
+
   public void visitPropStatement(@NotNull ThtrPropStatement o) {
     visitNamedElement(o);
   }

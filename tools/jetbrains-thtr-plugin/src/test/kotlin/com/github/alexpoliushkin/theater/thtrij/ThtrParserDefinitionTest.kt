@@ -20,6 +20,7 @@ import com.github.alexpoliushkin.theater.thtrij.psi.ThtrListValue
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrLogStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrObjectValue
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrPoolDeclaration
+import com.github.alexpoliushkin.theater.thtrij.psi.ThtrPreflightStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrPropStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrRecordDeclaration
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrScenarioDeclaration
@@ -117,6 +118,17 @@ class ThtrParserDefinitionTest : BasePlatformTestCase() {
 			assertEquals("inline auth binding", 1, count<ThtrBindStatement>(authBindingFile))
 			coverage.add(authBindingFile)
 
+			val preflightFile = parse(
+				"stage safety\n" +
+					"scenario send-email(recipient_email: string!, allow_non_test_recipient: bool)\n" +
+					"  preflight recipient-test-domain: ${'$'}recipient_email matches r\"^[^@]+@example\\.test$\" override ${'$'}allow_non_test_recipient\n" +
+					"  act send\n" +
+					"    do action.http\n",
+			)
+			assertNoErrors(preflightFile, "inline preflight")
+			assertEquals("inline preflight", 1, count<ThtrPreflightStatement>(preflightFile))
+			coverage.add(preflightFile)
+
 			assertTrue("stages", coverage.stages > 0)
 		assertTrue("scenarios", coverage.scenarios > 0)
 		assertTrue("calls", coverage.calls > 0)
@@ -128,6 +140,7 @@ class ThtrParserDefinitionTest : BasePlatformTestCase() {
 		assertTrue("exports", coverage.exports > 0)
 			assertTrue("transitions", coverage.transitions > 0)
 			assertTrue("auth bindings", coverage.authBindings > 0)
+			assertTrue("preflight", coverage.preflight > 0)
 			assertTrue("dependencies", coverage.dependencies > 0)
 		assertTrue("http blocks", coverage.httpBlocks > 0)
 		assertTrue("http session declarations", coverage.sessions > 0)
@@ -231,6 +244,7 @@ private class SyntaxCoverage {
 	var exports = 0
 	var transitions = 0
 	var authBindings = 0
+	var preflight = 0
 	var dependencies = 0
 	var httpBlocks = 0
 	var sessions = 0
@@ -261,6 +275,7 @@ private class SyntaxCoverage {
 		exports += count<ThtrExportStatement>(file)
 			transitions += count<ThtrTransitionStatement>(file)
 			authBindings += count<ThtrBindStatement>(file)
+			preflight += count<ThtrPreflightStatement>(file)
 			dependencies += count<ThtrDependencyStatement>(file)
 		httpBlocks += count<ThtrHttpBlock>(file)
 		sessions += count<ThtrSessionDeclaration>(file)

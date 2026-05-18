@@ -61,6 +61,37 @@ call run = login(email: "user@example.test") # call comment
 	}
 }
 
+func TestFormatRendersScenarioPreflight(t *testing.T) {
+	t.Parallel()
+
+	source := []byte(`stage smoke
+scenario send-email(recipient_email: string!, allow_non_test_recipient: bool)
+  preflight recipient-test-domain: $recipient_email matches r"^[^@]+@example\.test$" override $allow_non_test_recipient
+  act send
+    do action.send()
+call run = send-email(recipient_email: "person@example.test")
+`)
+
+	formatted, err := Format(source)
+	if err != nil {
+		t.Fatalf("format failed: %v", err)
+	}
+
+	const want = `stage smoke
+
+scenario send-email(recipient_email: string!, allow_non_test_recipient: bool)
+  preflight recipient-test-domain: $recipient_email matches r"^[^@]+@example\.test$" override $allow_non_test_recipient
+  act send
+    do action.send()
+
+call run = send-email(recipient_email: "person@example.test")
+`
+
+	if got := string(formatted); got != want {
+		t.Fatalf("formatted mismatch:\n%s", got)
+	}
+}
+
 func TestFormatCanonicalizesActLogSugar(t *testing.T) {
 	t.Parallel()
 

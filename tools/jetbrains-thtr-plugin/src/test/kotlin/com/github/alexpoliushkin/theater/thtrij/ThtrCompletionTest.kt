@@ -32,6 +32,7 @@ class ThtrCompletionTest : BasePlatformTestCase() {
 			)
 			assertTrue(scenarioLabels.contains("act"))
 			assertTrue(scenarioLabels.contains("bind"))
+			assertTrue(scenarioLabels.contains("preflight"))
 			assertFalse(scenarioLabels.contains("call"))
 			assertFalse(scenarioLabels.contains("stage"))
 

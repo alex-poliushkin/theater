@@ -63,13 +63,14 @@ class ThtrDocumentationTest : BasePlatformTestCase() {
 			ThtrFileType.INSTANCE,
 			"""
 			stage checkout
-			scenario smoke
+			scenario smoke(recipient_email: string!)
+			  preflight recipient-test-domain: ${'$'}recipient_email matches r"^[^@]+@example\.test$"
 			  act start
 			    prop token = generate.email()
 			    log response = object { token: ${'$'}token }
 			    export id = field(body)
 			    capture_auth bearer = field(body)
-			call run = smoke()
+			call run = smoke(recipient_email: "person@example.test")
 			""".trimIndent(),
 		)
 		val provider = ThtrDocumentationTargetProvider()
@@ -77,6 +78,7 @@ class ThtrDocumentationTest : BasePlatformTestCase() {
 			"checkout" to ".thtr stage" to "stage checkout",
 			"smoke" to ".thtr scenario" to "scenario smoke",
 			"start" to ".thtr act" to "act start",
+			"recipient-test-domain" to ".thtr preflight" to "preflight recipient-test-domain",
 			"run" to ".thtr call" to "Target scenario",
 			"token" to ".thtr prop" to "prop token",
 			"response" to ".thtr log" to "log response",

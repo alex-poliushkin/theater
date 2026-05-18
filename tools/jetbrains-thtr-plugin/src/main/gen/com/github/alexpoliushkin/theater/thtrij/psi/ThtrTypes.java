@@ -31,6 +31,7 @@ public interface ThtrTypes {
   IElementType NAME_STATEMENT = new ThtrElementType("NAME_STATEMENT");
   IElementType OBJECT_VALUE = new ThtrElementType("OBJECT_VALUE");
   IElementType POOL_DECLARATION = new ThtrElementType("POOL_DECLARATION");
+  IElementType PREFLIGHT_STATEMENT = new ThtrElementType("PREFLIGHT_STATEMENT");
   IElementType PROP_STATEMENT = new ThtrElementType("PROP_STATEMENT");
   IElementType RECORD_DECLARATION = new ThtrElementType("RECORD_DECLARATION");
   IElementType SCENARIO_DECLARATION = new ThtrElementType("SCENARIO_DECLARATION");
@@ -100,10 +101,12 @@ public interface ThtrTypes {
   IElementType NUMBER = new ThtrTokenType("number");
   IElementType OBJECT = new ThtrTokenType("object");
   IElementType ON = new ThtrTokenType("on");
+  IElementType OVERRIDE = new ThtrTokenType("override");
   IElementType PATH = new ThtrTokenType("path");
   IElementType PICK = new ThtrTokenType("pick");
   IElementType PIPE = new ThtrTokenType("|");
   IElementType POOL = new ThtrTokenType("pool");
+  IElementType PREFLIGHT = new ThtrTokenType("preflight");
   IElementType PROP = new ThtrTokenType("prop");
   IElementType RECORD = new ThtrTokenType("record");
   IElementType REGEXP = new ThtrTokenType("regexp");
@@ -185,6 +188,9 @@ public interface ThtrTypes {
       }
       else if (type == POOL_DECLARATION) {
         return new ThtrPoolDeclarationImpl(node);
+      }
+      else if (type == PREFLIGHT_STATEMENT) {
+        return new ThtrPreflightStatementImpl(node);
       }
       else if (type == PROP_STATEMENT) {
         return new ThtrPropStatementImpl(node);

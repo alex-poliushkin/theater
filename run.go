@@ -155,6 +155,16 @@ func setupFailure(path string, err error) *Failure {
 	}
 }
 
+func preflightFailure(path string, err error) *Failure {
+	return &Failure{
+		Kind:    FailureKindSetup,
+		Phase:   PhaseRun,
+		At:      path,
+		Summary: "preflight rejected scenario input",
+		Cause:   err,
+	}
+}
+
 func exportObservationFailure(path, summary string, err error) *Failure {
 	return &Failure{
 		Kind:    FailureKindObservation,

@@ -254,6 +254,7 @@ private fun keywordToken(text: String): IElementType? {
 		"act" -> ThtrTypes.ACT
 		"call" -> ThtrTypes.CALL
 		"bind" -> ThtrTypes.BIND
+		"preflight" -> ThtrTypes.PREFLIGHT
 		"name" -> ThtrTypes.NAME
 		"do" -> ThtrTypes.DO
 		"log" -> ThtrTypes.LOG
@@ -270,6 +271,7 @@ private fun keywordToken(text: String): IElementType? {
 		"record" -> ThtrTypes.RECORD
 		"pool" -> ThtrTypes.POOL
 		"repeatable" -> ThtrTypes.REPEATABLE
+		"override" -> ThtrTypes.OVERRIDE
 		"object" -> ThtrTypes.OBJECT
 		"list" -> ThtrTypes.LIST
 		"field" -> ThtrTypes.FIELD

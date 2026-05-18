@@ -1,0 +1,10 @@
+stage reference-preflight
+
+scenario send-sample-message(recipient_email: string!)
+  preflight recipient-test-domain: $recipient_email matches r"^[^@]+@example\.test$"
+  act submit-message
+    do action.generate
+      outputs:
+        accepted: true
+
+call send-prod = send-sample-message(recipient_email: "person@example.com")

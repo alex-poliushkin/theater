@@ -236,7 +236,7 @@ private fun structuralKeywordCompletions(context: CompletionContext): List<ThtrC
 	val keywords = when {
 		context.indent == 0 -> listOf("stage", "http", "state", "scenario", "call")
 		nearestBlockKind(context.lines, context.lineIndex) == "state" -> listOf("backend", "record", "pool")
-		nearestBlockKind(context.lines, context.lineIndex) == "scenario" && context.indent <= 2 -> listOf("act", "bind")
+		nearestBlockKind(context.lines, context.lineIndex) == "scenario" && context.indent <= 2 -> listOf("act", "bind", "preflight")
 		nearestBlockKind(context.lines, context.lineIndex) == "act" -> actStructuralKeywords(context)
 		else -> emptyList()
 	}

@@ -471,10 +471,45 @@ func formatObservationLines(observations *reportmodel.ActionObservations) []stri
 func formatNodeDiagnosticLines(diagnostics []reportmodel.NodeDiagnostic) []string {
 	lines := make([]string, 0)
 	for i := range diagnostics {
-		if diagnostics[i].Kind != reportmodel.NodeDiagnosticKindHTTP || diagnostics[i].HTTP == nil {
-			continue
+		switch diagnostics[i].Kind {
+		case reportmodel.NodeDiagnosticKindHTTP:
+			if diagnostics[i].HTTP != nil {
+				lines = append(lines, formatHTTPDiagnosticLines(*diagnostics[i].HTTP)...)
+			}
+		case reportmodel.NodeDiagnosticKindPreflight:
+			if diagnostics[i].Preflight != nil {
+				lines = append(lines, formatPreflightDiagnosticLines(*diagnostics[i].Preflight)...)
+			}
 		}
-		lines = append(lines, formatHTTPDiagnosticLines(*diagnostics[i].HTTP)...)
+	}
+
+	return lines
+}
+
+func formatPreflightDiagnosticLines(diagnostic reportmodel.PreflightDiagnostic) []string {
+	lines := []string{
+		"preflight.guard_id: " + boundedSingleLine(diagnostic.GuardID, bodyLimit),
+		"preflight.input_ref: " + boundedSingleLine(diagnostic.InputRef, bodyLimit),
+		"preflight.reason_code: " + boundedSingleLine(diagnostic.ReasonCode, bodyLimit),
+	}
+	if diagnostic.InputPath != "" {
+		lines = append(lines, "preflight.input_path: "+boundedSingleLine(diagnostic.InputPath, bodyLimit))
+	}
+	if diagnostic.AssertRef != "" {
+		lines = append(lines, "preflight.assert_ref: "+boundedSingleLine(diagnostic.AssertRef, bodyLimit))
+	}
+	if diagnostic.OverridePresent {
+		lines = append(
+			lines,
+			"preflight.override_ref: "+boundedSingleLine(diagnostic.OverrideRef, bodyLimit),
+			fmt.Sprintf("preflight.override_used: %t", diagnostic.OverrideUsed),
+		)
+	}
+	if source := formatSourceRef(diagnostic.SourceSpan); source != "" {
+		lines = append(lines, "preflight.source: "+source)
+	}
+	if source := formatSourceRef(diagnostic.BindingSourceSpan); source != "" {
+		lines = append(lines, "preflight.binding_source: "+source)
 	}
 
 	return lines
@@ -528,6 +563,21 @@ func formatHTTPDiagnosticPreview(preview *reportmodel.Preview) string {
 	}
 
 	return rendered
+}
+
+func formatSourceRef(source *reportmodel.SourceRef) string {
+	if source == nil || source.File == "" {
+		return ""
+	}
+
+	if source.Line > 0 && source.Column > 0 {
+		return fmt.Sprintf("%s:%d:%d", source.File, source.Line, source.Column)
+	}
+	if source.Line > 0 {
+		return fmt.Sprintf("%s:%d", source.File, source.Line)
+	}
+
+	return source.File
 }
 
 func orderedHTTPHeaderKeys(headers map[string][]string) []string {

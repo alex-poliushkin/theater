@@ -142,6 +142,10 @@ type StageSpec = specmodel.StageSpec
 // ScenarioSpec defines a reusable scenario with inputs and ordered acts.
 type ScenarioSpec = specmodel.ScenarioSpec
 
+// PreflightSpec defines one scenario-level guard evaluated before scenario
+// side effects begin.
+type PreflightSpec = specmodel.PreflightSpec
+
 // ScenarioCallSpec invokes a scenario within a stage.
 type ScenarioCallSpec = specmodel.ScenarioCallSpec
 

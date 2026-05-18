@@ -109,6 +109,70 @@ func TestLowerStageBindsSourceFileAndMatcherSugar(t *testing.T) {
 	}
 }
 
+func TestLowerStageLowersPreflightGuard(t *testing.T) {
+	t.Parallel()
+
+	raw := rawStageSpec{
+		ID: "main",
+		Scenarios: []rawScenarioSpec{{
+			ID: "send-email",
+			Inputs: map[string]theater.ValueContract{
+				"recipient_email": {Kind: theater.ValueKindString},
+			},
+			Preflight: []rawPreflightSpec{{
+				ID:    "recipient-test-domain",
+				Input: rawPreflightRefSpec{Ref: "recipient_email"},
+				Assert: rawNode{
+					Node: mustParseYAMLNode(t, "matches: '^[^@]+@example\\.test$'\n"),
+				},
+				Override: &rawPreflightRefSpec{Ref: "allow_non_test_recipient"},
+				Span:     theater.SourceRef{Line: 6, Column: 9},
+			}},
+			Acts: []rawActSpec{{
+				ID: "send",
+				Action: rawActionSpec{
+					Use:  "action.send",
+					Span: theater.SourceRef{Line: 10, Column: 9},
+				},
+			}},
+		}},
+	}
+
+	spec, err := lowerStage(raw, lowerTestMatcherResolver{
+		descriptor: theater.MatcherDescriptor{
+			Ref: "expectation.matches",
+			Sugar: theater.SugarSpec{
+				Keys:           []string{"matches"},
+				Form:           theater.SugarFormUnary,
+				PositionalArgs: []string{"pattern"},
+			},
+		},
+	}, "/tmp/send.yaml")
+	if err != nil {
+		t.Fatalf("lower stage failed: %v", err)
+	}
+
+	preflight := spec.Scenarios[0].Preflight[0]
+	if got, want := preflight.ID, "recipient-test-domain"; got != want {
+		t.Fatalf("preflight id mismatch: got %q want %q", got, want)
+	}
+	if got, want := preflight.Input.Name, "recipient_email"; got != want {
+		t.Fatalf("preflight input mismatch: got %q want %q", got, want)
+	}
+	if preflight.Override == nil || preflight.Override.Name != "allow_non_test_recipient" {
+		t.Fatalf("preflight override mismatch: %#v", preflight.Override)
+	}
+	if got, want := preflight.Assert.Ref, "expectation.matches"; got != want {
+		t.Fatalf("preflight assert ref mismatch: got %q want %q", got, want)
+	}
+	if got, want := preflight.Assert.Args["pattern"].Value, `^[^@]+@example\.test$`; got != want {
+		t.Fatalf("preflight pattern mismatch: got %#v want %#v", got, want)
+	}
+	if preflight.SourceSpan == nil || preflight.SourceSpan.File != "/tmp/send.yaml" {
+		t.Fatalf("preflight source span mismatch: %#v", preflight.SourceSpan)
+	}
+}
+
 func TestLowerStageLowersPropertyValueBinding(t *testing.T) {
 	t.Parallel()
 
@@ -619,11 +683,12 @@ type lowerTestMatcherResolver struct {
 }
 
 func (r lowerTestMatcherResolver) ResolveSugarKey(key string) (theater.MatcherDescriptor, error) {
-	if key != "eq" {
-		return theater.MatcherDescriptor{}, errors.New("unexpected matcher sugar")
+	for _, sugarKey := range r.descriptor.Sugar.Keys {
+		if key == sugarKey {
+			return r.descriptor, nil
+		}
 	}
-
-	return r.descriptor, nil
+	return theater.MatcherDescriptor{}, errors.New("unexpected matcher sugar")
 }
 
 func mustParseYAMLNode(t *testing.T, source string) *goyaml.Node {

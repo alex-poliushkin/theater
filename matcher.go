@@ -26,6 +26,18 @@ type MatcherCompileContext = specmodel.MatcherCompileContext
 // MatcherArg describes one named matcher argument.
 type MatcherArg = specmodel.MatcherArg
 
+// MatcherPreflightPolicy declares matcher-specific constraints for scenario
+// preflight use. A nil policy means the matcher is not safe for preflight.
+type MatcherPreflightPolicy = specmodel.MatcherPreflightPolicy
+
+// MatcherPreflightArgRule declares preflight-only validation for one static
+// matcher argument.
+type MatcherPreflightArgRule = specmodel.MatcherPreflightArgRule
+
+// MatcherPreflightArgIssue describes one descriptor-owned preflight arg
+// validation failure.
+type MatcherPreflightArgIssue = specmodel.MatcherPreflightArgIssue
+
 // SugarSpec describes the shorthand keys and positional arg mapping supported
 // by a matcher.
 type SugarSpec = specmodel.SugarSpec

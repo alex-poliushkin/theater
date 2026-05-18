@@ -12,6 +12,8 @@ import (
 	reportmodel "github.com/alex-poliushkin/theater/report"
 )
 
+const preflightDiagnosticTextLimit = 240
+
 type runTextRenderer struct{}
 
 type runTextView struct {
@@ -154,6 +156,7 @@ func renderFailedScenarioCard(builder *strings.Builder, card reportview.Scenario
 			fmt.Fprintf(builder, "  summary: %s\n", card.Node.Failure.Message())
 			fmt.Fprintf(builder, "  kind: %s\n", card.Node.Failure.Kind)
 			fmt.Fprintf(builder, "  at: %s\n", card.Node.Failure.At)
+			renderNodeDiagnostics(builder, card.Node.Diagnostics)
 		}
 		return
 	}
@@ -277,11 +280,50 @@ func renderObservedStreamValue(observed reportmodel.ObservedStream) string {
 
 func renderNodeDiagnostics(builder *strings.Builder, diagnostics []reportmodel.NodeDiagnostic) {
 	for i := range diagnostics {
-		if diagnostics[i].Kind != reportmodel.NodeDiagnosticKindHTTP || diagnostics[i].HTTP == nil {
-			continue
+		switch diagnostics[i].Kind {
+		case reportmodel.NodeDiagnosticKindHTTP:
+			if diagnostics[i].HTTP != nil {
+				renderHTTPDiagnostic(builder, *diagnostics[i].HTTP)
+			}
+		case reportmodel.NodeDiagnosticKindPreflight:
+			if diagnostics[i].Preflight != nil {
+				renderPreflightDiagnostic(builder, *diagnostics[i].Preflight)
+			}
 		}
-		renderHTTPDiagnostic(builder, *diagnostics[i].HTTP)
 	}
+}
+
+func renderPreflightDiagnostic(builder *strings.Builder, diagnostic reportmodel.PreflightDiagnostic) {
+	builder.WriteString("  preflight:\n")
+	fmt.Fprintf(builder, "    guard: %s\n", renderPreflightDiagnosticText(diagnostic.GuardID))
+	if diagnostic.InputPath != "" {
+		fmt.Fprintf(builder, "    input: %s\n", renderPreflightDiagnosticText(diagnostic.InputPath))
+	} else {
+		fmt.Fprintf(builder, "    input: %s\n", renderPreflightDiagnosticText(diagnostic.InputRef))
+	}
+	if diagnostic.AssertRef != "" {
+		fmt.Fprintf(builder, "    assert: %s\n", renderPreflightDiagnosticText(diagnostic.AssertRef))
+	}
+	fmt.Fprintf(builder, "    reason: %s\n", renderPreflightDiagnosticText(diagnostic.ReasonCode))
+	if diagnostic.OverridePresent {
+		fmt.Fprintf(builder, "    override: %s used=%t\n", renderPreflightDiagnosticText(diagnostic.OverrideRef), diagnostic.OverrideUsed)
+	}
+	if source := formatSourceSpan(diagnostic.SourceSpan); source != "" {
+		fmt.Fprintf(builder, "    source: %s\n", renderPreflightDiagnosticText(source))
+	}
+	if source := formatSourceSpan(diagnostic.BindingSourceSpan); source != "" {
+		fmt.Fprintf(builder, "    binding_source: %s\n", renderPreflightDiagnosticText(source))
+	}
+}
+
+func renderPreflightDiagnosticText(value string) string {
+	value = strings.TrimSpace(sanitizeCLIText(value))
+	runes := []rune(value)
+	if len(runes) <= preflightDiagnosticTextLimit {
+		return value
+	}
+
+	return string(runes[:preflightDiagnosticTextLimit]) + "..." + renderPreviewTruncatedSuffix
 }
 
 func renderHTTPDiagnostic(builder *strings.Builder, diagnostic reportmodel.HTTPDiagnostic) {

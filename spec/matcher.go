@@ -41,6 +41,25 @@ type MatcherArg struct {
 	Summary  string
 }
 
+// MatcherPreflightPolicy declares matcher-specific constraints for scenario
+// preflight use. A nil policy means the matcher is not safe for preflight.
+type MatcherPreflightPolicy struct {
+	Args map[string]MatcherPreflightArgRule
+}
+
+// MatcherPreflightArgRule declares preflight-only validation for one static
+// matcher argument.
+type MatcherPreflightArgRule struct {
+	ValidateLiteral func(value any) *MatcherPreflightArgIssue
+}
+
+// MatcherPreflightArgIssue describes one descriptor-owned preflight arg
+// validation failure.
+type MatcherPreflightArgIssue struct {
+	Code    string
+	Summary string
+}
+
 // SugarSpec describes the shorthand keys and positional arg mapping supported
 // by a matcher.
 type SugarSpec struct {
@@ -51,12 +70,13 @@ type SugarSpec struct {
 
 // MatcherDescriptor describes a registered matcher contract and compile hook.
 type MatcherDescriptor struct {
-	Ref     string
-	Summary string
-	Args    []MatcherArg
-	Actual  ValueContract
-	Sugar   SugarSpec
-	Compile func(ctx MatcherCompileContext, args Values) (Matcher, error)
+	Ref       string
+	Summary   string
+	Args      []MatcherArg
+	Actual    ValueContract
+	Preflight *MatcherPreflightPolicy
+	Sugar     SugarSpec
+	Compile   func(ctx MatcherCompileContext, args Values) (Matcher, error)
 }
 
 // MatcherCatalog stores matchers indexed by ref and YAML sugar key.
@@ -170,6 +190,10 @@ func validateMatcherDescriptor(descriptor MatcherDescriptor) error {
 		return err
 	}
 
+	if err := validateMatcherPreflightPolicy(descriptor.Ref, descriptor.Args, descriptor.Preflight); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -278,6 +302,25 @@ func validateSugarSpec(ref string, args []MatcherArg, sugar SugarSpec) error {
 	for _, argName := range sugar.PositionalArgs {
 		if _, ok := availableArgs[argName]; !ok {
 			return fmt.Errorf("matcher %q sugar arg %q is not declared", ref, argName)
+		}
+	}
+
+	return nil
+}
+
+func validateMatcherPreflightPolicy(ref string, args []MatcherArg, policy *MatcherPreflightPolicy) error {
+	if policy == nil {
+		return nil
+	}
+
+	argNames := make(map[string]struct{}, len(args))
+	for i := range args {
+		argNames[args[i].Name] = struct{}{}
+	}
+
+	for name := range policy.Args {
+		if _, ok := argNames[name]; !ok {
+			return fmt.Errorf("matcher %q preflight arg %q is not declared by matcher args", ref, name)
 		}
 	}
 

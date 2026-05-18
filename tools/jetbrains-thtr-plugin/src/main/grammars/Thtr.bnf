@@ -22,6 +22,7 @@
     ACT="act"
     CALL="call"
     BIND="bind"
+    PREFLIGHT="preflight"
     NAME="name"
     DO="do"
     LOG="log"
@@ -38,6 +39,7 @@
     RECORD="record"
     POOL="pool"
     REPEATABLE="repeatable"
+    OVERRIDE="override"
     OBJECT="object"
     LIST="list"
     FIELD="field"
@@ -107,6 +109,7 @@ declaration ::= stage_declaration
   | scenario_declaration
   | act_declaration
   | bind_statement
+  | preflight_statement
   | call_declaration
   | backend_declaration
   | record_declaration
@@ -141,6 +144,7 @@ act_declaration ::= ACT identifier_like line_tail {
   implements="com.github.alexpoliushkin.theater.thtrij.psi.ThtrNamedElement"
 }
 bind_statement ::= BIND line_tail
+preflight_statement ::= PREFLIGHT line_tail
 call_declaration ::= CALL identifier_like line_tail { pin=1 recoverWhile=recover_declaration }
 backend_declaration ::= BACKEND declaration_tail { pin=1 recoverWhile=recover_declaration }
 record_declaration ::= RECORD declaration_tail { pin=1 recoverWhile=recover_declaration }
@@ -183,8 +187,8 @@ object_value ::= OBJECT
 list_value ::= LIST
 descriptor_ref ::= DOTTED_REF
 private identifier_like ::= IDENTIFIER | DOTTED_REF | DOLLAR_REF
-private keyword_atom ::= WHEN | EVERY | REPEATABLE | TRUE | FALSE | NULL | HAS | NO | ITEM | ALL | ITEMS | ENTRY | KEY | LACKS | IS | BETWEEN | AND | WHERE | MATCHES | CONTAINS | ASSERT
+private keyword_atom ::= WHEN | EVERY | REPEATABLE | OVERRIDE | TRUE | FALSE | NULL | HAS | NO | ITEM | ALL | ITEMS | ENTRY | KEY | LACKS | IS | BETWEEN | AND | WHERE | MATCHES | CONTAINS | ASSERT
 private literal ::= STRING | NUMBER | DURATION
 private punctuation ::= L_PAREN | R_PAREN | L_BRACE | R_BRACE | L_BRACKET | R_BRACKET | COMMA | COLON | DOT | EQUALS | EQEQ | ARROW | PIPE | BANG | GT | GTE | LT | LTE
 private bad_character ::= BAD_CHARACTER
-private recover_declaration ::= !(STAGE | HTTP | STATE | SESSION | AUTH | IDENTITY | SCENARIO | ACT | BIND | CALL | BACKEND | RECORD | POOL | NAME | DO | LOG | EXPECT | EVENTUALLY | PROP | EXPORT | ON | DEPENDENCY | CAPTURE_AUTH)
+private recover_declaration ::= !(STAGE | HTTP | STATE | SESSION | AUTH | IDENTITY | SCENARIO | ACT | BIND | PREFLIGHT | CALL | BACKEND | RECORD | POOL | NAME | DO | LOG | EXPECT | EVENTUALLY | PROP | EXPORT | ON | DEPENDENCY | CAPTURE_AUTH)

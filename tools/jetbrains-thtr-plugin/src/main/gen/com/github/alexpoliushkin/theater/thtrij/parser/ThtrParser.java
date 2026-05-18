@@ -131,6 +131,7 @@ public class ThtrParser implements PsiParser, LightPsiParser {
   //   | scenario_declaration
   //   | act_declaration
   //   | bind_statement
+  //   | preflight_statement
   //   | call_declaration
   //   | backend_declaration
   //   | record_declaration
@@ -158,6 +159,7 @@ public class ThtrParser implements PsiParser, LightPsiParser {
     if (!result_) result_ = scenario_declaration(builder_, level_ + 1);
     if (!result_) result_ = act_declaration(builder_, level_ + 1);
     if (!result_) result_ = bind_statement(builder_, level_ + 1);
+    if (!result_) result_ = preflight_statement(builder_, level_ + 1);
     if (!result_) result_ = call_declaration(builder_, level_ + 1);
     if (!result_) result_ = backend_declaration(builder_, level_ + 1);
     if (!result_) result_ = record_declaration(builder_, level_ + 1);
@@ -342,13 +344,14 @@ public class ThtrParser implements PsiParser, LightPsiParser {
   }
 
   /* ********************************************************** */
-  // WHEN | EVERY | REPEATABLE | TRUE | FALSE | NULL | HAS | NO | ITEM | ALL | ITEMS | ENTRY | KEY | LACKS | IS | BETWEEN | AND | WHERE | MATCHES | CONTAINS | ASSERT
+  // WHEN | EVERY | REPEATABLE | OVERRIDE | TRUE | FALSE | NULL | HAS | NO | ITEM | ALL | ITEMS | ENTRY | KEY | LACKS | IS | BETWEEN | AND | WHERE | MATCHES | CONTAINS | ASSERT
   static boolean keyword_atom(PsiBuilder builder_, int level_) {
     if (!recursion_guard_(builder_, level_, "keyword_atom")) return false;
     boolean result_;
     result_ = consumeToken(builder_, WHEN);
     if (!result_) result_ = consumeToken(builder_, EVERY);
     if (!result_) result_ = consumeToken(builder_, REPEATABLE);
+    if (!result_) result_ = consumeToken(builder_, OVERRIDE);
     if (!result_) result_ = consumeToken(builder_, TRUE);
     if (!result_) result_ = consumeToken(builder_, FALSE);
     if (!result_) result_ = consumeToken(builder_, NULL);
@@ -476,6 +479,19 @@ public class ThtrParser implements PsiParser, LightPsiParser {
   }
 
   /* ********************************************************** */
+  // PREFLIGHT line_tail
+  public static boolean preflight_statement(PsiBuilder builder_, int level_) {
+    if (!recursion_guard_(builder_, level_, "preflight_statement")) return false;
+    if (!nextTokenIs(builder_, PREFLIGHT)) return false;
+    boolean result_;
+    Marker marker_ = enter_section_(builder_);
+    result_ = consumeToken(builder_, PREFLIGHT);
+    result_ = result_ && line_tail(builder_, level_ + 1);
+    exit_section_(builder_, marker_, PREFLIGHT_STATEMENT, result_);
+    return result_;
+  }
+
+  /* ********************************************************** */
   // PROP identifier_like line_tail
   public static boolean prop_statement(PsiBuilder builder_, int level_) {
     if (!recursion_guard_(builder_, level_, "prop_statement")) return false;
@@ -529,7 +545,7 @@ public class ThtrParser implements PsiParser, LightPsiParser {
   }
 
   /* ********************************************************** */
-  // !(STAGE | HTTP | STATE | SESSION | AUTH | IDENTITY | SCENARIO | ACT | BIND | CALL | BACKEND | RECORD | POOL | NAME | DO | LOG | EXPECT | EVENTUALLY | PROP | EXPORT | ON | DEPENDENCY | CAPTURE_AUTH)
+  // !(STAGE | HTTP | STATE | SESSION | AUTH | IDENTITY | SCENARIO | ACT | BIND | PREFLIGHT | CALL | BACKEND | RECORD | POOL | NAME | DO | LOG | EXPECT | EVENTUALLY | PROP | EXPORT | ON | DEPENDENCY | CAPTURE_AUTH)
   static boolean recover_declaration(PsiBuilder builder_, int level_) {
     if (!recursion_guard_(builder_, level_, "recover_declaration")) return false;
     boolean result_;
@@ -539,7 +555,7 @@ public class ThtrParser implements PsiParser, LightPsiParser {
     return result_;
   }
 
-  // STAGE | HTTP | STATE | SESSION | AUTH | IDENTITY | SCENARIO | ACT | BIND | CALL | BACKEND | RECORD | POOL | NAME | DO | LOG | EXPECT | EVENTUALLY | PROP | EXPORT | ON | DEPENDENCY | CAPTURE_AUTH
+  // STAGE | HTTP | STATE | SESSION | AUTH | IDENTITY | SCENARIO | ACT | BIND | PREFLIGHT | CALL | BACKEND | RECORD | POOL | NAME | DO | LOG | EXPECT | EVENTUALLY | PROP | EXPORT | ON | DEPENDENCY | CAPTURE_AUTH
   private static boolean recover_declaration_0(PsiBuilder builder_, int level_) {
     if (!recursion_guard_(builder_, level_, "recover_declaration_0")) return false;
     boolean result_;
@@ -552,6 +568,7 @@ public class ThtrParser implements PsiParser, LightPsiParser {
     if (!result_) result_ = consumeToken(builder_, SCENARIO);
     if (!result_) result_ = consumeToken(builder_, ACT);
     if (!result_) result_ = consumeToken(builder_, BIND);
+    if (!result_) result_ = consumeToken(builder_, PREFLIGHT);
     if (!result_) result_ = consumeToken(builder_, CALL);
     if (!result_) result_ = consumeToken(builder_, BACKEND);
     if (!result_) result_ = consumeToken(builder_, RECORD);

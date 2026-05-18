@@ -1,0 +1,32 @@
+id: reference-preflight
+scenarios:
+  - id: send-sample-message
+    inputs:
+      recipient_email:
+        type: string
+        required: true
+      allow_non_test_recipient:
+        type: bool
+    preflight:
+      - id: recipient-test-domain
+        input:
+          ref: recipient_email
+        assert:
+          matches: '^[^@]+@example\.test$'
+        override:
+          ref: allow_non_test_recipient
+    acts:
+      - id: submit-message
+        action:
+          use: action.generate
+          with:
+            outputs:
+              kind: object
+              object:
+                accepted: true
+scenario_calls:
+  - id: send-test
+    scenario_id: send-sample-message
+    bindings:
+      recipient_email: person@example.test
+      allow_non_test_recipient: false

@@ -143,6 +143,7 @@ func lowerScenario(scenario scenarioSyntax, sourceFile string, stateAliases stat
 		Name:         name,
 		Inputs:       make(map[string]theater.ValueContract, len(scenario.Inputs)),
 		AuthBindings: make(map[string]theater.HTTPAuthBindingSpec, len(scenario.AuthBindings)),
+		Preflight:    make([]theater.PreflightSpec, 0, len(scenario.Preflight)),
 		Acts:         make([]theater.ActSpec, 0, len(scenario.Acts)),
 		SourceSpan:   bindSourceSpan(scenario.Span, sourceFile),
 	}
@@ -180,6 +181,17 @@ func lowerScenario(scenario scenarioSyntax, sourceFile string, stateAliases stat
 	}
 	if len(spec.AuthBindings) == 0 {
 		spec.AuthBindings = nil
+	}
+
+	for i := range scenario.Preflight {
+		preflight, err := lowerPreflight(scenario.Preflight[i], sourceFile)
+		if err != nil {
+			return theater.ScenarioSpec{}, err
+		}
+		spec.Preflight = append(spec.Preflight, preflight)
+	}
+	if len(spec.Preflight) == 0 {
+		spec.Preflight = nil
 	}
 
 	for i := range scenario.Acts {
@@ -223,6 +235,55 @@ func lowerAuthBinding(binding authBindingSyntax) (theater.HTTPAuthBindingSpec, e
 	}
 
 	return spec, nil
+}
+
+func lowerPreflight(preflight preflightSyntax, sourceFile string) (theater.PreflightSpec, error) {
+	input, err := lowerPreflightRef(preflight.Input)
+	if err != nil {
+		return theater.PreflightSpec{}, err
+	}
+
+	assert, err := lowerAssertion(preflight.Assert)
+	if err != nil {
+		return theater.PreflightSpec{}, err
+	}
+
+	var override *theater.RefSpec
+	if preflight.Override != nil {
+		resolved, err := lowerPreflightRef(preflight.Override)
+		if err != nil {
+			return theater.PreflightSpec{}, err
+		}
+		override = &resolved
+	}
+
+	return theater.PreflightSpec{
+		ID:         preflight.ID,
+		Input:      input,
+		Assert:     assert,
+		Override:   override,
+		SourceSpan: bindSourceSpan(preflight.Span, sourceFile),
+	}, nil
+}
+
+func lowerPreflightRef(expr expressionSyntax) (theater.RefSpec, error) {
+	root, decode, path, through, err := lowerSelection(expr)
+	if err != nil {
+		return theater.RefSpec{}, err
+	}
+	if root.ref == nil {
+		return theater.RefSpec{}, &lowerError{
+			span:    expr.ExpressionSpan(),
+			message: "preflight input and override must start with $ref",
+		}
+	}
+
+	return theater.RefSpec{
+		Name:    root.ref.Name,
+		Decode:  decode,
+		Path:    path,
+		Through: through,
+	}, nil
 }
 
 func lowerAct(act actSyntax, sourceFile string, stateAliases stateAliasTable) (theater.ActSpec, error) {

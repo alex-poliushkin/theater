@@ -715,6 +715,21 @@ scenario verify-state
 	}
 }
 
+func TestCompletionIncludesScenarioPreflightKeyword(t *testing.T) {
+	t.Parallel()
+
+	text := `stage smoke
+scenario send-email
+  `
+	items := testCompletionItemsForDocument(t, text, lspPosition{
+		Line:      2,
+		Character: len("  "),
+	})
+	if !containsCompletionLabel(items, "preflight") {
+		t.Fatalf("expected preflight completion, got %#v", items)
+	}
+}
+
 func TestRunServesInitializeAndDiagnostics(t *testing.T) {
 	t.Parallel()
 

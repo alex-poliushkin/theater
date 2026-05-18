@@ -299,6 +299,7 @@ func keywordCompletions(kind string) []completionCandidate {
 		return []completionCandidate{
 			{Label: "name", Kind: 14, Detail: "scenario keyword"},
 			{Label: "bind", Kind: 14, Detail: "scenario keyword"},
+			{Label: "preflight", Kind: 14, Detail: "scenario keyword"},
 			{Label: "act", Kind: 14, Detail: "scenario keyword"},
 		}
 	case blockKindAct:
@@ -358,7 +359,7 @@ func valueBindingCompletions(descriptors []theater.CapabilityDescriptor) []compl
 func keywordSet() []string {
 	return []string{
 		"stage", "name", "scenario", "act", "eventually", "prop", "do",
-		"bind", "capture_auth", "repeatable", "expect", "assert", "matches", "contains",
+		"bind", "preflight", "override", "capture_auth", "repeatable", "expect", "assert", "matches", "contains",
 		"not", "has", "item", "all", "items", "where", "key",
 		"export", "call", "dependency", "when", "on", "http", "state", "backend",
 		"record", "pool", "read", "update", "claim", "renew", "release", "consume", "object",

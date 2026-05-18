@@ -10,6 +10,7 @@ import com.github.alexpoliushkin.theater.thtrij.psi.ThtrExportStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrIdentityDeclaration
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrLogStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrPoolDeclaration
+import com.github.alexpoliushkin.theater.thtrij.psi.ThtrPreflightStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrPropStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrRecordDeclaration
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrScenarioDeclaration
@@ -39,6 +40,7 @@ private val KEYWORDS: TokenSet = TokenSet.create(
 	ThtrTypes.SCENARIO,
 	ThtrTypes.ACT,
 	ThtrTypes.BIND,
+	ThtrTypes.PREFLIGHT,
 	ThtrTypes.CALL,
 	ThtrTypes.NAME,
 	ThtrTypes.DO,
@@ -56,6 +58,7 @@ private val KEYWORDS: TokenSet = TokenSet.create(
 	ThtrTypes.RECORD,
 	ThtrTypes.POOL,
 	ThtrTypes.REPEATABLE,
+	ThtrTypes.OVERRIDE,
 	ThtrTypes.OBJECT,
 	ThtrTypes.LIST,
 	ThtrTypes.TRUE,
@@ -207,6 +210,7 @@ object ThtrHighlighting {
 			parent is ThtrRecordDeclaration ||
 			parent is ThtrPoolDeclaration ||
 			parent is ThtrExpectStatement ||
+			parent is ThtrPreflightStatement ||
 			parent is ThtrLogStatement ||
 			parent is ThtrPropStatement ||
 			parent is ThtrExportStatement ||

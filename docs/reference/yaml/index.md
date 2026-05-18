@@ -87,6 +87,7 @@ Dependency `when` values are `success`, `failure`, and `done`.
 | `id` | yes | Scenario id |
 | `inputs` | no | Input contracts keyed by input name |
 | `auth_bindings` | no | Scenario-start HTTP auth slot bindings |
+| `preflight` | no | Scenario-input guardrails before acts |
 | `acts` | no | Ordered act definitions |
 
 `auth_bindings` initializes named HTTP auth slots before the first act in one
@@ -113,9 +114,10 @@ Transition `on` values are `on_pass`, `on_fail`, `on_timeout`, and `on_cancel`.
 Scenario-level cleanup hooks are a [ratified future contract](../cleanup-hooks.md).
 They are not available in the current YAML schema or runtime.
 
-Scenario-level preflight guardrails are a
-[ratified future contract](../preflight-guardrails.md). They are not available
-in the current YAML schema or runtime.
+`preflight` declares scenario-level guardrails over resolved scenario inputs.
+It runs after scenario-call bindings resolve and before auth initialization or
+acts. Use [Preflight Guardrails](../preflight-guardrails.md) for the full
+syntax, matcher, override, and report contract.
 
 `logs` declares report-oriented observations. Logs evaluate after a successful
 action and before expectations, exports, and transitions. `run --format json`

@@ -129,6 +129,23 @@ authoring references.
 | `failures` | Index of failed nodes |
 | `summary` | Scenario outcome counts |
 
+## Node Diagnostics
+
+`nodes[].diagnostics` contains typed report-safe diagnostics attached to the
+node that failed or affected execution. Diagnostics are data in the JSON report;
+text, Markdown, JUnit, and summary formats only project that data.
+
+Supported diagnostic kinds:
+
+| Kind | Meaning |
+| --- | --- |
+| `http` | Report-safe HTTP exchange metadata for failed HTTP actions or expectations |
+| `preflight` | Scenario preflight guard result that rejected or explicitly overrode a guard |
+
+Preflight diagnostics include `guard_id`, `input_ref`, optional `input_path`,
+`assert_ref`, `reason_code`, override metadata, and source spans when available.
+They do not include rejected input values or raw binding values.
+
 ## Log Fields
 
 `logs` contains bounded, projected scenario-authored records. Logs are

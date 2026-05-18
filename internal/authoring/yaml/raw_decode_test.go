@@ -92,6 +92,45 @@ scenario_calls:
 	}
 }
 
+func TestDecodeRawStageCapturesPreflightNodes(t *testing.T) {
+	t.Parallel()
+
+	raw, err := decodeRawStage(strings.NewReader(`id: main
+scenarios:
+  - id: send-email
+    inputs:
+      recipient_email:
+        type: string
+    preflight:
+      - id: recipient-test-domain
+        input:
+          ref: recipient_email
+        assert:
+          matches: '^[^@]+@example\.test$'
+    acts:
+      - id: send
+        action:
+          use: action.send
+scenario_calls:
+  - id: send-test
+    scenario_id: send-email
+`))
+	if err != nil {
+		t.Fatalf("decode raw stage failed: %v", err)
+	}
+
+	preflight := raw.Scenarios[0].Preflight[0]
+	if preflight.Span.Line == 0 || preflight.Span.Column == 0 {
+		t.Fatalf("preflight span must be populated: %#v", preflight.Span)
+	}
+	if got, want := preflight.Input.Ref, "recipient_email"; got != want {
+		t.Fatalf("preflight input ref mismatch: got %q want %q", got, want)
+	}
+	if preflight.Assert.Node == nil {
+		t.Fatal("raw preflight assert node must be preserved")
+	}
+}
+
 func TestRawStageSpecUnmarshalRejectsDanglingMappingKey(t *testing.T) {
 	t.Parallel()
 

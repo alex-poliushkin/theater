@@ -7,6 +7,7 @@ import com.github.alexpoliushkin.theater.thtrij.psi.ThtrCaptureAuthStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrExportStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrLogStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrNamedElement
+import com.github.alexpoliushkin.theater.thtrij.psi.ThtrPreflightStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrPropStatement
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrScenarioDeclaration
 import com.github.alexpoliushkin.theater.thtrij.psi.ThtrStageDeclaration
@@ -98,6 +99,11 @@ private fun constructDocumentation(element: PsiElement?): ThtrConstructDocumenta
 			kind = ".thtr auth binding",
 			summary = "Initializes scenario-local HTTP auth slots before the first act runs.",
 		)
+		is ThtrPreflightStatement -> ThtrConstructDocumentation(
+			title = "preflight ${identifierText(construct)}",
+			kind = ".thtr preflight",
+			summary = "Checks resolved scenario inputs before auth initialization and acts can run.",
+		)
 		is ThtrPropStatement -> ThtrConstructDocumentation(
 			title = "prop ${identifierText(construct)}",
 			kind = ".thtr prop",
@@ -142,6 +148,8 @@ private fun constructElement(element: PsiElement?): PsiElement? {
 		is ThtrScenarioDeclaration,
 		is ThtrActDeclaration,
 		is ThtrCallDeclaration,
+		is ThtrBindStatement,
+		is ThtrPreflightStatement,
 		is ThtrPropStatement,
 		is ThtrExportStatement,
 		is ThtrLogStatement,

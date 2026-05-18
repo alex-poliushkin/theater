@@ -1,6 +1,9 @@
 package theater
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 const (
 	nestedMatcherAllItemsRef = "expectation.all_items"
@@ -36,6 +39,9 @@ func (v *stageContractValidator) Validate() []Diagnostic {
 		stateHandles := analyzeScenarioStateHandles(*scenario, scopeAnalysis)
 		finalRootsByScenario[scenario.ID] = finalScenarioRoots(*scenario, scopeAnalysis)
 		v.diagnostics.addAll(validateScenarioScopeCollisions(*scenario, scopeAnalysis))
+		if !dependencyMissing(v.matchers) {
+			v.validatePreflight(scenario)
+		}
 		for j := range scenario.Acts {
 			v.validateAct(&scenario.Acts[j], scopeAnalysis, contractAnalysis, stateHandles, stateDescriptors)
 		}
@@ -48,6 +54,76 @@ func (v *stageContractValidator) Validate() []Diagnostic {
 
 	sortDiagnostics(v.diagnostics.items)
 	return v.diagnostics.items
+}
+
+func (v *stageContractValidator) validatePreflight(scenario *scenarioPlan) {
+	for i := range scenario.Preflight {
+		guard := &scenario.Preflight[i]
+		path := guard.Path
+
+		descriptor, err := v.matchers.Resolve(guard.Assert.Ref)
+		if err != nil {
+			v.diagnostics.add(path+"/assert", "unknown_preflight_assert_ref", err.Error())
+			continue
+		}
+
+		if descriptor.Preflight == nil {
+			v.diagnostics.add(
+				path+"/assert",
+				"unsupported_preflight_assert_ref",
+				fmt.Sprintf("matcher %q does not support scenario preflight", guard.Assert.Ref),
+			)
+			continue
+		}
+
+		v.validatePreflightInputContract(scenario, guard, descriptor)
+		v.validatePreflightOverrideContract(scenario, guard)
+		v.diagnostics.addAll(validatePreflightAssert(path, guard.Assert, descriptor, *descriptor.Preflight, v.catalog, v.matchers, v.catalog))
+	}
+}
+
+func (v *stageContractValidator) validatePreflightInputContract(
+	scenario *scenarioPlan,
+	guard *preflightPlan,
+	descriptor MatcherDescriptor,
+) {
+	contract, ok := scenario.Inputs[guard.Input.Name]
+	if !ok {
+		return
+	}
+
+	if descriptor.Actual.Valid() && !contractsOverlap(contract, descriptor.Actual) {
+		v.diagnostics.add(
+			guard.Path+"/input",
+			"incompatible_preflight_input_kind",
+			fmt.Sprintf(
+				"preflight %q input %q produces %s, incompatible with matcher %q",
+				guard.ID,
+				guard.Input.Name,
+				contractKindString(contract),
+				guard.Assert.Ref,
+			),
+		)
+	}
+}
+
+func (v *stageContractValidator) validatePreflightOverrideContract(scenario *scenarioPlan, guard *preflightPlan) {
+	if guard.Override == nil {
+		return
+	}
+
+	contract, ok := scenario.Inputs[guard.Override.Name]
+	if !ok {
+		return
+	}
+
+	if !contract.Supports(ValueKindBool) {
+		v.diagnostics.add(
+			guard.Path+"/override",
+			"incompatible_preflight_override_kind",
+			fmt.Sprintf("preflight %q override input %q must be bool", guard.ID, guard.Override.Name),
+		)
+	}
 }
 
 func (v *stageContractValidator) validateScenarioCallBindings(call *scenarioCallPlan) {
@@ -402,6 +478,87 @@ func validateNestedMatcherAssert(
 	}
 
 	return validateAssertCompile(assertPath, assert.Ref, assert.Args, descriptor, matchers)
+}
+
+func validatePreflightAssert(
+	preflightPath string,
+	assert assertPlan,
+	descriptor MatcherDescriptor,
+	policy MatcherPreflightPolicy,
+	resolver GeneratorResolver,
+	matchers MatcherResolver,
+	decorators DecoratorResolver,
+) []Diagnostic {
+	assertPath := preflightPath + "/assert"
+	diagnostics := validateAssertArgs(assertPath, assert.Ref, assert.Args, descriptor, resolver, matchers, decorators)
+	if len(diagnostics) != 0 {
+		return diagnostics
+	}
+
+	if !bindingsStatic(assert.Args) {
+		return []Diagnostic{{
+			Code:     "non_static_preflight_assert_arg",
+			Path:     assertPath,
+			Severity: SeverityError,
+			Summary:  fmt.Sprintf("preflight assert %q arguments must be static constants", assert.Ref),
+		}}
+	}
+
+	diagnostics = append(diagnostics, validateAssertCompile(assertPath, assert.Ref, assert.Args, descriptor, matchers)...)
+	if len(diagnostics) != 0 {
+		return diagnostics
+	}
+
+	resolved, err := resolveStaticBindings(assert.Args)
+	if err != nil {
+		return []Diagnostic{{
+			Code:     "invalid_preflight_assert_arg",
+			Path:     assertPath,
+			Severity: SeverityError,
+			Summary:  err.Error(),
+		}}
+	}
+
+	for _, name := range sortedPreflightArgRuleNames(policy.Args) {
+		rule := policy.Args[name]
+		if _, ok := assert.Args[name]; !ok {
+			continue
+		}
+		if rule.ValidateLiteral == nil {
+			continue
+		}
+		if issue := rule.ValidateLiteral(resolved[name]); issue != nil {
+			code := issue.Code
+			if code == "" {
+				code = "invalid_preflight_assert_arg"
+			}
+			summary := issue.Summary
+			if summary == "" {
+				summary = fmt.Sprintf("preflight assert %q arg %q is invalid", assert.Ref, name)
+			}
+			diagnostics = append(diagnostics, Diagnostic{
+				Code:     code,
+				Path:     bindingPath(assertPath, name),
+				Severity: SeverityError,
+				Summary:  summary,
+			})
+		}
+	}
+
+	return diagnostics
+}
+
+func sortedPreflightArgRuleNames(rules map[string]MatcherPreflightArgRule) []string {
+	if len(rules) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(rules))
+	for name := range rules {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func validateAssertArgs(

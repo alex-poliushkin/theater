@@ -27,7 +27,8 @@ const (
 	NodeKindExpectation NodeKind = reportmodel.NodeKindExpectation
 	NodeKindLog         NodeKind = reportmodel.NodeKindLog
 
-	NodeDiagnosticKindHTTP NodeDiagnosticKind = reportmodel.NodeDiagnosticKindHTTP
+	NodeDiagnosticKindHTTP      NodeDiagnosticKind = reportmodel.NodeDiagnosticKindHTTP
+	NodeDiagnosticKindPreflight NodeDiagnosticKind = reportmodel.NodeDiagnosticKindPreflight
 
 	LogStatusEmitted LogStatus = reportmodel.LogStatusEmitted
 	LogStatusOmitted LogStatus = reportmodel.LogStatusOmitted
@@ -94,6 +95,10 @@ type NodeDiagnostic = reportmodel.NodeDiagnostic
 
 // HTTPDiagnostic is the report-safe summary of one HTTP exchange.
 type HTTPDiagnostic = reportmodel.HTTPDiagnostic
+
+// PreflightDiagnostic is the report-safe summary of one scenario preflight
+// guard result that affected execution.
+type PreflightDiagnostic = reportmodel.PreflightDiagnostic
 
 // AttemptReport summarizes one eventually attempt.
 type AttemptReport = reportmodel.AttemptReport

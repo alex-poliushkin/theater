@@ -194,8 +194,19 @@ type ScenarioSpec struct {
 	Name         string                         `yaml:"name,omitempty"`
 	Inputs       map[string]ValueContract       `yaml:"inputs,omitempty"`
 	AuthBindings map[string]HTTPAuthBindingSpec `yaml:"auth_bindings,omitempty" json:"auth_bindings,omitempty"`
+	Preflight    []PreflightSpec                `yaml:"preflight,omitempty" json:"preflight,omitempty"`
 	Acts         []ActSpec                      `yaml:"acts"`
 	SourceSpan   *SourceRef                     `yaml:"-" json:"-"`
+}
+
+// PreflightSpec defines one scenario-level guard evaluated after scenario-call
+// input bindings resolve and before scenario side effects begin.
+type PreflightSpec struct {
+	ID         string     `yaml:"id" json:"id"`
+	Input      RefSpec    `yaml:"input" json:"input"`
+	Assert     AssertSpec `yaml:"assert" json:"assert"`
+	Override   *RefSpec   `yaml:"override,omitempty" json:"override,omitempty"`
+	SourceSpan *SourceRef `yaml:"-" json:"-"`
 }
 
 // ScenarioCallSpec invokes a scenario within a stage.

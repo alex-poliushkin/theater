@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/alex-poliushkin/theater/internal/runtimevalue"
 	"github.com/alex-poliushkin/theater/observe"
 	statemodel "github.com/alex-poliushkin/theater/state"
 )
@@ -42,6 +43,7 @@ type scenarioRunner struct {
 	debug         *debugRuntime
 	snapshot      debugSnapshotBuilder
 	inputSection  debugSnapshotSection
+	diagnostics   []NodeDiagnostic
 }
 
 type actRunner struct {
@@ -352,17 +354,138 @@ func (r *scenarioRunner) applyBindings(ctx context.Context) (scenarioState, bool
 	protectAuthBindingSources(protectedBindings, r.scenario.AuthBindings)
 	r.scope.writeAll(protectedBindings)
 	r.scope.writeAll(missingOptionalScenarioInputs(r.scenario.Inputs, protectedBindings))
-	if err := r.applyHTTPAuthBindings(ctx); err != nil {
-		state, finishErr := r.finish(ctx, StatusFailed, internalFailure(r.call.Path, "scenario auth binding failed", err))
-		return state, true, finishErr
-	}
 	r.inputSection = r.snapshot.valuesSectionWithSources(
 		protectedBindings,
 		r.scenario.Inputs,
 		"scenario.input",
 		bindingSourceSpans(r.call.Bindings),
 	)
+	if state, terminated, err := r.applyPreflight(ctx); terminated || err != nil {
+		return state, terminated, err
+	}
+	if err := r.applyHTTPAuthBindings(ctx); err != nil {
+		state, finishErr := r.finish(ctx, StatusFailed, internalFailure(r.call.Path, "scenario auth binding failed", err))
+		return state, true, finishErr
+	}
 	return scenarioState{}, false, nil
+}
+
+func (r *scenarioRunner) applyPreflight(ctx context.Context) (scenarioState, bool, error) {
+	for i := range r.scenario.Preflight {
+		guard := r.scenario.Preflight[i]
+		diagnostic, matched, err := r.evaluatePreflight(ctx, guard)
+		if diagnostic != nil {
+			r.diagnostics = append(r.diagnostics, NodeDiagnostic{
+				Kind:      NodeDiagnosticKindPreflight,
+				Preflight: diagnostic,
+			})
+		}
+		if err != nil {
+			failure := preflightFailure(guard.Path, err)
+			state, finishErr := r.finish(ctx, StatusFailed, failure)
+			return state, true, finishErr
+		}
+		if !matched {
+			failure := preflightFailure(guard.Path, fmt.Errorf("preflight %q rejected scenario input %q", guard.ID, guard.Input.Name))
+			state, finishErr := r.finish(ctx, StatusFailed, failure)
+			return state, true, finishErr
+		}
+	}
+
+	return scenarioState{}, false, nil
+}
+
+func (r *scenarioRunner) evaluatePreflight(
+	ctx context.Context,
+	guard preflightPlan,
+) (diagnostic *PreflightDiagnostic, matched bool, err error) {
+	diagnostic = r.preflightDiagnostic(guard, "")
+	overrideUsed, err := r.preflightOverrideUsed(guard)
+	if err != nil {
+		diagnostic.ReasonCode = "invalid_override"
+		return diagnostic, false, err
+	}
+	diagnostic.OverrideUsed = overrideUsed
+	if overrideUsed {
+		diagnostic.ReasonCode = "override_used"
+		return diagnostic, true, nil
+	}
+
+	value, ok := r.scope.lookupValue(guard.Input.Name)
+	if !ok || isMissingValue(value) {
+		diagnostic.ReasonCode = "missing_input"
+		return diagnostic, false, nil
+	}
+
+	args, err := resolveStaticBindings(guard.Assert.Args)
+	if err != nil {
+		diagnostic.ReasonCode = "invalid_assert_args"
+		return diagnostic, false, err
+	}
+
+	matcher, err := guard.Matcher.Compile(newMatcherCompileResolver(r.matchers), protectMatcherArgs(args, guard.Matcher.Args))
+	if err != nil {
+		diagnostic.ReasonCode = "matcher_compile_failed"
+		return diagnostic, false, err
+	}
+
+	if err := matcher.Check(ctx, value); err != nil {
+		if IsMatcherMismatch(err) {
+			diagnostic.ReasonCode = "matcher_mismatch"
+			return diagnostic, false, nil
+		}
+
+		diagnostic.ReasonCode = "matcher_failed"
+		return diagnostic, false, err
+	}
+
+	return nil, true, nil
+}
+
+func (r *scenarioRunner) preflightOverrideUsed(guard preflightPlan) (bool, error) {
+	if guard.Override == nil {
+		return false, nil
+	}
+
+	value, ok := r.scope.lookupValue(guard.Override.Name)
+	if !ok || isMissingValue(value) {
+		return false, nil
+	}
+
+	enabled, err := runtimeBool(value, "preflight override")
+	if err != nil {
+		return false, err
+	}
+
+	return enabled, nil
+}
+
+func runtimeBool(value any, field string) (bool, error) {
+	return runtimevalue.Bool(value, field)
+}
+
+func (r *scenarioRunner) preflightDiagnostic(guard preflightPlan, reasonCode string) *PreflightDiagnostic {
+	var overrideRef string
+	if guard.Override != nil {
+		overrideRef = guard.Override.Name
+	}
+
+	var bindingSourceSpan *SourceRef
+	if binding, ok := r.call.Bindings[guard.Input.Name]; ok {
+		bindingSourceSpan = cloneSourceRef(binding.SourceSpan)
+	}
+
+	return &PreflightDiagnostic{
+		GuardID:           guard.ID,
+		InputRef:          guard.Input.Name,
+		InputPath:         bindingPath(r.call.Path, guard.Input.Name),
+		AssertRef:         guard.Assert.Ref,
+		ReasonCode:        reasonCode,
+		OverrideRef:       overrideRef,
+		OverridePresent:   guard.Override != nil,
+		SourceSpan:        cloneSourceRef(guard.SourceSpan),
+		BindingSourceSpan: bindingSourceSpan,
+	}
 }
 
 func (r *scenarioRunner) applyHTTPAuthBindings(ctx context.Context) error {
@@ -487,11 +610,12 @@ func (r *scenarioRunner) scenarioResult(
 	endedAt time.Time,
 ) executionNodeResult {
 	return executionNodeResult{
-		status:     status,
-		failure:    failure,
-		startedAt:  startedAt,
-		endedAt:    endedAt,
-		sourceSpan: cloneSourceRef(r.call.SourceSpan),
+		status:      status,
+		failure:     failure,
+		startedAt:   startedAt,
+		endedAt:     endedAt,
+		sourceSpan:  cloneSourceRef(r.call.SourceSpan),
+		diagnostics: cloneNodeDiagnostics(r.diagnostics),
 	}
 }
 

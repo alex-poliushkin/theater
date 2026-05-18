@@ -359,6 +359,12 @@ func cloneNodeDiagnostic(diagnostic NodeDiagnostic) NodeDiagnostic {
 		}
 		cloned.HTTP = &httpDiagnostic
 	}
+	if diagnostic.Preflight != nil {
+		preflightDiagnostic := *diagnostic.Preflight
+		preflightDiagnostic.SourceSpan = cloneSourceRef(diagnostic.Preflight.SourceSpan)
+		preflightDiagnostic.BindingSourceSpan = cloneSourceRef(diagnostic.Preflight.BindingSourceSpan)
+		cloned.Preflight = &preflightDiagnostic
+	}
 
 	return cloned
 }

@@ -55,8 +55,13 @@ func (c stageCompiler) compileScenario(stagePath string, spec ScenarioSpec) scen
 		PlanOrdinal:  c.state.nextOrdinal(),
 		Inputs:       cloneValueContracts(spec.Inputs),
 		AuthBindings: c.compileHTTPAuthBindings(scenarioPath, spec.AuthBindings),
+		Preflight:    make([]preflightPlan, 0, len(spec.Preflight)),
 		Acts:         make([]actPlan, 0, len(spec.Acts)),
 		SourceSpan:   cloneSourceRef(spec.SourceSpan),
+	}
+
+	for i := range spec.Preflight {
+		scenario.Preflight = append(scenario.Preflight, c.compilePreflight(scenarioPath, spec.Preflight[i]))
 	}
 
 	for i := range spec.Acts {
@@ -64,6 +69,21 @@ func (c stageCompiler) compileScenario(stagePath string, spec ScenarioSpec) scen
 	}
 
 	return scenario
+}
+
+func (c stageCompiler) compilePreflight(scenarioPath string, spec PreflightSpec) preflightPlan {
+	preflightPath := c.state.paths.JoinChild(scenarioPath, "preflight", spec.ID)
+	return preflightPlan{
+		ID:     spec.ID,
+		Path:   preflightPath,
+		Input:  *c.fragments.compileRef(preflightPath+"/input", &spec.Input),
+		Assert: c.fragments.compileAssert(preflightPath+"/assert", spec.Assert),
+		Override: c.fragments.compileRef(
+			preflightPath+"/override",
+			spec.Override,
+		),
+		SourceSpan: cloneSourceRef(spec.SourceSpan),
+	}
 }
 
 func (c stageCompiler) compileHTTPAuthBindings(

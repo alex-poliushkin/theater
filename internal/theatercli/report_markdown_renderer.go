@@ -150,8 +150,12 @@ func (v reportMarkdownView) renderScenario(builder *strings.Builder, scenario re
 			scenario.PrimaryFailure.Observations,
 			false,
 		)
+		if scenario.PrimaryFailure.Kind == reportmodel.NodeKindScenario {
+			renderMarkdownNodeDiagnostics(builder, "", scenario.PrimaryFailure.Diagnostics)
+		}
 	} else if node.Failure != nil {
 		renderMarkdownFailure(builder, "", &node, node.Failure, node.Observations, false)
+		renderMarkdownNodeDiagnostics(builder, "", node.Diagnostics)
 	}
 
 	v.renderScenarioNodes(builder, key)
@@ -300,10 +304,44 @@ func renderMarkdownFailure(
 
 func renderMarkdownNodeDiagnostics(builder *strings.Builder, indent string, diagnostics []reportmodel.NodeDiagnostic) {
 	for i := range diagnostics {
-		if diagnostics[i].Kind != reportmodel.NodeDiagnosticKindHTTP || diagnostics[i].HTTP == nil {
-			continue
+		switch diagnostics[i].Kind {
+		case reportmodel.NodeDiagnosticKindHTTP:
+			if diagnostics[i].HTTP != nil {
+				renderMarkdownHTTPDiagnostic(builder, indent, *diagnostics[i].HTTP)
+			}
+		case reportmodel.NodeDiagnosticKindPreflight:
+			if diagnostics[i].Preflight != nil {
+				renderMarkdownPreflightDiagnostic(builder, indent, *diagnostics[i].Preflight)
+			}
 		}
-		renderMarkdownHTTPDiagnostic(builder, indent, *diagnostics[i].HTTP)
+	}
+}
+
+func renderMarkdownPreflightDiagnostic(builder *strings.Builder, indent string, diagnostic reportmodel.PreflightDiagnostic) {
+	fmt.Fprintf(builder, "%s- Preflight guard: %s\n", indent, markdownCode(diagnostic.GuardID))
+	if diagnostic.InputPath != "" {
+		fmt.Fprintf(builder, "%s- Preflight input: %s\n", indent, markdownCode(diagnostic.InputPath))
+	} else {
+		fmt.Fprintf(builder, "%s- Preflight input: %s\n", indent, markdownCode(diagnostic.InputRef))
+	}
+	if diagnostic.AssertRef != "" {
+		fmt.Fprintf(builder, "%s- Preflight assert: %s\n", indent, markdownCode(diagnostic.AssertRef))
+	}
+	fmt.Fprintf(builder, "%s- Preflight reason: %s\n", indent, markdownCode(diagnostic.ReasonCode))
+	if diagnostic.OverridePresent {
+		fmt.Fprintf(
+			builder,
+			"%s- Preflight override: %s used=%s\n",
+			indent,
+			markdownCode(diagnostic.OverrideRef),
+			markdownCode(strconv.FormatBool(diagnostic.OverrideUsed)),
+		)
+	}
+	if source := formatSourceSpan(diagnostic.SourceSpan); source != "" {
+		fmt.Fprintf(builder, "%s- Preflight source: %s\n", indent, markdownCode(source))
+	}
+	if source := formatSourceSpan(diagnostic.BindingSourceSpan); source != "" {
+		fmt.Fprintf(builder, "%s- Preflight binding source: %s\n", indent, markdownCode(source))
 	}
 }
 
