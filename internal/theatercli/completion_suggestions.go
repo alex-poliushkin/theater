@@ -261,7 +261,7 @@ func (a *application) completionPathExpectation(args []string) (completionPathKi
 		if !completionCommandArgsHaveStagePath(command, commandArgs) {
 			return completionPathTHTR, current, true
 		}
-	case commandRun, commandValidate, commandLibrariesInspect:
+	case commandRun, commandValidate, commandLibrariesInspectPath, commandRequirementsInspectPath:
 		if !completionCommandArgsHaveStagePath(command, commandArgs) {
 			return completionPathStage, current, true
 		}
@@ -282,7 +282,7 @@ func (a *application) completionDirectCommandContext(context []string) (command 
 
 	if len(context) > 1 {
 		if child := spec.subcommand(context[1]); child != nil && !child.Hidden {
-			return child.Name, context[2:], true
+			return spec.Name + " " + child.Name, context[2:], true
 		}
 	}
 
@@ -302,7 +302,7 @@ func pendingCompletionPathKind(command string, args []string) (completionPathKin
 	switch name {
 	case stageFileFlag:
 		switch command {
-		case commandRun, commandValidate, commandLibrariesInspect:
+		case commandRun, commandValidate, commandLibrariesInspectPath, commandRequirementsInspectPath:
 			return completionPathStage, true
 		case commandFmt, commandLower:
 			return completionPathTHTR, true

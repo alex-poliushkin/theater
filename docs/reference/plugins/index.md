@@ -166,6 +166,20 @@ and copied host variable names. They do not print environment values. Plugin
 lock files contain only manifest and executable checksums, so lock files also
 do not store environment values.
 
+Use `requirements inspect` to list plugin host environment requirements for a
+specific stage and registry. Only plugins that own stage-referenced
+capabilities are included. `--check-env` checks whether the named host variables
+are set, but it still reports only names and readiness:
+
+<!-- theater-doc: command id=reference-plugin-requirements cwd=../../.. expect-stdout="\"kind\": \"plugin_env_from_host\"" expect-stdout-2="\"name\": \"PATH\"" expect-stdout-3="\"readiness\": \"available\"" -->
+```sh
+go run ./cmd/theater requirements inspect docs/examples/plugin-registry/hello-world-stage.thtr --plugins-config docs/examples/plugin-registry/hello-world.plugins.json --check-env --format json
+```
+
+Theater reports requirements and readiness. It does not print, persist, rotate,
+broker, or manage secrets. `--check-env` performs presence checks and discards
+returned values.
+
 ## Readiness Modes
 
 Plugin-aware `validate` and `plugins doctor` accept
@@ -249,6 +263,7 @@ when plugin-authored validate or prepare semantics must run.
 | Step | Command | Purpose |
 | --- | --- | --- |
 | Inspect | `theater plugins inspect --plugins-config <path>` | Resolve plugin ids, manifests, executables, and allowed capabilities |
+| Requirements | `theater requirements inspect <stage> --plugins-config <path> [--check-env]` | List value-free runtime requirements and optional host environment readiness |
 | Digest | `theater plugins digest --manifest <manifest> --write` | Refresh descriptor digest after intentional descriptor changes |
 | Lock | `theater plugins lock --plugins-config <path> --plugins-lock <path>` | Freeze checksums into the lock file |
 | Diagnose | `theater plugins doctor --plugins-config <path> [--plugins-lock <path>] [--plugins-readiness runtime\|descriptor]` | Check registry readiness and optional lock drift |

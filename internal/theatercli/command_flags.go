@@ -33,6 +33,10 @@ type librariesInspectFlagValues struct {
 	format string
 }
 
+type requirementsInspectFlagValues struct {
+	format string
+}
+
 type reportRenderOptions struct {
 	format outputFormat
 	input  string
@@ -94,6 +98,9 @@ func (a *application) helpFlagSet(spec *commandSpec) *flag.FlagSet {
 	case commandFlagProfilePluginsLock:
 		flags, _, _ := a.newPluginCommandFlagSet(commandPluginsLock)
 		return flags
+	case commandFlagProfileRequirementsInspect:
+		flags, _, _ := a.newRequirementsInspectCommandFlagSet()
+		return flags
 	case commandFlagProfileReportRender:
 		flags, _, _ := a.newReportRenderCommandFlagSet()
 		return flags
@@ -148,6 +155,14 @@ func (a *application) newLibrariesInspectCommandFlagSet() (*flag.FlagSet, *libra
 	options := librariesInspectOptions{format: outputFormatText}
 	values := &librariesInspectFlagValues{format: string(outputFormatText)}
 	registerLibrariesInspectCommandFlags(flags, &options, values)
+	return flags, &options, values
+}
+
+func (a *application) newRequirementsInspectCommandFlagSet() (*flag.FlagSet, *requirementsInspectOptions, *requirementsInspectFlagValues) {
+	flags := a.newFlagSet(a.commands.Must(commandRequirements, commandRequirementsInspect))
+	options := requirementsInspectOptions{format: outputFormatText}
+	values := &requirementsInspectFlagValues{format: string(outputFormatText)}
+	registerRequirementsInspectCommandFlags(flags, &options, values)
 	return flags, &options, values
 }
 
@@ -223,6 +238,17 @@ func registerLibrariesInspectCommandFlags(
 ) {
 	flags.StringVar(&options.file, "file", "", stageFileHelpText)
 	flags.StringVar(&values.format, "format", values.format, "output format")
+}
+
+func registerRequirementsInspectCommandFlags(
+	flags *flag.FlagSet,
+	options *requirementsInspectOptions,
+	values *requirementsInspectFlagValues,
+) {
+	flags.StringVar(&options.file, "file", "", stageFileHelpText)
+	sharedGlobalOptionContract.RegisterPluginFlags(flags, &options.globalOptions)
+	flags.StringVar(&values.format, "format", values.format, "output format")
+	flags.BoolVar(&options.checkEnv, "check-env", false, "check whether required host environment names are set")
 }
 
 func registerLowerCommandFlags(flags *flag.FlagSet, options *commandOptions) {

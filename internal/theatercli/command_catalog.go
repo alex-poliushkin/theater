@@ -25,22 +25,23 @@ const (
 type commandFlagProfile string
 
 const (
-	commandFlagProfileDoctor           commandFlagProfile = "doctor"
-	commandFlagProfileExplain          commandFlagProfile = "explain"
-	commandFlagProfileFmt              commandFlagProfile = "fmt"
-	commandFlagProfileInit             commandFlagProfile = "init"
-	commandFlagProfileLibrariesInspect commandFlagProfile = "libraries-inspect"
-	commandFlagProfileListScenarios    commandFlagProfile = "list-scenarios"
-	commandFlagProfileLower            commandFlagProfile = "lower"
-	commandFlagProfileMigrateYAML      commandFlagProfile = "migrate-yaml"
-	commandFlagProfileNone             commandFlagProfile = ""
-	commandFlagProfilePluginsDigest    commandFlagProfile = "plugins-digest"
-	commandFlagProfilePluginsDoctor    commandFlagProfile = "plugins-doctor"
-	commandFlagProfilePluginsInspect   commandFlagProfile = "plugins-inspect"
-	commandFlagProfilePluginsLock      commandFlagProfile = "plugins-lock"
-	commandFlagProfileReportRender     commandFlagProfile = "report-render"
-	commandFlagProfileRun              commandFlagProfile = "run"
-	commandFlagProfileValidate         commandFlagProfile = "validate"
+	commandFlagProfileDoctor              commandFlagProfile = "doctor"
+	commandFlagProfileExplain             commandFlagProfile = "explain"
+	commandFlagProfileFmt                 commandFlagProfile = "fmt"
+	commandFlagProfileInit                commandFlagProfile = "init"
+	commandFlagProfileLibrariesInspect    commandFlagProfile = "libraries-inspect"
+	commandFlagProfileListScenarios       commandFlagProfile = "list-scenarios"
+	commandFlagProfileLower               commandFlagProfile = "lower"
+	commandFlagProfileMigrateYAML         commandFlagProfile = "migrate-yaml"
+	commandFlagProfileNone                commandFlagProfile = ""
+	commandFlagProfilePluginsDigest       commandFlagProfile = "plugins-digest"
+	commandFlagProfilePluginsDoctor       commandFlagProfile = "plugins-doctor"
+	commandFlagProfilePluginsInspect      commandFlagProfile = "plugins-inspect"
+	commandFlagProfilePluginsLock         commandFlagProfile = "plugins-lock"
+	commandFlagProfileRequirementsInspect commandFlagProfile = "requirements-inspect"
+	commandFlagProfileReportRender        commandFlagProfile = "report-render"
+	commandFlagProfileRun                 commandFlagProfile = "run"
+	commandFlagProfileValidate            commandFlagProfile = "validate"
 )
 
 type commandCatalog struct {
@@ -104,6 +105,7 @@ func newCommandCatalog() commandCatalog {
 	lower := newLowerCommandSpec()
 	migrate := newMigrateCommandSpec()
 	plugins := newPluginsCommandSpec()
+	requirements := newRequirementsCommandSpec()
 	report := newReportCommandSpec()
 	help := newHelpCommandSpec()
 	version := newVersionCommandSpec()
@@ -143,6 +145,7 @@ func newCommandCatalog() commandCatalog {
 			lower,
 			migrate,
 			plugins,
+			requirements,
 			report,
 			help,
 			version,
@@ -152,7 +155,7 @@ func newCommandCatalog() commandCatalog {
 		Groups: []commandHelpGroup{
 			{Title: commandGroupStartHere, Commands: []*commandSpec{init, validate, run}},
 			{Title: commandGroupAuthoring, Commands: []*commandSpec{format, lower, migrate}},
-			{Title: commandGroupDiscover, Commands: []*commandSpec{explain, doctor, libraries, list, report}},
+			{Title: commandGroupDiscover, Commands: []*commandSpec{explain, doctor, libraries, list, requirements, report}},
 			{Title: commandGroupPlugins, Commands: []*commandSpec{plugins}},
 			{Title: commandGroupEnvironment, Commands: []*commandSpec{help, version, completion}},
 		},
@@ -257,6 +260,76 @@ func newLibrariesInspectCommandSpec() *commandSpec {
 		FlagGroups: []flagHelpGroup{
 			{Title: flagGroupFiles, Flags: []string{"file"}},
 			{Title: flagGroupOutput, Flags: []string{"format"}},
+		},
+	}
+}
+
+func newRequirementsCommandSpec() *commandSpec {
+	inspect := newRequirementsInspectCommandSpec()
+	return &commandSpec{
+		Name:  commandRequirements,
+		Path:  "theater requirements",
+		Args:  "<command> [options]",
+		Short: "Inspect runtime secret and auth-slot requirements.",
+		Long: "Use requirements when a flow needs plugin host environment grants or HTTP auth slots " +
+			"and you need a value-free inventory before validate or run.",
+		Examples: []commandExample{
+			{
+				Title:   "Inspect runtime requirements",
+				Command: "theater requirements inspect theater/flows/http/example-domain.yaml",
+			},
+			{
+				Title: "Check host environment readiness",
+				Command: "theater requirements inspect theater/flows/http/example-domain.yaml " +
+					"--plugins-config plugins.json --check-env",
+			},
+		},
+		Subcommands: []*commandSpec{inspect},
+		Groups: []commandHelpGroup{
+			{Title: commandGroupOperations, Commands: []*commandSpec{inspect}},
+		},
+	}
+}
+
+func newRequirementsInspectCommandSpec() *commandSpec {
+	return &commandSpec{
+		Name:  commandRequirementsInspect,
+		Path:  "theater requirements inspect",
+		Args:  stageFileArgument + " [--format text|json] [--check-env]",
+		Short: "Inspect runtime secret and auth-slot requirements for one flow.",
+		Long: "Use requirements inspect to list required plugin env_from_host grants and selected HTTP auth slots. " +
+			"The command reports requirement names and readiness only; it never prints values.",
+		FlagProfile: commandFlagProfileRequirementsInspect,
+		Examples: []commandExample{
+			{
+				Title:   "Text inventory",
+				Command: "theater requirements inspect theater/flows/http/example-domain.yaml",
+			},
+			{
+				Title:   "JSON inventory",
+				Command: "theater requirements inspect theater/flows/http/example-domain.yaml --format json",
+			},
+			{
+				Title: "Check host environment names",
+				Command: "theater requirements inspect theater/flows/http/example-domain.yaml " +
+					"--plugins-config plugins.json --check-env",
+			},
+		},
+		Sections: []commandHelpSection{
+			{
+				Title: "Contract",
+				Lines: []string{
+					"Plugin env_from_host values are reported by name only.",
+					"--check-env checks host environment presence and discards returned values.",
+					"HTTP auth slots are reported as bound or missing without printing binding values.",
+					"Theater reports requirements and readiness; it does not print, persist, rotate, broker, or manage secrets.",
+				},
+			},
+		},
+		FlagGroups: []flagHelpGroup{
+			{Title: flagGroupFiles, Flags: []string{"file", "plugins-config", "plugins-lock"}},
+			{Title: flagGroupOutput, Flags: []string{"format"}},
+			{Title: flagGroupBehavior, Flags: []string{"check-env"}},
 		},
 	}
 }

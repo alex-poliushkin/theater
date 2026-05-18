@@ -60,8 +60,8 @@ go run ./cmd/theater run docs/examples/reference/logs.thtr --live auto
 
 | Format | Commands | Contract |
 | --- | --- | --- |
-| `text` | `validate`, `run`, `validate --debug-paths`, `list scenarios`, `plugins inspect` | Human-readable stdout; text output may use ANSI styling when color policy allows it |
-| `json` | `validate`, `run`, `validate --debug-paths`, `list scenarios`, `plugins inspect` | Machine-readable stdout; no ANSI styling |
+| `text` | `validate`, `run`, `validate --debug-paths`, `list scenarios`, `libraries inspect`, `requirements inspect`, `plugins inspect` | Human-readable stdout; text output may use ANSI styling when color policy allows it |
+| `json` | `validate`, `run`, `validate --debug-paths`, `list scenarios`, `libraries inspect`, `requirements inspect`, `plugins inspect` | Machine-readable stdout; no ANSI styling |
 | `junit` | `run`, `report render` | Compact scenario-call JUnit XML stdout for CI test-report ingestion |
 | `markdown` | `report render`, `run` sidecars | Detailed human-readable run report for CI artifacts |
 | `summary-md` | `report render`, `run` sidecars | Compact Markdown run summary for CI job summaries |
@@ -121,6 +121,7 @@ Exit precedence:
 | `validate --debug-paths --format json` | `{ "file": "...", "paths": [...] }` |
 | `list scenarios --format json` | `{ "repo_root": "...", "library_root": "...", "scenarios": [...] }` |
 | `libraries inspect --format json` | `{ "file": "...", "repo_root": ".", "selected_library_files": [...], "scenario_call_edges": [...] }` |
+| `requirements inspect --format json` | `{ "file": "...", "check_env": false, "requirements": [...] }` |
 | `plugins inspect --format json` | `{ "config_path": "...", "lock_path": "...", "plugins": [...] }` |
 
 `libraries inspect --format json` reports repo-relative paths. Its `repo_root`

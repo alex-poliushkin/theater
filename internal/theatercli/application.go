@@ -19,22 +19,26 @@ import (
 )
 
 const (
-	commandComplete   = "__complete"
-	commandCompletion = "completion"
-	commandDoctor     = "doctor"
-	commandExplain    = "explain"
-	commandFmt        = "fmt"
-	commandHelp       = "help"
-	commandInit       = "init"
-	commandLibraries  = "libraries"
-	commandList       = "list"
-	commandLower      = "lower"
-	commandMigrate    = "migrate"
-	commandPlugins    = "plugins"
-	commandReport     = "report"
-	commandRun        = "run"
-	commandValidate   = "validate"
-	commandVersion    = "version"
+	commandComplete     = "__complete"
+	commandCompletion   = "completion"
+	commandDoctor       = "doctor"
+	commandExplain      = "explain"
+	commandFmt          = "fmt"
+	commandHelp         = "help"
+	commandInit         = "init"
+	commandLibraries    = "libraries"
+	commandList         = "list"
+	commandLower        = "lower"
+	commandMigrate      = "migrate"
+	commandPlugins      = "plugins"
+	commandRequirements = "requirements"
+	commandReport       = "report"
+	commandRun          = "run"
+	commandValidate     = "validate"
+	commandVersion      = "version"
+
+	commandLibrariesInspectPath    = "libraries inspect"
+	commandRequirementsInspectPath = "requirements inspect"
 
 	exitCodeCommandError = 2
 )
@@ -169,6 +173,8 @@ func (a *application) runCommand(command *commandSpec, args []string) int {
 		return a.validateStage(args)
 	case commandPlugins:
 		return a.runPluginsCommand(args)
+	case commandRequirements:
+		return a.runRequirementsCommand(args)
 	case commandReport:
 		return a.runReportCommand(args)
 	default:

@@ -1,0 +1,8 @@
+stage hello-world-plugin
+
+scenario hello
+  act echo
+    do action.hello_world.echo
+      message: "hello"
+
+call run = hello()

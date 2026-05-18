@@ -44,6 +44,16 @@ go run ./cmd/theater plugins inspect --plugins-config docs/examples/plugin-regis
 The JSON output includes the `hello-world` plugin id, allowed capability names,
 and grant names. Environment values are not printed.
 
+Inspect runtime requirements for a stage that uses the same registry:
+
+<!-- theater-doc: command id=howto-plugin-requirements cwd=../.. expect-stdout="\"kind\": \"plugin_env_from_host\"" expect-stdout-2="\"name\": \"PATH\"" expect-stdout-3="\"readiness\": \"available\"" -->
+```sh
+go run ./cmd/theater requirements inspect docs/examples/plugin-registry/hello-world-stage.thtr --plugins-config docs/examples/plugin-registry/hello-world.plugins.json --check-env --format json
+```
+
+The requirements inventory reports copied host environment names and readiness.
+It does not print host environment values.
+
 Run the readiness check:
 
 <!-- theater-doc: command id=howto-plugin-doctor cwd=../.. expect-stdout=ready expect-stdout-2="host environment grants" expect-stdout-3="env from host PATH" -->

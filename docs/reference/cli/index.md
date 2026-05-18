@@ -47,6 +47,11 @@ go run ./cmd/theater help list scenarios
 go run ./cmd/theater help libraries inspect
 ```
 
+<!-- theater-doc: command id=reference-cli-requirements-inspect-help cwd=../../.. expect-stdout="theater requirements inspect <stage.{yaml|yml|thtr}>" expect-stdout-2="--check-env" expect-stdout-3="does not print, persist, rotate, broker, or manage secrets" -->
+```sh
+go run ./cmd/theater help requirements inspect
+```
+
 <!-- theater-doc: command id=reference-cli-migrate-from-yaml-help cwd=../../.. expect-stdout="--file <stage.yaml|stage.yml>" expect-stdout-2="--plugins-config <path.json>" -->
 ```sh
 go run ./cmd/theater help migrate from-yaml
@@ -63,7 +68,7 @@ go run ./cmd/theater help report render
 | --- | --- | --- |
 | Start Here | `init`, `validate`, `check`, `run` | Create, validate, and run stages |
 | Authoring | `fmt`, `lower`, `migrate` | Format `.thtr`, inspect canonical YAML, and convert YAML to `.thtr` |
-| Discover | `explain`, `doctor`, `libraries`, `list`, `report` | Inspect capabilities, environment readiness, repo-aware resources, and saved run reports |
+| Discover | `explain`, `doctor`, `libraries`, `list`, `requirements`, `report` | Inspect capabilities, environment readiness, repo-aware resources, runtime requirements, and saved run reports |
 | Plugins | `plugins digest`, `plugins inspect`, `plugins lock`, `plugins doctor` | Inspect and lock plugin registries |
 | Environment | `help`, `version`, `completion` | Inspect CLI contracts and shell integration |
 
@@ -80,6 +85,7 @@ go run ./cmd/theater help report render
 | `theater explain` | `theater explain [family\|topic\|query] [ref]` | Lists families/topics, inspects `family ref`, or lists non-topic query matches |
 | `theater doctor` | `theater doctor [--plugins-config <path> --plugins-lock <path>] [--write-path <path>...]` | Checks common local workflow preconditions |
 | `theater libraries inspect` | `theater libraries inspect <stage.{yaml\|yml\|thtr}> [--format text\|json]` | Explains selected repo-aware library files, scenarios, call edges, inputs, exports, and selected auth names without running the flow |
+| `theater requirements inspect` | `theater requirements inspect <stage.{yaml\|yml\|thtr}> [--format text\|json] [--check-env] [--plugins-config <path> --plugins-lock <path>]` | Lists value-free plugin host environment and selected HTTP auth-slot requirements; checks host environment presence only with `--check-env` |
 | `theater list scenarios` | `theater list scenarios [--root <path>] [--format text\|json] [--syntax all\|yaml\|thtr] [--call-skeleton]` | Lists reusable public scenario ids from `theater/lib` |
 | `theater report render` | `theater report render --input <run.json> [--format junit\|markdown\|summary-md]` | Converts `run --format json` output into compact JUnit, detailed Markdown, or compact summary Markdown without rerunning the stage |
 | `theater plugins inspect` | `theater plugins inspect --plugins-config <path> [--plugins-lock <path>] [--format text\|json]` | Alias: `ls`; resolves the plugin set |

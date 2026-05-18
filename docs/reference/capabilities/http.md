@@ -203,6 +203,14 @@ without executing the flow:
 go run ./cmd/theater libraries inspect docs/examples/reusable-auth/theater/flows/sample-ready.thtr --format json
 ```
 
+Use `theater requirements inspect` to review selected auth slot requirements
+without executing the flow or printing slot values:
+
+<!-- theater-doc: command id=reference-http-reusable-auth-requirements cwd=../../.. expect-stdout="\"kind\": \"http_auth_slot\"" expect-stdout-2="\"name\": \"session_token\"" expect-stdout-3="\"readiness\": \"bound\"" -->
+```sh
+go run ./cmd/theater requirements inspect docs/examples/reusable-auth/theater/flows/sample-ready.thtr --format json
+```
+
 Checked Theater DSL library file:
 
 <!-- theater-doc: source id=reusable-auth-library-thtr kind=thtr path=../../examples/reusable-auth/theater/lib/service/sample-ready.thtr pair=reusable-auth-library checks=fmt,lower,validate -->
