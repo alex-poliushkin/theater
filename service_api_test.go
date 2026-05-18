@@ -1733,6 +1733,7 @@ func stripContractTimingFields(value any) any {
 		delete(typed, "started_at")
 		delete(typed, "ended_at")
 		delete(typed, "duration_ms")
+		delete(typed, "run_id")
 		if generation, ok := typed["generation"].(map[string]any); ok {
 			if _, exists := generation["seed"]; exists {
 				generation["seed"] = "<seed>"

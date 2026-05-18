@@ -84,8 +84,8 @@ func renderMarkdownRunSummary(builder *strings.Builder, file string, document re
 		report.Summary.CanceledScenarios,
 		report.Summary.SkippedScenarios,
 	)
-	if document.SchemaVersion != "" {
-		fmt.Fprintf(builder, "- Schema: %s\n", markdownCode(document.SchemaVersion))
+	if document.ReportSchemaVersion != "" {
+		fmt.Fprintf(builder, "- Schema: %s\n", markdownCode(document.ReportSchemaVersion))
 	}
 }
 

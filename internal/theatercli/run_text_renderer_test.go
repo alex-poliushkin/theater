@@ -58,7 +58,7 @@ func eventuallyLatestFailureDocumentForText() theater.RunDocument {
 	}
 
 	return theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Report: theater.Report{
 			StageID:   "main",
 			StagePath: "stage.main",

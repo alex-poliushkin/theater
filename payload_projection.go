@@ -2,6 +2,7 @@ package theater
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/alex-poliushkin/theater/internal/secretvalue"
@@ -88,6 +89,7 @@ func nodeReportFromEvent(event Event) (NodeReport, bool) {
 	}
 
 	return NodeReport{
+		ID:             nodeStableID(event),
 		Kind:           kind,
 		StageID:        event.StageID,
 		Path:           event.Path,
@@ -112,6 +114,14 @@ func nodeReportFromEvent(event Event) (NodeReport, bool) {
 		Eventually:     cloneEventuallyReport(event.Eventually),
 		Payload:        clonePayloadMetadata(event.Payload),
 	}, true
+}
+
+func nodeStableID(event Event) string {
+	if event.Attempt <= 1 {
+		return event.Path
+	}
+
+	return event.Path + "#attempt." + strconv.Itoa(event.Attempt)
 }
 
 func sortNodeReports(nodes []NodeReport) {

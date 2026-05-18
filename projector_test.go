@@ -613,7 +613,7 @@ func TestProjectRunDocumentBuildsVersionedFailureIndexedReport(t *testing.T) {
 		Summary: "token mismatch",
 	}
 
-	doc, err := NewProjector().Document([]Event{
+	events := []Event{
 		{
 			Kind:         EventKindActionFinished,
 			StagePath:    "stage.main",
@@ -706,13 +706,37 @@ func TestProjectRunDocumentBuildsVersionedFailureIndexedReport(t *testing.T) {
 			Status:    StatusFailed,
 			Failure:   expectationFailure,
 		},
-	})
+	}
+	for i := range events {
+		events[i].RunID = "main/test-run"
+		events[i].TheaterVersion = "test-version"
+	}
+
+	doc, err := NewProjector().Document(events)
 	if err != nil {
 		t.Fatalf("project run document failed: %v", err)
 	}
 
-	if got, want := doc.SchemaVersion, RunDocumentSchemaVersion; got != want {
+	if got, want := doc.ReportSchemaVersion, RunDocumentSchemaVersion; got != want {
 		t.Fatalf("schema version mismatch: got %q want %q", got, want)
+	}
+	if got, want := doc.TheaterVersion, "test-version"; got != want {
+		t.Fatalf("theater version mismatch: got %q want %q", got, want)
+	}
+	if got, want := doc.RunID, "main/test-run"; got != want {
+		t.Fatalf("run id mismatch: got %q want %q", got, want)
+	}
+
+	wantNodeIDs := map[string]string{
+		"stage.main/call.login-user/act.submit/action":            "stage.main/call.login-user/act.submit/action#attempt.2",
+		"stage.main/call.login-user/act.submit/expectation.token": "stage.main/call.login-user/act.submit/expectation.token#attempt.2",
+		"stage.main/call.login-user/act.submit":                   "stage.main/call.login-user/act.submit#attempt.2",
+		"stage.main/call.login-user":                              "stage.main/call.login-user",
+	}
+	for _, node := range doc.Report.Nodes {
+		if got, want := node.ID, wantNodeIDs[node.Path]; got != want {
+			t.Fatalf("node id mismatch for %s: got %q want %q", node.Path, got, want)
+		}
 	}
 
 	if got, want := len(doc.Report.Failures), 1; got != want {
@@ -790,6 +814,79 @@ func TestProjectRunDocumentBuildsVersionedFailureIndexedReport(t *testing.T) {
 
 	if got, want := actionNode.Artifacts[0].Locator, "artifact://run/1/action/stdout"; got != want {
 		t.Fatalf("artifact locator mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestProjectRunDocumentRequiresConsistentEventIdentity(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name   string
+		events []Event
+		want   string
+	}{
+		{
+			name: "missing",
+			events: []Event{
+				{
+					Kind:      EventKindStageFinished,
+					StagePath: "stage.main",
+					Path:      "stage.main",
+					Status:    StatusPassed,
+				},
+			},
+			want: "event 0 run document identity is incomplete",
+		},
+		{
+			name: "partial",
+			events: []Event{
+				{
+					RunID:     "main/run-1",
+					Kind:      EventKindStageFinished,
+					StagePath: "stage.main",
+					Path:      "stage.main",
+					Status:    StatusPassed,
+				},
+			},
+			want: "event 0 run document identity is incomplete",
+		},
+		{
+			name: "mismatch",
+			events: []Event{
+				{
+					RunID:          "main/run-1",
+					TheaterVersion: "dev",
+					Kind:           EventKindStageRunning,
+					StagePath:      "stage.main",
+					Path:           "stage.main",
+					Status:         StatusRunning,
+				},
+				{
+					RunID:          "main/run-2",
+					TheaterVersion: "dev",
+					Kind:           EventKindStageFinished,
+					StagePath:      "stage.main",
+					Path:           "stage.main",
+					Status:         StatusPassed,
+				},
+			},
+			want: "event 1 run document identity mismatch",
+		},
+	}
+
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := NewProjector().Document(testCase.events)
+			if err == nil {
+				t.Fatal("expected identity error")
+			}
+			if !strings.Contains(err.Error(), testCase.want) {
+				t.Fatalf("error mismatch: got %q want fragment %q", err.Error(), testCase.want)
+			}
+		})
 	}
 }
 

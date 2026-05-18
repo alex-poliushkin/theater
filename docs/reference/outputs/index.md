@@ -30,7 +30,7 @@ go run ./cmd/theater validate docs/examples/first-stage/stage.thtr --format json
 go run ./cmd/theater run docs/examples/first-stage/stage.thtr --live off
 ```
 
-<!-- theater-doc: command id=reference-output-run-json cwd=../../.. expect-stdout="\"schema_version\": \"v1alpha1\"" expect-stdout-2="\"status\": \"passed\"" expect-stdout-3="\"nodes\"" -->
+<!-- theater-doc: command id=reference-output-run-json cwd=../../.. expect-stdout="\"report_schema_version\": \"v1alpha1\"" expect-stdout-2="\"status\": \"passed\"" expect-stdout-3="\"nodes\"" -->
 ```sh
 go run ./cmd/theater run docs/examples/first-stage/stage.thtr --live off --format json
 ```
@@ -57,7 +57,7 @@ go run ./cmd/theater run docs/examples/reference/logs.thtr --live auto
 | `text` | `validate`, `run`, `validate --debug-paths`, `list scenarios`, `plugins inspect` | Human-readable stdout; text output may use ANSI styling when color policy allows it |
 | `json` | `validate`, `run`, `validate --debug-paths`, `list scenarios`, `plugins inspect` | Machine-readable stdout; no ANSI styling |
 | `junit` | `run`, `report render` | Compact scenario-call JUnit XML stdout for CI test-report ingestion |
-| `markdown` | `report render`, `run` sidecars | Bounded human-readable run summary for CI job summaries and artifacts |
+| `markdown` | `report render`, `run` sidecars | Detailed human-readable run report for CI artifacts |
 
 Live progress, scenario-authored live log lines, debug prompts, and interactive
 pause cards use stderr so redirected stdout remains safe for JSON, JUnit, or
@@ -67,6 +67,11 @@ from `result.report.logs`. Use `run --json-output`, `--junit-output`, and
 `--markdown-output` when one execution should produce multiple artifacts. Use
 `report render` when a saved run JSON file should become compact JUnit or
 detailed Markdown without executing the stage again.
+
+The compact summary Markdown projection is a separate v0.5.0 report projection
+over the same run document. It is bounded for CI job summaries and must not
+include raw logs, raw HTTP bodies, secrets, unbounded payloads, or
+renderer-only diagnostics.
 
 ## Run Sidecar Outputs
 

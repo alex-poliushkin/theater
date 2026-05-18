@@ -60,23 +60,24 @@ func (r *Runner) runWithDebugRuntime(
 	}
 
 	stage := r.validator.compile(spec)
+	identity := newRunDocumentIdentity(stage.ID, options)
 	diagnostics := r.validator.validate(ctx, stage)
 	if len(diagnostics) > 0 {
-		return RunResult{
+		return identity.result(RunResult{
 			Diagnostics: diagnostics,
 			Report:      definitionFailureReport(stage.ID, stage.Path, diagnostics),
-		}, nil
+		}), nil
 	}
 
 	if failure := preflightCatalog(stage, r.catalog); failure != nil {
-		return RunResult{
+		return identity.result(RunResult{
 			Report: setupFailureReport(stage.ID, stage.Path, failure),
-		}, nil
+		}), nil
 	}
 
 	prepared, err := r.validator.prepare(stage)
 	if err != nil {
-		return prepareFailureResult(stage.ID, stage.Path, err), nil
+		return identity.result(prepareFailureResult(stage.ID, stage.Path, err)), nil
 	}
 
 	if err := debug.prepareBreakpoints(prepared); err != nil {
@@ -85,7 +86,7 @@ func (r *Runner) runWithDebugRuntime(
 			err = errors.Join(err, closeErr)
 		}
 
-		return prepareFailureResult(stage.ID, stage.Path, err), nil
+		return identity.result(prepareFailureResult(stage.ID, stage.Path, err)), nil
 	}
 
 	closePlugins := func(context.Context) {}
@@ -93,9 +94,9 @@ func (r *Runner) runWithDebugRuntime(
 		ctx, closePlugins, err = pluginCatalog.preparePluginRun(ctx, prepared)
 		if err != nil {
 			failure := setupFailure(prepared.Path, err)
-			return RunResult{
+			return identity.result(RunResult{
 				Report: setupFailureReport(stage.ID, stage.Path, failure),
-			}, nil
+			}), nil
 		}
 	}
 	defer closePlugins(context.WithoutCancel(ctx))
@@ -103,9 +104,9 @@ func (r *Runner) runWithDebugRuntime(
 	live, closeDebug, err := debug.prepareRun(options.Live)
 	if err != nil {
 		failure := setupFailure(prepared.Path, err)
-		return RunResult{
+		return identity.result(RunResult{
 			Report: setupFailureReport(stage.ID, stage.Path, failure),
-		}, nil
+		}), nil
 	}
 	defer func() {
 		if closeErr := closeDebug(context.WithoutCancel(ctx)); closeErr != nil && err == nil {
@@ -116,9 +117,9 @@ func (r *Runner) runWithDebugRuntime(
 	stateManager, err := r.openRunStateManager(ctx, prepared, debug)
 	if err != nil {
 		failure := setupFailure(prepared.Path, err)
-		return RunResult{
+		return identity.result(RunResult{
 			Report: setupFailureReport(stage.ID, stage.Path, failure),
-		}, nil
+		}), nil
 	}
 
 	report, err := newStageRunner(
@@ -128,15 +129,16 @@ func (r *Runner) runWithDebugRuntime(
 		stateManager,
 		live,
 		options.Events,
+		identity,
 		debug,
 	).Run(ctx)
 	if err != nil {
 		return RunResult{}, err
 	}
 
-	result = RunResult{
+	result = identity.result(RunResult{
 		Report: report,
-	}
+	})
 	if err := ExportRunDocument(ctx, r.catalog, result.Document(), options.ReportExporters); err != nil {
 		return result, err
 	}

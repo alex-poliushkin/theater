@@ -14,7 +14,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
 	-trimpath \
-	-ldflags="-s -w -X github.com/alex-poliushkin/theater/internal/theatercli.version=${VERSION}" \
+	-ldflags="-s -w -X github.com/alex-poliushkin/theater.version=${VERSION}" \
 	-o /out/theater \
 	./cmd/theater
 

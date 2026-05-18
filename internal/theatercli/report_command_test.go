@@ -149,7 +149,7 @@ func TestReportRenderRejectsInvalidInput(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "bad.json")
-	if err := os.WriteFile(path, []byte(`{"result":{"schema_version":""}}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"result":{"report_schema_version":""}}`), 0o600); err != nil {
 		t.Fatalf("write input failed: %v", err)
 	}
 

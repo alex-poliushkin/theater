@@ -69,9 +69,10 @@ func newStageRunner(
 	state *statemodel.Manager,
 	live observe.Sink,
 	recorder EventRecorder,
+	identity runDocumentIdentity,
 	debug *debugRuntime,
 ) *stageRunner {
-	sink := newStageEventSink(live, recorder, debug)
+	sink := newStageEventSink(identity, live, recorder, debug)
 	scenarioScopeRun := newScenarioScopeRun(catalog)
 	executor := newScenarioBatchExecutor(stage.HTTP, catalog, matchers, sink.Record, live, scenarioScopeRun, state, debug)
 	executor.logLimiter = newScenarioLogLimiter()

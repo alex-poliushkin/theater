@@ -59,8 +59,14 @@ type ActionRequest struct {
 	Resources   ResourceScope
 }
 
-// RunOptions configures live observation and optional raw event recording.
+// RunOptions configures run identity, live observation, and optional raw event
+// recording. RunID is emitted as a document label for recorders and exporters;
+// it is not proof of provenance.
 type RunOptions struct {
+	// RunID overrides the emitted run document identifier. When empty, Runner
+	// generates an opaque identifier for the materialized document.
+	RunID string
+
 	Live            observe.Sink
 	Events          EventRecorder
 	ReportExporters []ReportExportSpec

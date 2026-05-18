@@ -98,7 +98,7 @@ jobs:
 
             CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" go build \
               -trimpath \
-              -ldflags="-s -w -X github.com/alex-poliushkin/theater/internal/theatercli.version=${RELEASE_TAG}" \
+              -ldflags="-s -w -X github.com/alex-poliushkin/theater.version=${RELEASE_TAG}" \
               -o "${package_dir}/theater" \
               ./cmd/theater
 

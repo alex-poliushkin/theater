@@ -85,7 +85,7 @@ func TestProjectionBuildsScenarioViewsFromSharedReportState(t *testing.T) {
 	}
 
 	projection := New(theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Report: theater.Report{
 			StageID:   "main",
 			StagePath: "stage.main",
@@ -142,7 +142,7 @@ func TestProjectionTracksConvergedActsAndOrphanStageFailure(t *testing.T) {
 
 	scenarioPath := "stage.main/call.login-user"
 	projection := New(theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Report: theater.Report{
 			StageID:   "main",
 			StagePath: "stage.main",
@@ -258,7 +258,7 @@ func eventuallyLatestFailureDocument() theater.RunDocument {
 	}
 
 	return theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Report: theater.Report{
 			StageID:    "main",
 			StagePath:  "stage.main",

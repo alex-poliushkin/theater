@@ -21,6 +21,12 @@ Look for `result.report.status` first. When it is `passed`, all selected scenari
 calls and expectations passed. When it is not `passed`, inspect `result.report`
 nodes and the failure fields near the failed act or expectation.
 
+Use `result.report_schema_version`, `result.theater_version`, and
+`result.run_id` to identify the run document that produced derived artifacts
+such as JUnit, Markdown, or CI summaries. These fields describe the emitted run
+document; they are not inputs for selecting scenarios or comparing historical
+runs.
+
 The checked commands above assert that the JSON contains the `check-values`
 stage and a `passed` status.
 

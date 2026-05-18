@@ -223,6 +223,8 @@ type LogSummary struct {
 
 // Event is a low-level runtime event used to build reports and live mirrors.
 type Event struct {
+	RunID          string              `json:"run_id,omitempty"`
+	TheaterVersion string              `json:"theater_version,omitempty"`
 	Kind           string              `json:"kind"`
 	StageID        string              `json:"stage_id,omitempty"`
 	StagePath      string              `json:"stage_path"`
@@ -261,6 +263,7 @@ type Summary struct {
 
 // NodeReport is the final terminal snapshot of one logical node.
 type NodeReport struct {
+	ID             string              `json:"id"`
 	Kind           NodeKind            `json:"kind"`
 	StageID        string              `json:"stage_id,omitempty"`
 	Path           string              `json:"path"`
@@ -629,6 +632,10 @@ func (s LogSummary) Validate(recordCount int) error {
 }
 
 func (n NodeReport) Validate() error {
+	if n.ID == "" {
+		return errors.New("node id is required")
+	}
+
 	if !validReportNodeKind(n.Kind) {
 		return fmt.Errorf("node kind %q is invalid", n.Kind)
 	}

@@ -11,7 +11,7 @@ func TestReportMarkdownRendererShowsPassedScenarioDetail(t *testing.T) {
 	t.Parallel()
 
 	document := reportmodel.RunDocument{
-		SchemaVersion: reportmodel.RunDocumentSchemaVersion,
+		ReportSchemaVersion: reportmodel.RunDocumentSchemaVersion,
 		Report: reportmodel.Report{
 			StageID:    "mobile-dashboard",
 			StagePath:  "stage.mobile-dashboard",
@@ -112,7 +112,7 @@ func TestReportMarkdownRendererUsesReportSafeObservedValues(t *testing.T) {
 	t.Parallel()
 
 	document := reportmodel.RunDocument{
-		SchemaVersion: reportmodel.RunDocumentSchemaVersion,
+		ReportSchemaVersion: reportmodel.RunDocumentSchemaVersion,
 		Report: reportmodel.Report{
 			StageID:   "redaction-check",
 			StagePath: "stage.redaction-check",

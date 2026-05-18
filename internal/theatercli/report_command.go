@@ -124,8 +124,8 @@ func decodeRunJSONEnvelope(data []byte) (runJSONEnvelope, error) {
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return runJSONEnvelope{}, err
 	}
-	if envelope.Result.SchemaVersion == "" {
-		return runJSONEnvelope{}, errors.New("result.schema_version is required")
+	if envelope.Result.ReportSchemaVersion == "" {
+		return runJSONEnvelope{}, errors.New("result.report_schema_version is required")
 	}
 	return envelope, nil
 }

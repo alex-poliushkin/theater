@@ -11,8 +11,10 @@ import (
 
 // RunResult is the public result returned by Runner.Run.
 type RunResult struct {
-	Diagnostics []Diagnostic `json:"diagnostics,omitempty"`
-	Report      Report       `json:"report"`
+	RunID          string       `json:"run_id,omitempty"`
+	TheaterVersion string       `json:"theater_version,omitempty"`
+	Diagnostics    []Diagnostic `json:"diagnostics,omitempty"`
+	Report         Report       `json:"report"`
 }
 
 type actOutcome struct {

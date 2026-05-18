@@ -239,7 +239,10 @@ func (a *application) runStage(args []string) int {
 
 	ctx := context.Background()
 	var live *liveSession
-	runOptions := theater.RunOptions{}
+	runID := newRunID(loaded.Spec.ID)
+	runOptions := theater.RunOptions{
+		RunID: runID,
+	}
 	debugOptions, debugEnabled, err := a.buildDebugOptions(options)
 	if err != nil {
 		fmt.Fprintf(a.stderr, "%v\n", err)
@@ -251,7 +254,7 @@ func (a *application) runStage(args []string) int {
 
 	debugInteractive := debugOptions != nil && debugOptions.Mode == theater.DebugModeInteractive
 	if debugOptions != nil || shouldEnableLive(options.format, options.live) {
-		bus := runobserve.NewBus(newRunID(loaded.Spec.ID), 0)
+		bus := runobserve.NewBus(runID, 0)
 		runOptions.Live = bus
 		if shouldEnableLive(options.format, options.live) && !debugInteractive {
 			live = newLiveSessionWithTerminal(
@@ -800,8 +803,10 @@ func newAuthoringFailureRunDocument(file string, diagnostics []theater.Diagnosti
 	}
 
 	return theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
-		Diagnostics:   diagnostics,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
+		TheaterVersion:      theater.Version(),
+		RunID:               newRunID(stageID),
+		Diagnostics:         diagnostics,
 		Report: theater.Report{
 			StageID:   stageID,
 			StagePath: file,

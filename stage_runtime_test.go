@@ -327,7 +327,7 @@ func TestStageRunnerInteractiveDebugDoesNotStartAnotherReadyCallWhilePaused(t *t
 		}),
 	}
 
-	runner := newStageRunner(stage, catalog, nil, nil, nil, recorder, debug)
+	runner := newStageRunner(stage, catalog, nil, nil, nil, recorder, runDocumentIdentity{}, debug)
 	runner.executor = newScenarioBatchExecutorWithLimit(
 		nil,
 		catalog,
@@ -797,7 +797,7 @@ func TestPendingScenarioSkipperMarksStageAbortedAndRecordsEvent(t *testing.T) {
 	t.Parallel()
 
 	recorder := &recordingEventRecorder{}
-	sink := newStageEventSink(nil, recorder)
+	sink := newStageEventSink(runDocumentIdentity{}, nil, recorder)
 	planner := newScenarioBatchPlanner(&stagePlan{
 		ID:   "main",
 		Path: "stage.main",
@@ -845,7 +845,7 @@ func TestPendingScenarioSkipperMarksStageAbortedAndRecordsEvent(t *testing.T) {
 func TestStageEventSinkBuildsReportWithoutRawEventRetention(t *testing.T) {
 	t.Parallel()
 
-	sink := newStageEventSink(nil, nil)
+	sink := newStageEventSink(runDocumentIdentity{}, nil, nil)
 	startedAt := time.Unix(1, 0).UTC()
 	events := []Event{
 		{
@@ -902,7 +902,7 @@ func TestStageEventSinkStopsWhenExplicitRecorderFails(t *testing.T) {
 	t.Parallel()
 
 	wantErr := errors.New("recording failed")
-	sink := newStageEventSink(nil, failingEventRecorder{err: wantErr})
+	sink := newStageEventSink(runDocumentIdentity{}, nil, failingEventRecorder{err: wantErr})
 
 	err := sink.Record(Event{
 		Kind:      EventKindStageRunning,
@@ -921,7 +921,7 @@ func TestStageEventSinkAllowsReportWhileRecorderCallbackIsBlocked(t *testing.T) 
 	t.Parallel()
 
 	recorder := newBlockingEventRecorder()
-	sink := newStageEventSink(nil, recorder)
+	sink := newStageEventSink(runDocumentIdentity{}, nil, recorder)
 
 	done := make(chan error, 1)
 	go func() {
@@ -961,7 +961,7 @@ func TestStageEventSinkAllowsRecorderToReadReportReentrantly(t *testing.T) {
 	t.Parallel()
 
 	recorder := &reportReadingRecorder{}
-	sink := newStageEventSink(nil, recorder)
+	sink := newStageEventSink(runDocumentIdentity{}, nil, recorder)
 	recorder.sink = sink
 
 	err := sink.Record(Event{
@@ -1016,6 +1016,7 @@ func TestStageRunnerReturnsFailedReportWhenRecorderPanicsDuringNonTerminalEvent(
 		nil,
 		nil,
 		panickingEventRecorder{panicOnKind: EventKindActionRunning, message: "recorder boom"},
+		runDocumentIdentity{},
 		nil,
 	).Run(context.Background())
 	if err != nil {
@@ -1070,6 +1071,7 @@ func TestStageRunnerOverridesStageOutcomeWhenMirroredLiveSinkPanicsDuringStageFi
 		nil,
 		&panickingObserveSink{panicOnTransition: EventKindStageFinished, message: "live boom"},
 		nil,
+		runDocumentIdentity{},
 		nil,
 	).Run(context.Background())
 	if err != nil {

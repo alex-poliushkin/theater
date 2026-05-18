@@ -1204,16 +1204,34 @@ func TestRunResultDocumentMatchesReplayAndHidesEventsInJSON(t *testing.T) {
 		t.Fatalf("project replayed run document failed: %v", err)
 	}
 
-	if got, want := doc.SchemaVersion, theater.RunDocumentSchemaVersion; got != want {
-		t.Fatalf("schema version mismatch: got %q want %q", got, want)
+	if got, want := doc.ReportSchemaVersion, theater.RunDocumentSchemaVersion; got != want {
+		t.Fatalf("report schema version mismatch: got %q want %q", got, want)
 	}
 
-	if got, want := replayed.SchemaVersion, theater.RunDocumentSchemaVersion; got != want {
-		t.Fatalf("replayed schema version mismatch: got %q want %q", got, want)
+	if got, want := replayed.ReportSchemaVersion, theater.RunDocumentSchemaVersion; got != want {
+		t.Fatalf("replayed report schema version mismatch: got %q want %q", got, want)
+	}
+
+	if doc.TheaterVersion == "" {
+		t.Fatal("run document must include theater version")
+	}
+	if doc.RunID == "" {
+		t.Fatal("run document must include run id")
+	}
+	if got, want := replayed.RunID, doc.RunID; got != want {
+		t.Fatalf("replayed run id mismatch: got %q want %q", got, want)
+	}
+	if got, want := replayed.TheaterVersion, doc.TheaterVersion; got != want {
+		t.Fatalf("replayed theater version mismatch: got %q want %q", got, want)
 	}
 
 	if got, want := doc.Report, replayed.Report; !reflect.DeepEqual(got, want) {
 		t.Fatalf("live and replay report mismatch: got %#v want %#v", got, want)
+	}
+	for _, node := range doc.Report.Nodes {
+		if node.ID == "" {
+			t.Fatalf("node %s must include stable id", node.Path)
+		}
 	}
 	if got, want := result.Report.Logs, replayed.Report.Logs; !reflect.DeepEqual(got, want) {
 		t.Fatalf("live and replay logs mismatch: got %#v want %#v", got, want)
@@ -1228,8 +1246,14 @@ func TestRunResultDocumentMatchesReplayAndHidesEventsInJSON(t *testing.T) {
 	}
 
 	jsonText := string(encoded)
-	if !strings.Contains(jsonText, `"schema_version":"`+theater.RunDocumentSchemaVersion+`"`) {
-		t.Fatalf("json output must include schema version: %s", jsonText)
+	if !strings.Contains(jsonText, `"report_schema_version":"`+theater.RunDocumentSchemaVersion+`"`) {
+		t.Fatalf("json output must include report schema version: %s", jsonText)
+	}
+	if !strings.Contains(jsonText, `"theater_version":"`) {
+		t.Fatalf("json output must include theater version: %s", jsonText)
+	}
+	if !strings.Contains(jsonText, `"run_id":"`) {
+		t.Fatalf("json output must include run id: %s", jsonText)
 	}
 
 	if strings.Contains(jsonText, `"events":`) {

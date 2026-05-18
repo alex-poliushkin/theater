@@ -10,7 +10,9 @@ Run is the rehearsal. Theater executes the selected scenario calls, records what
 happened, and evaluates expectations.
 
 The report is the receipt. It says whether the run passed, which scenario and
-act were involved, and where to look when an expectation failed.
+act were involved, and where to look when an expectation failed. JSON run output
+wraps the report in a run document with a schema version, Theater version, run
+identifier, optional diagnostics, and the final report.
 
 This split matters because a file can be wrong before the system under test is
 ever touched. A fast validation failure is usually easier to understand than a

@@ -29,7 +29,7 @@ func TestExporterMarshal(t *testing.T) {
 		t.Run(testcase.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := exporter.Marshal(testcase.doc)
+			got, err := exporter.Marshal(completeRunDocument(testcase.doc))
 			if err != nil {
 				t.Fatalf("marshal junit failed: %v", err)
 			}
@@ -50,7 +50,7 @@ func TestExporterUsesExplicitScenarioIdentityNotInternalPath(t *testing.T) {
 	t.Parallel()
 
 	exporter := junit.NewExporter()
-	got, err := exporter.Marshal(passedDocument())
+	got, err := exporter.Marshal(completeRunDocument(passedDocument()))
 	if err != nil {
 		t.Fatalf("marshal junit failed: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestExporterOmitsStageAbortedPendingScenarios(t *testing.T) {
 	t.Parallel()
 
 	exporter := junit.NewExporter()
-	got, err := exporter.Marshal(stageAbortDocument())
+	got, err := exporter.Marshal(completeRunDocument(stageAbortDocument()))
 	if err != nil {
 		t.Fatalf("marshal junit failed: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestExporterPrefersLatestEventuallyFailureObservations(t *testing.T) {
 	t.Parallel()
 
 	exporter := junit.NewExporter()
-	got, err := exporter.Marshal(eventuallyLatestFailureDocument())
+	got, err := exporter.Marshal(completeRunDocument(eventuallyLatestFailureDocument()))
 	if err != nil {
 		t.Fatalf("marshal junit failed: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestExporterRendersHTTPDiagnostics(t *testing.T) {
 	t.Parallel()
 
 	exporter := junit.NewExporter()
-	got, err := exporter.Marshal(httpDiagnosticFailureDocument())
+	got, err := exporter.Marshal(completeRunDocument(httpDiagnosticFailureDocument()))
 	if err != nil {
 		t.Fatalf("marshal junit failed: %v", err)
 	}
@@ -148,7 +148,7 @@ func passedDocument() theater.RunDocument {
 	scenarioEndedAt := fixedTime(350)
 
 	return theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Report: theater.Report{
 			StageID:    "main",
 			StagePath:  "stage.main",
@@ -193,7 +193,7 @@ func expectationFailureDocument() theater.RunDocument {
 	}
 
 	return theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Report: theater.Report{
 			StageID:    "main",
 			StagePath:  "stage.main",
@@ -265,7 +265,7 @@ func httpDiagnosticFailureDocument() theater.RunDocument {
 	}
 
 	return theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Report: theater.Report{
 			StageID:   "main",
 			StagePath: "stage.main",
@@ -357,7 +357,7 @@ func eventuallyTimeoutDocument() theater.RunDocument {
 	}
 
 	return theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Report: theater.Report{
 			StageID:    "main",
 			StagePath:  "stage.main",
@@ -457,7 +457,7 @@ func canceledDocument() theater.RunDocument {
 	scenarioEndedAt := fixedTime(400)
 
 	return theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Report: theater.Report{
 			StageID:    "main",
 			StagePath:  "stage.main",
@@ -491,7 +491,7 @@ func canceledDocument() theater.RunDocument {
 
 func validationFailureDocument() theater.RunDocument {
 	return theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Diagnostics: []theater.Diagnostic{
 			{
 				Code:     "missing_scenario_id",
@@ -528,7 +528,7 @@ func stageAbortDocument() theater.RunDocument {
 	}
 
 	return theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Report: theater.Report{
 			StageID:   "main",
 			StagePath: "stage.main",
@@ -620,7 +620,7 @@ func eventuallyLatestFailureDocument() theater.RunDocument {
 	}
 
 	return theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Report: theater.Report{
 			StageID:    "main",
 			StagePath:  "stage.main",
@@ -780,6 +780,19 @@ func eventuallyLatestFailureDocument() theater.RunDocument {
 
 func fixedTime(offsetMs int64) time.Time {
 	return time.Date(2026, 3, 24, 10, 0, 0, 0, time.UTC).Add(time.Duration(offsetMs) * time.Millisecond)
+}
+
+func completeRunDocument(doc theater.RunDocument) theater.RunDocument {
+	doc.TheaterVersion = "dev"
+	if doc.RunID == "" {
+		doc.RunID = doc.Report.StageID + "/test"
+	}
+	for i := range doc.Report.Nodes {
+		if doc.Report.Nodes[i].ID == "" {
+			doc.Report.Nodes[i].ID = doc.Report.Nodes[i].Path
+		}
+	}
+	return doc
 }
 
 func readGolden(t *testing.T, name string) string {

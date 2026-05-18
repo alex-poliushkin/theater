@@ -91,7 +91,7 @@ func httpDiagnosticFailureDocument() theater.RunDocument {
 	}
 
 	return theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Report: theater.Report{
 			StageID:   "main",
 			StagePath: "stage.main",
@@ -176,7 +176,7 @@ func httpTransportDiagnosticFailureDocument() theater.RunDocument {
 	}
 
 	return theater.RunDocument{
-		SchemaVersion: theater.RunDocumentSchemaVersion,
+		ReportSchemaVersion: theater.RunDocumentSchemaVersion,
 		Report: theater.Report{
 			StageID:   "main",
 			StagePath: "stage.main",

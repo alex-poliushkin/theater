@@ -7,6 +7,8 @@ import (
 	"io"
 	"slices"
 	"strings"
+
+	"github.com/alex-poliushkin/theater"
 )
 
 const (
@@ -15,8 +17,6 @@ const (
 	completionShellPowerShell = "powershell"
 	completionShellZsh        = "zsh"
 )
-
-var version = "dev"
 
 func (a *application) completeCommand(args []string) int {
 	for _, suggestion := range a.completionSuggestions(args) {
@@ -85,7 +85,7 @@ func (a *application) versionCommand(args []string) int {
 		fmt.Fprintln(a.stderr, "version does not accept positional arguments")
 		return exitCodeCommandError
 	}
-	_, _ = fmt.Fprintf(a.stdout, "theater %s\n", version)
+	_, _ = fmt.Fprintf(a.stdout, "theater %s\n", theater.Version())
 	return 0
 }
 

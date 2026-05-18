@@ -167,7 +167,7 @@ func TestStageEventSinkMirrorsRecordedOrder(t *testing.T) {
 
 	live := &recordingSink{}
 	recorder := &recordingEventRecorder{}
-	sink := newStageEventSink(live, recorder)
+	sink := newStageEventSink(runDocumentIdentity{}, live, recorder)
 
 	events := []Event{
 		{
@@ -265,7 +265,7 @@ func TestStageEventSinkSerializesObserverCallbacksInSinkOrder(t *testing.T) {
 
 	live := &recordingSink{}
 	recorder := newBlockingOrderRecorder(first.Path)
-	sink := newStageEventSink(live, recorder)
+	sink := newStageEventSink(runDocumentIdentity{}, live, recorder)
 
 	firstDone := make(chan error, 1)
 	go func() {

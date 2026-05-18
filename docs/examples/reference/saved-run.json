@@ -1,13 +1,16 @@
 {
   "file": "docs/examples/reference/saved-run.json",
   "result": {
-    "schema_version": "v1alpha1",
+    "report_schema_version": "v1alpha1",
+    "theater_version": "dev",
+    "run_id": "docs-ci-report/1",
     "report": {
       "stage_id": "docs-ci-report",
       "stage_path": "stage.docs-ci-report",
       "status": "passed",
       "nodes": [
         {
+          "id": "stage.docs-ci-report/call.run",
           "kind": "scenario",
           "path": "stage.docs-ci-report/call.run",
           "scenario_id": "docs/report",
@@ -15,6 +18,7 @@
           "status": "passed"
         },
         {
+          "id": "stage.docs-ci-report/call.run/act.check",
           "kind": "act",
           "path": "stage.docs-ci-report/call.run/act.check",
           "status": "passed",
@@ -25,6 +29,7 @@
           }
         },
         {
+          "id": "stage.docs-ci-report/call.run/act.check/expectation.status",
           "kind": "expectation",
           "path": "stage.docs-ci-report/call.run/act.check/expectation.status",
           "status": "passed",

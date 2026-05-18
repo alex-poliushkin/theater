@@ -27,9 +27,16 @@ func (p *Projector) Document(events []Event) (RunDocument, error) {
 		return RunDocument{}, err
 	}
 
+	identity, err := runDocumentIdentityFromEvents(events)
+	if err != nil {
+		return RunDocument{}, err
+	}
+
 	return RunDocument{
-		SchemaVersion: RunDocumentSchemaVersion,
-		Report:        report,
+		ReportSchemaVersion: RunDocumentSchemaVersion,
+		TheaterVersion:      identity.theaterVersion,
+		RunID:               identity.runID,
+		Report:              report,
 	}, nil
 }
 

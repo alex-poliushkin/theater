@@ -16,7 +16,7 @@ Source of truth:
 
 ## Checked Report Output
 
-<!-- theater-doc: command id=reference-report-json cwd=../.. expect-stdout="\"schema_version\": \"v1alpha1\"" expect-stdout-2="\"report\"" expect-stdout-3="\"summary\"" -->
+<!-- theater-doc: command id=reference-report-json cwd=../.. expect-stdout="\"report_schema_version\": \"v1alpha1\"" expect-stdout-2="\"theater_version\"" expect-stdout-3="\"run_id\"" expect-stdout-4="\"report\"" expect-stdout-5="\"summary\"" -->
 ```sh
 go run ./cmd/theater run docs/examples/first-stage/stage.thtr --live off --format json
 ```
@@ -87,9 +87,24 @@ The public run document has:
 
 | Field | Meaning |
 | --- | --- |
-| `schema_version` | Current value: `v1alpha1` |
+| `report_schema_version` | Current run document and report schema version. Current value: `v1alpha1` |
+| `theater_version` | Theater build or release version that produced the document |
+| `run_id` | Opaque identifier for this materialized run document |
 | `diagnostics` | Optional diagnostics emitted before or during run preparation |
 | `report` | Final materialized report |
+
+Report JSON is the canonical machine-readable surface. Markdown, JUnit, and
+summary outputs are projections over the run document and must not invent their
+own runtime truth. The v0.5.0 identity contract is intentionally small: it does
+not promise `theater report diff`, cross-run trend identifiers, artifact index
+metadata, hosted dashboard upload fields, telemetry upload, or broad backward
+compatibility beyond the documented current schema.
+
+`run_id` is stable inside one emitted run document and its derived artifacts. It
+is not a cross-run comparison key. `theater_version` is `dev` for local builds
+unless a release build embeds a tag. Node `id` values are stable inside the run
+document and are suitable for CI projections. They are report identities, not
+authoring references.
 
 ## Report Fields
 
@@ -161,6 +176,7 @@ payload preview. Zero counters are omitted from JSON.
 
 | Field | Meaning |
 | --- | --- |
+| `id` | Stable node identity inside the current run document |
 | `kind` | `scenario`, `act`, `action`, or `expectation` |
 | `path` | Stable runtime path |
 | `scenario_id`, `scenario_call_id`, `scenario_path` | Scenario identity |
@@ -173,6 +189,24 @@ payload preview. Zero counters are omitted from JSON.
 | `preview`, `artifacts`, `contrast`, `observations`, `payload` | Report-safe observed data |
 | `eventually` | Retry summary for an act with `eventually` |
 | `diagnostics` | Node-level collection of typed report-safe diagnostics |
+
+## Summary Projection Contract
+
+The compact summary projection is separate from the detailed Markdown report.
+The existing `markdown` renderer may show scenario calls, acts, expectations,
+logs, diagnostics, and report-safe observed values. The compact summary
+projection is for CI job summaries and must stay short.
+
+A compact summary may show:
+
+- run status and scenario counts
+- failed scenario calls and failed nodes
+- source locations when the run document has them
+- bounded failure summaries from report-safe data
+- run identity fields needed to correlate the summary with its JSON document
+
+A compact summary must not show raw scenario-authored logs, raw HTTP request or
+response bodies, secrets, unbounded payloads, or renderer-only diagnostics.
 
 ## HTTP Failure Diagnostics Contract
 

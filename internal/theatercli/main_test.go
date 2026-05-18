@@ -1468,9 +1468,11 @@ scenario_calls:
 		t.Fatalf("json output must include passed report status: %q", stdout.String())
 	}
 
-	if !strings.Contains(stdout.String(), `"schema_version": "v1alpha1"`) {
+	if !strings.Contains(stdout.String(), `"report_schema_version": "v1alpha1"`) {
 		t.Fatalf("json output must include canonical schema version: %q", stdout.String())
 	}
+	envelope := decodeRunDocumentOutput(t, stdout.String())
+	assertRunDocumentIdentity(t, envelope.Result)
 
 	if !strings.Contains(stdout.String(), `"kind": "action"`) {
 		t.Fatalf("json output must include materialized action node: %q", stdout.String())
@@ -1548,9 +1550,11 @@ scenario_calls:
 	if got, want := strings.Count(readFileString(t, markerPath), "marker\n"), 1; got != want {
 		t.Fatalf("stage executed wrong number of times: got %d marker writes want %d", got, want)
 	}
-	if !strings.Contains(readFileString(t, jsonPath), `"schema_version": "v1alpha1"`) {
-		t.Fatalf("json sidecar missing run document schema: %q", readFileString(t, jsonPath))
+	jsonSidecar := readFileString(t, jsonPath)
+	if !strings.Contains(jsonSidecar, `"report_schema_version": "v1alpha1"`) {
+		t.Fatalf("json sidecar missing run document schema: %q", jsonSidecar)
 	}
+	assertRunDocumentIdentity(t, decodeRunDocumentOutput(t, jsonSidecar).Result)
 	if !strings.Contains(readFileString(t, junitPath), `<testsuites`) {
 		t.Fatalf("junit sidecar missing testsuites root: %q", readFileString(t, junitPath))
 	}
@@ -1712,7 +1716,7 @@ scenario_calls:
 	if got, want := code, 0; got != want {
 		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q stdout=%q", got, want, stderr.String(), stdout.String())
 	}
-	if got := readFileString(t, jsonPath); !strings.Contains(got, `"schema_version": "v1alpha1"`) || strings.Contains(got, "existing") {
+	if got := readFileString(t, jsonPath); !strings.Contains(got, `"report_schema_version": "v1alpha1"`) || strings.Contains(got, "existing") {
 		t.Fatalf("json sidecar was not replaced with run document: %q", got)
 	}
 	info, err := os.Stat(jsonPath)
@@ -2058,7 +2062,7 @@ scenario_calls:
 	if got, want := code, 0; got != want {
 		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q", got, want, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), `"schema_version": "v1alpha1"`) {
+	if !strings.Contains(stdout.String(), `"report_schema_version": "v1alpha1"`) {
 		t.Fatalf("json output must include canonical schema version: %q", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), `"status": "passed"`) {
@@ -2273,7 +2277,7 @@ scenario_calls:
 		t.Fatalf("exit code mismatch: got %d want %d, stderr=%q", got, want, stderr.String())
 	}
 
-	if !strings.Contains(stdout.String(), `"schema_version": "v1alpha1"`) {
+	if !strings.Contains(stdout.String(), `"report_schema_version": "v1alpha1"`) {
 		t.Fatalf("stdout must contain canonical run document: %q", stdout.String())
 	}
 	if !strings.Contains(stdout.String(), `"status": "passed"`) {
@@ -2295,7 +2299,7 @@ scenario_calls:
 			t.Fatalf("stderr missing %q: %q", want, stderr.String())
 		}
 	}
-	if strings.Contains(stderr.String(), `"schema_version": "v1alpha1"`) {
+	if strings.Contains(stderr.String(), `"report_schema_version": "v1alpha1"`) {
 		t.Fatalf("stderr must stay free of canonical json output: %q", stderr.String())
 	}
 }
@@ -3130,6 +3134,41 @@ func readFileString(t *testing.T, path string) string {
 		t.Fatalf("read file %s failed: %v", path, err)
 	}
 	return string(data)
+}
+
+func decodeRunDocumentOutput(t *testing.T, raw string) runJSONEnvelope {
+	t.Helper()
+
+	var envelope runJSONEnvelope
+	if err := json.Unmarshal([]byte(raw), &envelope); err != nil {
+		t.Fatalf("decode run document output failed: %v\n%s", err, raw)
+	}
+	if err := envelope.Result.Validate(); err != nil {
+		t.Fatalf("run document output validation failed: %v\n%s", err, raw)
+	}
+	return envelope
+}
+
+func assertRunDocumentIdentity(t *testing.T, document theater.RunDocument) {
+	t.Helper()
+
+	if got, want := document.ReportSchemaVersion, theater.RunDocumentSchemaVersion; got != want {
+		t.Fatalf("report schema version mismatch: got %q want %q", got, want)
+	}
+	if got, want := document.TheaterVersion, theater.Version(); got != want {
+		t.Fatalf("theater version mismatch: got %q want %q", got, want)
+	}
+	if document.RunID == "" {
+		t.Fatal("run id must be present")
+	}
+	if len(document.Report.Nodes) == 0 {
+		t.Fatal("run document must include report nodes")
+	}
+	for _, node := range document.Report.Nodes {
+		if node.ID == "" {
+			t.Fatalf("node %s must include id", node.Path)
+		}
+	}
 }
 
 func chdirForTest(t *testing.T, path string) func() {

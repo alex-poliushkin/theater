@@ -65,8 +65,10 @@ func TestEventRecorderReturnsCopyAndReplayableReport(t *testing.T) {
 		},
 	}
 
-	for _, event := range events {
-		if err := recorder.Record(event); err != nil {
+	for i := range events {
+		events[i].RunID = "stage.main/test-run"
+		events[i].TheaterVersion = "test-version"
+		if err := recorder.Record(events[i]); err != nil {
 			t.Fatalf("record event failed: %v", err)
 		}
 	}
@@ -96,7 +98,13 @@ func TestEventRecorderReturnsCopyAndReplayableReport(t *testing.T) {
 		t.Fatalf("replay run document failed: %v", err)
 	}
 
-	if got, want := doc.SchemaVersion, theater.RunDocumentSchemaVersion; got != want {
+	if got, want := doc.ReportSchemaVersion, theater.RunDocumentSchemaVersion; got != want {
 		t.Fatalf("run document schema version mismatch: got %q want %q", got, want)
+	}
+	if got, want := doc.TheaterVersion, "test-version"; got != want {
+		t.Fatalf("run document theater version mismatch: got %q want %q", got, want)
+	}
+	if got, want := doc.RunID, "stage.main/test-run"; got != want {
+		t.Fatalf("run document id mismatch: got %q want %q", got, want)
 	}
 }

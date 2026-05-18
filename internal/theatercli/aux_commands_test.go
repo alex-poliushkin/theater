@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/alex-poliushkin/theater"
 )
 
 func TestRootHelpFlagPrintsHelpAndExitsZero(t *testing.T) {
@@ -283,7 +285,34 @@ func TestVersionCommandPrintsVersion(t *testing.T) {
 	if strings.TrimSpace(stderr.String()) != "" {
 		t.Fatalf("stderr mismatch: got %q want empty", stderr.String())
 	}
-	if got, want := strings.TrimSpace(stdout.String()), "theater "+version; got != want {
+	if got, want := strings.TrimSpace(stdout.String()), "theater "+theater.Version(); got != want {
+		t.Fatalf("stdout mismatch: got %q want %q", got, want)
+	}
+}
+
+func TestVersionCommandUsesRootLinkerVersion(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	binaryPath := filepath.Join(tempDir, "theater")
+	build := exec.Command(
+		"go",
+		"build",
+		"-ldflags", "-X github.com/alex-poliushkin/theater.version=v-test",
+		"-o", binaryPath,
+		"./cmd/theater",
+	)
+	build.Dir = repoRoot(t)
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build theater binary failed: %v output=%s", err, string(output))
+	}
+
+	command := exec.Command(binaryPath, commandVersion)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run theater version failed: %v output=%s", err, string(output))
+	}
+	if got, want := strings.TrimSpace(string(output)), "theater v-test"; got != want {
 		t.Fatalf("stdout mismatch: got %q want %q", got, want)
 	}
 }
@@ -306,7 +335,7 @@ func TestRootVersionFlagsPrintVersionAndExitZero(t *testing.T) {
 			if strings.TrimSpace(stderr.String()) != "" {
 				t.Fatalf("stderr mismatch: got %q want empty", stderr.String())
 			}
-			if got, want := strings.TrimSpace(stdout.String()), "theater "+version; got != want {
+			if got, want := strings.TrimSpace(stdout.String()), "theater "+theater.Version(); got != want {
 				t.Fatalf("stdout mismatch: got %q want %q", got, want)
 			}
 		})

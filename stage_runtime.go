@@ -17,6 +17,7 @@ type stageEventSink struct {
 	recorder    EventRecorder
 	live        observe.Sink
 	debug       *debugRuntime
+	identity    runDocumentIdentity
 	mu          sync.Mutex
 	callbackSeq uint64
 	callbacks   *stageCallbackTurn
@@ -49,7 +50,7 @@ type pendingScenarioSkipper struct {
 	record func(Event) error
 }
 
-func newStageEventSink(live observe.Sink, recorder EventRecorder, debug ...*debugRuntime) *stageEventSink {
+func newStageEventSink(identity runDocumentIdentity, live observe.Sink, recorder EventRecorder, debug ...*debugRuntime) *stageEventSink {
 	var runtimeDebug *debugRuntime
 	if len(debug) != 0 {
 		runtimeDebug = debug[0]
@@ -60,6 +61,7 @@ func newStageEventSink(live observe.Sink, recorder EventRecorder, debug ...*debu
 		recorder:  recorder,
 		live:      live,
 		debug:     runtimeDebug,
+		identity:  identity,
 		callbacks: newStageCallbackTurn(),
 	}
 }
@@ -119,6 +121,7 @@ func newPendingScenarioSkipper(record func(Event) error) *pendingScenarioSkipper
 }
 
 func (s *stageEventSink) Record(event Event) error {
+	event = s.identify(event)
 	if err := event.Validate(); err != nil {
 		return err
 	}
@@ -185,6 +188,7 @@ func (s *stageEventSink) Report() (Report, error) {
 }
 
 func (s *stageEventSink) recordLocal(event Event) error {
+	event = s.identify(event)
 	if err := event.Validate(); err != nil {
 		return err
 	}
@@ -194,6 +198,12 @@ func (s *stageEventSink) recordLocal(event Event) error {
 
 	s.report.applyValidated(event)
 	return nil
+}
+
+func (s *stageEventSink) identify(event Event) Event {
+	event.RunID = s.identity.runID
+	event.TheaterVersion = s.identity.theaterVersion
+	return event
 }
 
 type stageCallbackTurn struct {
