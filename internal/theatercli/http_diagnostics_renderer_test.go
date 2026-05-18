@@ -15,9 +15,9 @@ func TestRunTextViewRendersHTTPDiagnostics(t *testing.T) {
 	for _, want := range []string{
 		"http:",
 		"failure: status_mismatch",
-		"request: GET https://api.example.test/redacted?token=redacted",
+		"request: GET https://api.example.test/api/v1/segment/id?token=redacted",
 		"request.host: api.example.test",
-		"request.path_shape: /redacted",
+		"request.path_shape: /api/v1/segment/id",
 		"request.query_keys: redacted",
 		"response: 502 Bad Gateway",
 		"response.content_type: application/json",
@@ -45,9 +45,9 @@ func TestReportMarkdownRendererRendersHTTPDiagnostics(t *testing.T) {
 
 	for _, want := range []string{
 		"- HTTP failure: `status_mismatch`",
-		"- HTTP request: `GET https://api.example.test/redacted?token=redacted`",
+		"- HTTP request: `GET https://api.example.test/api/v1/segment/id?token=redacted`",
 		"- HTTP host: `api.example.test`",
-		"- HTTP path shape: `/redacted`",
+		"- HTTP path shape: `/api/v1/segment/id`",
 		"- HTTP query keys: `redacted`",
 		"- HTTP response: `502 Bad Gateway`",
 		"- HTTP content type: `application/json`",
@@ -76,7 +76,7 @@ func TestReportMarkdownRendererRendersHTTPTransportDiagnostics(t *testing.T) {
 	for _, want := range []string{
 		"- Action `fetch` failed",
 		"- HTTP failure: `network_error`",
-		"- HTTP request: `GET https://api.example.test/redacted?token=redacted`",
+		"- HTTP request: `GET https://api.example.test/api/v1/segment/id?token=redacted`",
 		"- HTTP host: `api.example.test`",
 		"- HTTP duration: `15ms`",
 	} {
@@ -216,15 +216,15 @@ func httpDiagnosticFailureDocument() theater.RunDocument {
 								},
 								FailureKind: theater.HTTPDiagnosticFailureStatus,
 								Method:      "GET",
-								URL:         "https://api.example.test/redacted?token=redacted",
+								URL:         "https://api.example.test/api/v1/segment/id?token=redacted",
 								StatusCode:  502,
 								Status:      "Bad Gateway",
 								DurationMs:  15,
 								RequestFingerprint: &theater.HTTPRequestFingerprint{
 									Method:     "GET",
-									URL:        "https://api.example.test/redacted?token=redacted",
+									URL:        "https://api.example.test/api/v1/segment/id?token=redacted",
 									Host:       "api.example.test",
-									PathShape:  "/redacted",
+									PathShape:  "/api/v1/segment/id",
 									QueryKeys:  []string{"redacted"},
 									DurationMs: 15,
 								},
@@ -390,13 +390,13 @@ func httpTransportDiagnosticFailureDocument() theater.RunDocument {
 							HTTP: &theater.HTTPDiagnostic{
 								FailureKind: theater.HTTPDiagnosticFailureNetwork,
 								Method:      "GET",
-								URL:         "https://api.example.test/redacted?token=redacted",
+								URL:         "https://api.example.test/api/v1/segment/id?token=redacted",
 								DurationMs:  15,
 								RequestFingerprint: &theater.HTTPRequestFingerprint{
 									Method:     "GET",
-									URL:        "https://api.example.test/redacted?token=redacted",
+									URL:        "https://api.example.test/api/v1/segment/id?token=redacted",
 									Host:       "api.example.test",
-									PathShape:  "/redacted",
+									PathShape:  "/api/v1/segment/id",
 									QueryKeys:  []string{"redacted"},
 									DurationMs: 15,
 								},

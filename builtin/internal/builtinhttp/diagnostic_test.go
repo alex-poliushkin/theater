@@ -20,10 +20,10 @@ func TestHTTPDiagnosticBuildsSafeRequestFingerprint(t *testing.T) {
 
 	diagnostic := newHTTPDiagnostic(Request{
 		Method: http.MethodPost,
-		URL:    "https://user:pass@api.example.test:9443/v1/users/123?token=query-secret&search=widgets&api_key=issued#fragment",
+		URL:    "https://user:pass@api.example.test:9443/v1/users/123/orders/550e8400-e29b-41d4-a716-446655440000/path-secret?token=query-secret&search=widgets&api_key=issued#fragment",
 	}, nil, 1500*time.Millisecond)
 
-	wantURL := "https://api.example.test:9443/redacted/redacted/redacted?api_key=redacted&search=redacted&token=redacted"
+	wantURL := "https://api.example.test:9443/v1/segment/id/segment/uuid/redacted?api_key=redacted&search=redacted&token=redacted"
 	if got := diagnostic.URL; got != wantURL {
 		t.Fatalf("diagnostic url mismatch: got %q want %q", got, wantURL)
 	}
@@ -34,7 +34,7 @@ func TestHTTPDiagnosticBuildsSafeRequestFingerprint(t *testing.T) {
 		Method:     http.MethodPost,
 		URL:        wantURL,
 		Host:       "api.example.test",
-		PathShape:  "/redacted/redacted/redacted",
+		PathShape:  "/v1/segment/id/segment/uuid/redacted",
 		QueryKeys:  []string{"redacted", "search"},
 		DurationMs: 1500,
 	}) {
@@ -42,10 +42,78 @@ func TestHTTPDiagnosticBuildsSafeRequestFingerprint(t *testing.T) {
 	}
 
 	rendered := diagnostic.URL + " " + diagnostic.RequestFingerprint.URL + " " + diagnostic.RequestFingerprint.PathShape
-	for _, forbidden := range []string{"user", "pass", "query-secret", "widgets", "issued", "123", "fragment"} {
+	for _, forbidden := range []string{"user:pass", "users", "orders", "query-secret", "widgets", "issued", "123", "550e8400", "path-secret", "fragment"} {
 		if strings.Contains(rendered, forbidden) {
 			t.Fatalf("diagnostic leaked %q: %#v", forbidden, diagnostic)
 		}
+	}
+}
+
+func TestHTTPDiagnosticPathShapeUsesSafeSegmentPlaceholders(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{
+			name: "route names with numeric id",
+			url:  "https://api.example.test/mb-mobile-route-contracts/signup/customer-relations/12345",
+			want: "/segment/segment/segment/id",
+		},
+		{
+			name: "versioned api path with uuid",
+			url:  "https://api.example.test/api/v1/customers/550e8400-e29b-41d4-a716-446655440000/status",
+			want: "/api/v1/segment/uuid/segment",
+		},
+		{
+			name: "secret-like segment",
+			url:  "https://api.example.test/api/path-secret/status",
+			want: "/api/redacted/segment",
+		},
+		{
+			name: "encoded personal segment",
+			url:  "https://api.example.test/users/person%40example.test/profile",
+			want: "/segment/redacted/segment",
+		},
+		{
+			name: "long hex id",
+			url:  "https://api.example.test/api/v1/customers/abcdef1234567890/status",
+			want: "/api/v1/segment/opaque/segment",
+		},
+		{
+			name: "ulid id",
+			url:  "https://api.example.test/api/v1/customers/01ARZ3NDEKTSV4RRFFQ69G5FAV/status",
+			want: "/api/v1/segment/opaque/segment",
+		},
+		{
+			name: "short vendor id with prefix",
+			url:  "https://api.example.test/api/v1/accounts/acct_abc123/status",
+			want: "/api/v1/segment/opaque/segment",
+		},
+		{
+			name: "opaque mixed id",
+			url:  "https://api.example.test/api/v1/customers/customerABC123def456ghi789/status",
+			want: "/api/v1/segment/opaque/segment",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			diagnostic := newHTTPDiagnostic(Request{URL: tc.url}, nil, time.Millisecond)
+			if diagnostic.RequestFingerprint == nil {
+				t.Fatal("request fingerprint is missing")
+			}
+			if got := diagnostic.RequestFingerprint.PathShape; got != tc.want {
+				t.Fatalf("path shape mismatch: got %q want %q", got, tc.want)
+			}
+			if !strings.Contains(diagnostic.URL, tc.want) {
+				t.Fatalf("diagnostic URL should include safe placeholder path shape %q: %q", tc.want, diagnostic.URL)
+			}
+		})
 	}
 }
 

@@ -56,9 +56,9 @@ and `field(headers) | path("/Content-Type/0")`.
 
 ### Failure Diagnostics Contract
 
-The v0.5 report contract emits HTTP failure diagnostics as node-scoped report
-data. They are not `action.http` output fields and cannot be selected with
-`field(...)`.
+HTTP failure diagnostics are node-scoped report data with typed failure
+categories, request fingerprints, and response metadata. They are not
+`action.http` output fields and cannot be selected with `field(...)`.
 
 When emitted, an HTTP diagnostic can describe a failed transport or request
 assembly on the failed action node, or a failed expectation that inspected a
@@ -73,14 +73,21 @@ carriers.
 Failure categories are safe coarse labels: `network_error`, `timeout`,
 `tls_error`, `status_mismatch`, `header_mismatch`, `body_parse_error`,
 `expectation_mismatch`, and `request_error`. Request fingerprints include the
-method, redacted URL, host, redacted path shape, query-key list, and duration
-when available. Query values are never included in the fingerprint, and query
-key names that look like credentials or personal data are redacted. Response
+method, redacted URL, host, safe path shape, query-key list, and duration when
+available. Query values are never included in the fingerprint, and query key
+names that look like credentials or personal data are redacted. Response
 metadata includes status, content type, safe content length, and preview
 classification when available.
 
-URL path segment values and query values are redacted by default, userinfo is
-hidden, and URL fragments are omitted. Response header projection is
+Diagnostic URLs and path shapes use safe placeholders instead of concrete path
+labels. Generic API/version segments such as `api` and `v1` may be retained.
+Recognized sensitive, personal, or invalid segments are rendered as `redacted`.
+Other text-like segments, including personal-looking slugs that do not match a
+recognized sensitive pattern, are rendered as `segment`. Numeric identifiers are
+rendered as `id`, UUID-like identifiers as `uuid`, and non-version
+digit-containing or opaque identifier-like segments as `opaque`. Userinfo,
+query values, and URL fragments are redacted or omitted. Response header
+projection is
 allowlist-based and excludes authorization, proxy authorization, cookie,
 set-cookie, unknown header values, and credential-like values even under
 allowlisted header names. Body previews use report `Preview` semantics. Content

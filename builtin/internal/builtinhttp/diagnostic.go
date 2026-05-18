@@ -30,6 +30,11 @@ const (
 
 	httpDiagnosticOmittedBinary           = "binary"
 	httpDiagnosticOmittedUnclassifiedText = "unclassified_text"
+	httpDiagnosticPathSegmentMaxBytes     = 80
+	httpDiagnosticPathSegmentID           = "id"
+	httpDiagnosticPathSegmentOpaque       = "opaque"
+	httpDiagnosticPathSegmentText         = "segment"
+	httpDiagnosticPathSegmentUUID         = "uuid"
 )
 
 func newHTTPDiagnostic(request Request, response *httpclient.Response, duration time.Duration) theater.HTTPDiagnostic {
@@ -261,11 +266,192 @@ func redactedDiagnosticPath(path string) string {
 	segments := strings.Split(path, "/")
 	for i := range segments {
 		if segments[i] != "" {
-			segments[i] = httpDiagnosticRedactedValue
+			segments[i] = diagnosticPathSegment(segments[i])
 		}
 	}
 
 	return strings.Join(segments, "/")
+}
+
+func diagnosticPathSegment(escaped string) string {
+	segment, err := url.PathUnescape(escaped)
+	if err != nil {
+		return httpDiagnosticRedactedValue
+	}
+	if !isSafeDiagnosticPathSegmentShape(segment) {
+		return httpDiagnosticRedactedValue
+	}
+	if isSensitiveDiagnosticPathSegmentName(segment) ||
+		isCredentialLikeValue(segment) ||
+		isPersonalLikeValue(segment) {
+		return httpDiagnosticRedactedValue
+	}
+	switch {
+	case isGenericDiagnosticPathSegment(segment):
+		return strings.ToLower(segment)
+	case isAPIVersionPathSegment(segment):
+		return strings.ToLower(segment)
+	case isAllASCIIDigits(segment):
+		return httpDiagnosticPathSegmentID
+	case isUUIDLikePathSegment(segment):
+		return httpDiagnosticPathSegmentUUID
+	case isLongHexPathSegment(segment),
+		isULIDLikePathSegment(segment),
+		isOpaqueIdentifierPathSegment(segment),
+		containsASCIIDigit(segment):
+		return httpDiagnosticPathSegmentOpaque
+	default:
+		return httpDiagnosticPathSegmentText
+	}
+}
+
+func isSafeDiagnosticPathSegmentShape(segment string) bool {
+	if segment == "" || len(segment) > httpDiagnosticPathSegmentMaxBytes {
+		return false
+	}
+	for _, r := range segment {
+		switch {
+		case r >= 'a' && r <= 'z',
+			r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9',
+			r == '-',
+			r == '_',
+			r == '.',
+			r == '~':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func isSensitiveDiagnosticPathSegmentName(segment string) bool {
+	normalized := normalizedDiagnosticName(segment)
+	switch {
+	case normalized == "":
+		return false
+	case strings.Contains(normalized, "password"),
+		strings.Contains(normalized, "secret"),
+		strings.Contains(normalized, "credential"),
+		strings.Contains(normalized, "authorization"),
+		strings.Contains(normalized, "api_key"),
+		strings.Contains(normalized, "apikey"),
+		strings.Contains(normalized, "access_key"),
+		strings.Contains(normalized, "private_key"),
+		strings.Contains(normalized, "csrf"),
+		strings.Contains(normalized, "cookie"):
+		return true
+	default:
+		return false
+	}
+}
+
+func isGenericDiagnosticPathSegment(segment string) bool {
+	switch strings.ToLower(segment) {
+	case "api", "apis", "rest", "rpc", "graphql":
+		return true
+	default:
+		return false
+	}
+}
+
+func isAPIVersionPathSegment(segment string) bool {
+	normalized := strings.ToLower(segment)
+	if len(normalized) < 2 || normalized[0] != 'v' {
+		return false
+	}
+	return isAllASCIIDigits(normalized[1:])
+}
+
+func isAllASCIIDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isUUIDLikePathSegment(value string) bool {
+	if len(value) != 36 {
+		return false
+	}
+	for i, r := range strings.ToLower(value) {
+		switch i {
+		case 8, 13, 18, 23:
+			if r != '-' {
+				return false
+			}
+		default:
+			if !isLowerHexRune(r) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func isLongHexPathSegment(value string) bool {
+	if len(value) < 12 {
+		return false
+	}
+	for _, r := range strings.ToLower(value) {
+		if !isLowerHexRune(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isULIDLikePathSegment(value string) bool {
+	if len(value) != 26 {
+		return false
+	}
+	for _, r := range strings.ToUpper(value) {
+		if !strings.ContainsRune("0123456789ABCDEFGHJKMNPQRSTVWXYZ", r) {
+			return false
+		}
+	}
+	return true
+}
+
+func isOpaqueIdentifierPathSegment(value string) bool {
+	if len(value) < 24 {
+		return false
+	}
+
+	hasDigit := false
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z',
+			r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9',
+			r == '-',
+			r == '_':
+			if r >= '0' && r <= '9' {
+				hasDigit = true
+			}
+		default:
+			return false
+		}
+	}
+	return hasDigit
+}
+
+func containsASCIIDigit(value string) bool {
+	for _, r := range value {
+		if r >= '0' && r <= '9' {
+			return true
+		}
+	}
+	return false
+}
+
+func isLowerHexRune(r rune) bool {
+	return r >= '0' && r <= '9' || r >= 'a' && r <= 'f'
 }
 
 func diagnosticResponseHeaders(headers http.Header) map[string][]string {

@@ -42,12 +42,12 @@ go run ./cmd/theater report render --input docs/examples/reference/saved-run.jso
 go run ./cmd/theater report render --input docs/examples/reference/saved-run.json --format summary-md
 ```
 
-<!-- theater-doc: command id=reference-report-http-diagnostics-markdown cwd=../.. expect-stdout="HTTP failure" expect-stdout-2="status_mismatch" expect-stdout-3="HTTP request" expect-stdout-4="api.example.test/redacted?token=redacted" expect-stdout-5="HTTP host" expect-stdout-6="HTTP content type" expect-stdout-7="HTTP body:" expect-stdout-8="retry later" reject-stdout=credential-secret -->
+<!-- theater-doc: command id=reference-report-http-diagnostics-markdown cwd=../.. expect-stdout="HTTP failure" expect-stdout-2="status_mismatch" expect-stdout-3="HTTP request" expect-stdout-4="api.example.test/api/v1/segment/id?token=redacted" expect-stdout-5="HTTP path shape" expect-stdout-6="/api/v1/segment/id" expect-stdout-7="HTTP content type" expect-stdout-8="HTTP body:" expect-stdout-9="retry later" reject-stdout=credential-secret -->
 ```sh
 go run ./cmd/theater report render --input docs/examples/reference/failed-http-run.json --format markdown
 ```
 
-<!-- theater-doc: command id=reference-report-http-diagnostics-junit cwd=../.. expect-stdout=http.failure_kind expect-stdout-2=status_mismatch expect-stdout-3=http.request.host expect-stdout-4=http.response.content_type expect-stdout-5="retry later" expect-stdout-6="[redacted]" reject-stdout=credential-secret -->
+<!-- theater-doc: command id=reference-report-http-diagnostics-junit cwd=../.. expect-stdout=http.failure_kind expect-stdout-2=status_mismatch expect-stdout-3=http.request.host expect-stdout-4="api.example.test/api/v1/segment/id?token=redacted" expect-stdout-5="http.request.path_shape: /api/v1/segment/id" expect-stdout-6=http.response.content_type expect-stdout-7="retry later" expect-stdout-8="[redacted]" reject-stdout=credential-secret -->
 ```sh
 go run ./cmd/theater report render --input docs/examples/reference/failed-http-run.json --format junit
 ```
@@ -102,8 +102,8 @@ The public run document has:
 
 Report JSON is the canonical machine-readable surface. Markdown, JUnit, and
 summary outputs are projections over the run document and must not invent their
-own runtime truth. The v0.5.0 identity contract is intentionally small: it does
-not promise `theater report diff`, cross-run trend identifiers, artifact index
+own runtime truth. The identity contract is intentionally small: it does not
+promise `theater report diff`, cross-run trend identifiers, artifact index
 metadata, hosted dashboard upload fields, telemetry upload, or broad backward
 compatibility beyond the documented current schema.
 
@@ -236,10 +236,11 @@ response bodies, secrets, unbounded payloads, or renderer-only diagnostics.
 
 ## HTTP Failure Diagnostics Contract
 
-The v0.5 report contract emits node-scoped HTTP diagnostics for failed
-`action.http` exchanges and for expectations that fail after inspecting a
-completed HTTP response. Run documents without HTTP diagnostic evidence simply
-omit the diagnostic fields.
+HTTP diagnostics are node-scoped report data for failed `action.http` exchanges
+and for expectations that fail after inspecting a completed HTTP response. They
+include typed failure categories, request fingerprints, and response metadata
+when that evidence is available. Run documents without HTTP diagnostic evidence
+simply omit the diagnostic fields.
 
 HTTP diagnostics are report data. They are not top-level
 `RunDocument.Diagnostics`, not renderer-only text, and not `action.http`
@@ -262,8 +263,8 @@ The typed diagnostic records:
 | action address | Node address or path for the HTTP action that produced the exchange |
 | failure kind | Safe category when known: `network_error`, `timeout`, `tls_error`, `status_mismatch`, `header_mismatch`, `body_parse_error`, `expectation_mismatch`, or `request_error` |
 | method | Request method |
-| URL | Resolved URL with userinfo hidden, path segment values redacted by default, fragments omitted, and query values redacted |
-| request fingerprint | Method, redacted URL, host, redacted path shape, query-key list with sensitive-looking names redacted, and duration when available |
+| URL | Resolved URL with userinfo hidden, path segments projected to safe placeholders such as `api`, `v1`, `segment`, `id`, `uuid`, or `opaque`, fragments omitted, and query values redacted |
+| request fingerprint | Method, redacted URL, host, safe placeholder path shape, query-key list with sensitive-looking names redacted, and duration when available |
 | status | Response status code and status text when a response exists |
 | duration | Measured exchange duration |
 | response metadata | Status, content type, safe content length, preview kind, and preview omitted reason when available |

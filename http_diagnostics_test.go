@@ -94,7 +94,7 @@ func TestHTTPExpectationFailureReportsSafeDiagnostics(t *testing.T) {
 	if diagnostic.RequestFingerprint.Host == "" {
 		t.Fatalf("fingerprint host is missing: %#v", diagnostic.RequestFingerprint)
 	}
-	if got, want := diagnostic.RequestFingerprint.PathShape, "/redacted/redacted"; got != want {
+	if got, want := diagnostic.RequestFingerprint.PathShape, "/segment/redacted"; got != want {
 		t.Fatalf("fingerprint path shape mismatch: got %q want %q", got, want)
 	}
 	if got := strings.Join(diagnostic.RequestFingerprint.QueryKeys, ","); got != "redacted,visible" {

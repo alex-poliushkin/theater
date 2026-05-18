@@ -48,15 +48,15 @@
                 },
                 "failure_kind": "status_mismatch",
                 "method": "GET",
-                "url": "https://api.example.test/redacted?token=redacted",
+                "url": "https://api.example.test/api/v1/segment/id?token=redacted",
                 "status_code": 502,
                 "status": "Bad Gateway",
                 "duration_ms": 15,
                 "request_fingerprint": {
                   "method": "GET",
-                  "url": "https://api.example.test/redacted?token=redacted",
+                  "url": "https://api.example.test/api/v1/segment/id?token=redacted",
                   "host": "api.example.test",
-                  "path_shape": "/redacted",
+                  "path_shape": "/api/v1/segment/id",
                   "query_keys": [
                     "redacted"
                   ],

@@ -76,9 +76,9 @@ multiple artifacts. Use `report render` when a saved run JSON file should
 become compact JUnit, detailed Markdown, or compact summary Markdown without
 executing the stage again.
 
-The compact summary Markdown projection is a separate v0.5.0 report projection
-over the same run document. It is bounded for CI job summaries and must not
-include raw logs, raw HTTP bodies, secrets, unbounded payloads, or
+The compact summary Markdown projection is separate from the detailed Markdown
+report and uses the same run document. It is bounded for CI job summaries and
+must not include raw logs, raw HTTP bodies, secrets, unbounded payloads, or
 renderer-only diagnostics.
 
 ## Run Sidecar Outputs
